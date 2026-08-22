@@ -16,6 +16,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          
+      - name: Usar a mesma assinatura de teste em todas as compilações
+        run: |
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
 
       - name: Instalar Java (necessário pro Android)
         uses: actions/setup-java@v4
