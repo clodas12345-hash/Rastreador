@@ -31,6 +31,8 @@ jobs:
 
       - name: Gerar a versão web do app
         run: npm run build
+        env:
+          GOOGLE_MAPS_PLATFORM_KEY: ${{ secrets.GOOGLE_MAPS_PLATFORM_KEY }}
 
       - name: Adicionar a plataforma Android
         run: npx cap add android
