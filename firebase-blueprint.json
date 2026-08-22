@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "A vehicle entity",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "licensePlate": { "type": "string" },
+        "status": { "type": "string", "enum": ["Moving", "Stopped", "Maintenance"] },
+        "trackerNumber": { "type": "string" }
+      },
+      "required": ["name", "licensePlate", "status", "trackerNumber"]
+    },
+    "SavedRoute": {
+      "title": "SavedRoute",
+      "description": "A saved vehicle trajectory/route entity",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "vehicleName": { "type": "string" },
+        "distanceKm": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "points": { "type": "array" },
+        "notes": { "type": "string" }
+      },
+      "required": ["name", "vehicleId", "createdAt", "points"]
+    }
+  },
+  "firestore": {
+    "/cars/{carId}": {
+      "schema": "Vehicle",
+      "description": "Collection of cars"
+    },
+    "/trajetos/{trajetoId}": {
+      "schema": "SavedRoute",
+      "description": "Collection of saved vehicle trajectories and routes"
+    }
+  }
+}
