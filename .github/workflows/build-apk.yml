@@ -40,7 +40,7 @@ jobs:
           sed -i '/<application/i\    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />' android/app/src/main/AndroidManifest.xml
 
       - name: Organizar o ícone na pasta correta
-        run: mkdir -p resources && [ -f icon.png ] && mv icon.png resources/icon.png || true
+        run: 
 
       - name: Gerar o ícone do app em todos os tamanhos
         run: npx @capacitor/assets generate --android --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff'
@@ -49,7 +49,7 @@ jobs:
         run: npx cap sync android
 
       - name: Corrigir conflito de versões do Kotlin
-        run: |
+        run: |run: mkdir -p assets && [ -f icon.png ] && mv icon.png assets/icon.png || true
           cat >> android/app/build.gradle << 'EOF'
 
           configurations.all {
