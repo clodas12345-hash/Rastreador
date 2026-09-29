@@ -57,13 +57,27 @@ export default function PdfReader({
   ];
 
   const quickCommands = [
-    { cmd: 'begin123456', label: 'Inicializar aparelho', category: 'Configuração' },
-    { cmd: 'admin123456 11999999999', label: 'Cadastrar número administrador', category: 'Segurança' },
-    { cmd: 'password123456 654321', label: 'Alterar senha padrão', category: 'Segurança' },
-    { cmd: 'stop123456', label: 'Bloquear motor / corte de combustível', category: 'Controle' },
-    { cmd: 'resume123456', label: 'Desbloquear motor', category: 'Controle' },
-    { cmd: 'check123456', label: 'Verificar status do rastreador', category: 'Diagnóstico' },
-    { cmd: 'gprs123456', label: 'Ativar modo GPRS / Plataforma', category: 'Rede' },
+    { cmd: 'begin123456', label: 'Inicialização Geral', category: 'Configuração Inicial' },
+    { cmd: 'apn123456 APN', label: 'Configurar APN da Operadora', category: 'Configuração Inicial' },
+    { cmd: 'up123456 usuario senha', label: 'Usuário e Senha da APN', category: 'Configuração Inicial' },
+    { cmd: 'adminip123456 11953292570', label: 'Configurar IP e Porta do Servidor', category: 'Conexão & Rede' },
+    { cmd: 'gprs123456', label: 'Ativar Modo GPRS (Dados)', category: 'Conexão & Rede' },
+    { cmd: 'gprs123456,0,0', label: 'Configurar Protocolo TCP', category: 'Conexão & Rede' },
+    { cmd: 'sleep123456 off', label: 'Desativar Sleep (Conexão Contínua)', category: 'Operação' },
+    { cmd: 'less gprs123456 off', label: 'Desativar Economia de Dados', category: 'Operação' },
+    { cmd: 'fix030s900s***n123456', label: 'Tempo Reporte (30s Lig / 900s Desl)', category: 'Telemetria' },
+    { cmd: 'distance123456 1666', label: 'Reporte por Distância (1666m)', category: 'Telemetria' },
+    { cmd: 'angle123456 30', label: 'Reporte por Curva (30°)', category: 'Telemetria' },
+    { cmd: 'time zone123456 0', label: 'Fuso Horário UTC 0', category: 'Configuração' },
+    { cmd: 'protocol123456 18', label: 'Protocolo de Ignição', category: 'Hardware' },
+    { cmd: 'check123456', label: 'Verificar Status Completo', category: 'Diagnóstico' },
+    { cmd: 'reset123456', label: 'Reiniciar Rastreador', category: 'Diagnóstico' },
+    { cmd: 'admin123456 11999999999', label: 'Cadastrar Administrador', category: 'Segurança' },
+    { cmd: 'quickstop123456', label: 'Bloqueio Imediato do Motor', category: 'Emergência' },
+    { cmd: 'stop123456', label: 'Bloqueio Seguro (<20km/h)', category: 'Emergência' },
+    { cmd: 'resume123456', label: 'Desbloquear Motor', category: 'Emergência' },
+    { cmd: 'monitor123456', label: 'Modo Escuta (Microfone)', category: 'Áudio' },
+    { cmd: 'tracker123456', label: 'Retornar ao Modo Rastreamento', category: 'Áudio' }
   ];
 
   const handleCopy = (command: string) => {

@@ -2096,47 +2096,40 @@ export default function TerminalTools({
             
             <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto pr-1">
               {[
-                { name: 'Bloquear (Gradual)', cmd: 'stop', usePwd: true },
-                { name: 'Bloquear (Imediato)', cmd: 'quickstop', usePwd: true },
-                { name: 'Desbloquear', cmd: 'resume', usePwd: true },
-                { name: 'Alarme Ativar', cmd: 'arm', usePwd: true },
-                { name: 'Alarme Desativar', cmd: 'disarm', usePwd: true },
-                { name: 'Localização/Endereço', cmd: 'address', usePwd: true },
-                { name: 'Status do Aparelho', cmd: 'check', usePwd: true },
-                { name: 'Alerta Movimento', cmd: 'move', usePwd: true },
-                { name: 'Desativar Movimento', cmd: 'nomove', usePwd: true },
-                { name: 'Alerta Ignição', cmd: 'acc', usePwd: true },
-                { name: 'Desativar Ignição', cmd: 'noacc', usePwd: true },
-                { name: 'Modo Escuta', cmd: 'monitor', usePwd: true },
-                { name: 'Modo Rastreio', cmd: 'tracker', usePwd: true },
-                { name: 'Reiniciar Sistema', cmd: 'reset', usePwd: true },
-                { name: 'Configurar Admin', cmd: 'admin123456 [número]', usePwd: false },
-                { name: 'Alterar Senha', cmd: 'password123456 [nova_senha]', usePwd: false },
-                { name: 'Remover Admin', cmd: 'noadmin', usePwd: true },
-                { name: 'Hibernar (Vibração)', cmd: 'sleep123456 shock', usePwd: false },
-                { name: 'Hibernar (Tempo)', cmd: 'sleep123456 [minutos]', usePwd: false },
-                { name: 'Desativar Hibernação', cmd: 'nosleep', usePwd: true },
-                { name: 'Economia GPRS On', cmd: 'less gprs123456 on', usePwd: false },
-                { name: 'Economia GPRS Off', cmd: 'less gprs123456 off', usePwd: false },
-                { name: 'Sensibilidade', cmd: 'sensitivity123456 [1-3]', usePwd: false },
-                { name: 'Bateria Fraca On', cmd: 'lowbattery123456 on', usePwd: false },
-                { name: 'Bateria Fraca Off', cmd: 'lowbattery123456 off', usePwd: false },
-                { name: 'Alerta GPS Fraco On', cmd: 'gpssignal123456 on', usePwd: false },
-                { name: 'Filtro Desvio On', cmd: 'supress', usePwd: true },
-                { name: 'Filtro Desvio Off', cmd: 'nosupress', usePwd: true },
-                { name: 'Salvar Posições', cmd: 'save030s005n123456', usePwd: false },
-                { name: 'Limpar Memória', cmd: 'clear', usePwd: true }
+                { name: '🚀 Inicializar (begin)', cmd: 'begin', usePwd: true, cat: 'Setup' },
+                { name: '🌐 Configurar APN (apn... APN)', cmd: 'apn123456 APN', usePwd: false, cat: 'Setup' },
+                { name: '👤 Usuário/Senha APN (up... user pass)', cmd: 'up123456 usuario senha', usePwd: false, cat: 'Setup' },
+                { name: '📡 IP e Porta Servidor (adminip...)', cmd: 'adminip123456 11953292570', usePwd: false, cat: 'Rede' },
+                { name: '📶 Ativar GPRS (gprs...)', cmd: 'gprs', usePwd: true, cat: 'Rede' },
+                { name: '🔌 Configurar TCP (gprs...,0,0)', cmd: 'gprs123456,0,0', usePwd: false, cat: 'Rede' },
+                { name: '⏱️ Tempo Reporte 30s/900s (fix...)', cmd: 'fix030s900s***n123456', usePwd: false, cat: 'Telemetria' },
+                { name: '📏 Envio por Distância 1666m (distance...)', cmd: 'distance123456 1666', usePwd: false, cat: 'Telemetria' },
+                { name: '📐 Envio por Curva 30° (angle...)', cmd: 'angle123456 30', usePwd: false, cat: 'Telemetria' },
+                { name: '🕒 Timezone UTC 0 (time zone... 0)', cmd: 'time zone123456 0', usePwd: false, cat: 'Config' },
+                { name: '⚡ Enviar Ignição (protocol... 18)', cmd: 'protocol123456 18', usePwd: false, cat: 'Hardware' },
+                { name: '☀️ Desligar Sleep (sleep... off)', cmd: 'sleep123456 off', usePwd: false, cat: 'Operação' },
+                { name: '🚀 Desativar Econ. Dados (less gprs... off)', cmd: 'less gprs123456 off', usePwd: false, cat: 'Operação' },
+                { name: '🔍 Verificar Status (check...)', cmd: 'check', usePwd: true, cat: 'Diagnóstico' },
+                { name: '🔄 Reiniciar Aparelho (reset...)', cmd: 'reset', usePwd: true, cat: 'Diagnóstico' },
+                { name: '👑 Cadastrar Administrador (admin...)', cmd: 'admin123456 11999999999', usePwd: false, cat: 'Segurança' },
+                { name: '🛑 Bloqueio Imediato (quickstop...)', cmd: 'quickstop', usePwd: true, cat: 'Emergência' },
+                { name: '🔒 Bloqueio Seguro (<20km/h) (stop...)', cmd: 'stop', usePwd: true, cat: 'Emergência' },
+                { name: '🟢 Desbloquear Motor (resume...)', cmd: 'resume', usePwd: true, cat: 'Emergência' },
+                { name: '📍 Posição por SMS (position...)', cmd: 'position', usePwd: true, cat: 'GPS' },
+                { name: '🎙️ Modo Escuta Microfone (monitor...)', cmd: 'monitor', usePwd: true, cat: 'Áudio' },
+                { name: '🚗 Voltar Modo Rastreador (tracker...)', cmd: 'tracker', usePwd: true, cat: 'Áudio' }
               ].map((item, i) => {
                 const pwd = selectedVehicleForMessage.settings?.smsPassword || '123456';
                 const command = item.usePwd ? `${item.cmd}${pwd}` : item.cmd.replace('123456', pwd);
                 return (
-                  <button key={i} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-bold text-xs cursor-pointer"
+                  <button key={i} className="bg-slate-800 hover:bg-blue-700 text-white p-2.5 rounded-xl font-bold text-xs cursor-pointer flex items-center justify-between transition-colors text-left"
                           onClick={() => {
                             const phone = (selectedVehicleForMessage.phoneNumber || selectedVehicleForMessage.trackerNumber || '').replace(/[^0-9]/g, '');
-                            window.open(`sms:${phone}?body=${command}`, '_self');
+                            window.open(`sms:${phone}?body=${encodeURIComponent(command)}`, '_self');
                             setShowMessageModal(false);
                           }}>
-                    {item.name}
+                    <span>{item.name}</span>
+                    <span className="font-mono text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-300">{command}</span>
                   </button>
                 );
               })}

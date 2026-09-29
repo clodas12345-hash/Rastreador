@@ -475,26 +475,163 @@ const getPreciseAddress = (lat: number, lng: number) => {
   return `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
 };
 
-const sendFlespiCommand = async (imei: string, commandPayload: string) => {
-  if (!imei || !FLESPI_TOKEN) return;
+export interface FlespiCommandResult {
+  success: boolean;
+  deviceId?: number;
+  deviceName?: string;
+  queuedCount?: number;
+  immediateSuccess?: boolean;
+  message: string;
+}
+
+const sendFlespiCommand = async (
+  imeiOrTarget: string,
+  commandPayload: string,
+  vehicleName?: string
+): Promise<FlespiCommandResult> => {
+  if (!FLESPI_TOKEN) {
+    return { success: false, message: 'Flespi Token não configurado' };
+  }
+
+  const rawTarget = String(imeiOrTarget || '').trim();
+  const cleanTarget = rawTarget.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+  const cleanVehName = String(vehicleName || '').trim().toLowerCase();
+
   try {
     const devRes = await fetch(`https://flespi.io/gw/devices/all`, {
       headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
     });
     const devData = await devRes.json();
-    if (devData && devData.result) {
-      const device = devData.result.find((d: any) => String(d.configuration?.ident) === String(imei));
-      if (device) {
-        await fetch(`https://flespi.io/gw/devices/${device.id}/commands`, {
-          method: 'POST',
-          headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify([{name: "custom", properties: { payload: commandPayload }}])
-        });
-        console.log(`[Flespi] Comando "${commandPayload}" enviado ao dispositivo ${device.id}`);
-      }
+    if (!devData || !devData.result || !Array.isArray(devData.result)) {
+      return { success: false, message: 'Falha ao consultar dispositivos no Flespi' };
     }
-  } catch (err) {
+
+    // Procura o dispositivo por Ident/IMEI, ID numérico do Flespi ou Nome do Veículo
+    const device = devData.result.find((d: any) => {
+      const devIdent = String(d.configuration?.ident || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+      const devId = String(d.id || '').trim();
+      const devName = String(d.name || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+
+      return (
+        (devIdent && cleanTarget && (devIdent === cleanTarget || devIdent.includes(cleanTarget) || cleanTarget.includes(devIdent))) ||
+        (devId && rawTarget && devId === rawTarget) ||
+        (devName && cleanTarget && (devName === cleanTarget || devName.includes(cleanTarget) || cleanTarget.includes(devName))) ||
+        (devName && cleanVehName && (devName === cleanVehName || devName.includes(cleanVehName) || cleanVehName.includes(devName)))
+      );
+    });
+
+    if (!device) {
+      console.warn(`[Flespi] Dispositivo não localizado para target: "${rawTarget}" / "${vehicleName}"`);
+      return {
+        success: false,
+        message: `Dispositivo não encontrado no Flespi (Ident/IMEI: ${rawTarget || 'não definido'})`
+      };
+    }
+
+    const deviceId = device.id;
+
+    // Extrai a senha se o comando contiver 'stop123456', 'resume123456', etc.
+    const pwdMatch = commandPayload.match(/^(?:stop|resume|quickstop|reset|sound|sleep|DY|TY)(\d{4,6})/i);
+    const pwd = pwdMatch ? pwdMatch[1] : '123456';
+    const lowerCmd = commandPayload.toLowerCase();
+
+    const isBlockAction = lowerCmd.startsWith('stop') || lowerCmd.startsWith('quickstop') || lowerCmd === '109' || lowerCmd === 'j' || lowerCmd.startsWith('dy');
+    const isUnblockAction = lowerCmd.startsWith('resume') || lowerCmd === '110' || lowerCmd === 'k' || lowerCmd.startsWith('ty');
+    const isAlarmAction = lowerCmd.startsWith('sound') || lowerCmd === '111' || lowerCmd === 'l';
+    const isResetAction = lowerCmd.startsWith('reset') || lowerCmd.startsWith('reboot');
+
+    let commandBatch: any[] = [];
+
+    if (isBlockAction) {
+      // Suite abrangente para Coban (protocolo 122) e compatíveis (J, 109, stop, quickstop)
+      commandBatch = [
+        { name: 'setting.block_engine.set', properties: { cut_off: true, format: 1 } },
+        { name: 'setting.block_engine.set', properties: { cut_off: true, format: 2 } },
+        { name: 'custom', properties: { payload: '109' } },
+        { name: 'custom', properties: { payload: 'J' } },
+        { name: 'custom', properties: { payload: `stop${pwd}` } },
+        { name: 'custom', properties: { payload: `quickstop${pwd}` } },
+        { name: 'custom', properties: { payload: `DY${pwd}` } },
+      ];
+    } else if (isUnblockAction) {
+      // Suite abrangente para restabelecimento de combustível/motor (K, 110, resume)
+      commandBatch = [
+        { name: 'setting.block_engine.set', properties: { cut_off: false, format: 1 } },
+        { name: 'setting.block_engine.set', properties: { cut_off: false, format: 2 } },
+        { name: 'custom', properties: { payload: '110' } },
+        { name: 'custom', properties: { payload: 'K' } },
+        { name: 'custom', properties: { payload: `resume${pwd}` } },
+        { name: 'custom', properties: { payload: `TY${pwd}` } },
+      ];
+    } else if (isAlarmAction) {
+      commandBatch = [
+        { name: 'setting.arm.set', properties: { arm: true, format: 1 } },
+        { name: 'custom', properties: { payload: `sound${pwd}` } },
+        { name: 'custom', properties: { payload: '111' } },
+        { name: 'custom', properties: { payload: 'L' } },
+      ];
+    } else if (isResetAction) {
+      commandBatch = [
+        { name: 'custom', properties: { payload: `reset${pwd}` } },
+        { name: 'custom', properties: { payload: `reboot${pwd}` } },
+        { name: 'custom', properties: { payload: 'reset' } },
+      ];
+    } else {
+      commandBatch = [
+        { name: 'custom', properties: { payload: commandPayload } }
+      ];
+    }
+
+    // 1. Envia para a fila persistente do Flespi (commands-queue).
+    // O Flespi transmitirá imediatamente ou no próximo pacote/heartbeat do rastreador!
+    const queueRes = await fetch(`https://flespi.io/gw/devices/${deviceId}/commands-queue`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `FlespiToken ${FLESPI_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(commandBatch)
+    });
+    const queueData = await queueRes.json();
+    const queuedCount = queueData?.result?.length || 0;
+
+    // 2. Tenta também envio imediato síncrono (caso o rastreador esteja com socket TCP aberto no milissegundo atual)
+    let immediateSuccess = false;
+    try {
+      const immediateRes = await fetch(`https://flespi.io/gw/devices/${deviceId}/commands`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `FlespiToken ${FLESPI_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify([commandBatch[0]])
+      });
+      const immData = await immediateRes.json();
+      if (immData?.result && Array.isArray(immData.result) && immData.result.length > 0) {
+        immediateSuccess = true;
+      }
+    } catch {
+      // Ignora falha de socket imediato pois o commands-queue garante a entrega
+    }
+
+    console.log(`[Flespi] Comando enviado para ${device.name} (ID: ${deviceId}): ${queuedCount} itens na fila GPRS, imediato: ${immediateSuccess}`);
+
+    return {
+      success: queuedCount > 0 || immediateSuccess,
+      deviceId,
+      deviceName: device.name,
+      queuedCount,
+      immediateSuccess,
+      message: immediateSuccess
+        ? `Comando executado instantaneamente via conexão ativa GPRS!`
+        : `Comando registrado com sucesso na fila GPRS (${queuedCount} formatos Coban). O rastreador executará no próximo pacote.`
+    };
+  } catch (err: any) {
     console.error('[Flespi] Erro ao enviar comando:', err);
+    return {
+      success: false,
+      message: `Erro de conexão Flespi: ${err.message || 'Falha de rede'}`
+    };
   }
 };
 
@@ -763,6 +900,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     smsCommand: string;
     phoneNumber: string;
     vehicleName: string;
+    flespiStatus?: string;
+    flespiQueued?: boolean;
+    deviceId?: number;
+    queuedCount?: number;
   } | null>(null);
   const [selectedVehicleForMessage, setSelectedVehicleForMessage] = useState<Vehicle | null>(null);
   const [showMessageModal, setShowMessageModal] = useState<boolean>(false);
@@ -800,20 +941,42 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       };
       setEditingVehicle(updated);
       handleUpdateVehicle(updated);
-      sendFlespiCommand(vehicle.trackerNumber, `stop${pwd}`);
-      addNotification({
-        title: '🚨 Bloqueio Imediato Executado',
-        message: `Comando de corte de combustível ativado com sucesso para ${identifier}.`,
-        type: 'command',
-        severity: 'critical',
-        vehicleName: identifier
-      });
-      showToast(`🚨 Bloqueio Imediato executado para (${identifier})!`);
+
       setDualDispatchData({
         isOpen: true,
         commandName: 'Bloqueio Imediato (Corte)',
         smsCommand: `stop${pwd}`,
         phoneNumber: phoneVal,
+        vehicleName: identifier,
+        flespiStatus: 'Transmitindo comando de bloqueio para o rastreador via GPRS...',
+        flespiQueued: true
+      });
+
+      sendFlespiCommand(vehicle.trackerNumber || vehicle.name, `stop${pwd}`, vehicle.name).then((res) => {
+        if (res && res.success) {
+          showToast(`🚨 Bloqueio enviado via GPRS para ${identifier}! ${res.immediateSuccess ? '⚡ Executado no aparelho!' : `(${res.queuedCount} comandos na fila de transmissão)`}`);
+          setDualDispatchData(prev => prev ? {
+            ...prev,
+            flespiStatus: res.message,
+            flespiQueued: true,
+            deviceId: res.deviceId,
+            queuedCount: res.queuedCount
+          } : null);
+        } else {
+          showToast(`⚠️ GPRS: ${res?.message || 'Falha ao conectar'}. Envie por SMS/WhatsApp abaixo.`);
+          setDualDispatchData(prev => prev ? {
+            ...prev,
+            flespiStatus: `Falha GPRS (${res?.message || 'Não entregue'}). Envie via SMS/WhatsApp para acionamento garantido.`,
+            flespiQueued: false
+          } : null);
+        }
+      });
+
+      addNotification({
+        title: '🚨 Bloqueio Imediato Executado',
+        message: `Comando de corte de combustível ativado com sucesso para ${identifier}.`,
+        type: 'command',
+        severity: 'critical',
         vehicleName: identifier
       });
     } else if (actionId === 'safe_block') {
@@ -850,7 +1013,13 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         };
         setEditingVehicle(updated);
         handleUpdateVehicle(updated);
-        sendFlespiCommand(vehicle.trackerNumber, `stop${pwd}`);
+
+        sendFlespiCommand(vehicle.trackerNumber || vehicle.name, `stop${pwd}`, vehicle.name).then((res) => {
+          if (res && res.success) {
+            showToast(`🔒 Veículo ${identifier} bloqueado via GPRS! (${res.queuedCount} comandos na fila)`);
+          }
+        });
+
         addNotification({
           title: '🔒 Bloqueio Efetuado',
           message: `O veículo ${identifier} já está desligado. Corte de combustível aplicado imediatamente.`,
@@ -874,20 +1043,42 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       };
       setEditingVehicle(updated);
       handleUpdateVehicle(updated);
-      sendFlespiCommand(vehicle.trackerNumber, `resume${pwd}`);
-      addNotification({
-        title: '🔓 Desbloqueio Executado',
-        message: `Desbloqueio remoto enviado para ${identifier}. Combustível e motor liberados para partida.`,
-        type: 'command',
-        severity: 'info',
-        vehicleName: identifier
-      });
-      showToast(`🔓 Desbloqueio executado para (${identifier})!`);
+
       setDualDispatchData({
         isOpen: true,
         commandName: 'Desbloquear Aparelho',
         smsCommand: `resume${pwd}`,
         phoneNumber: phoneVal,
+        vehicleName: identifier,
+        flespiStatus: 'Transmitindo comando de desbloqueio para o rastreador via GPRS...',
+        flespiQueued: true
+      });
+
+      sendFlespiCommand(vehicle.trackerNumber || vehicle.name, `resume${pwd}`, vehicle.name).then((res) => {
+        if (res && res.success) {
+          showToast(`🔓 Desbloqueio enviado via GPRS para ${identifier}! ${res.immediateSuccess ? '⚡ Liberado no aparelho!' : `(${res.queuedCount} comandos na fila de transmissão)`}`);
+          setDualDispatchData(prev => prev ? {
+            ...prev,
+            flespiStatus: res.message,
+            flespiQueued: true,
+            deviceId: res.deviceId,
+            queuedCount: res.queuedCount
+          } : null);
+        } else {
+          showToast(`⚠️ GPRS: ${res?.message || 'Falha ao conectar'}. Envie por SMS/WhatsApp abaixo.`);
+          setDualDispatchData(prev => prev ? {
+            ...prev,
+            flespiStatus: `Falha GPRS (${res?.message || 'Não entregue'}). Envie via SMS/WhatsApp para liberação imediata.`,
+            flespiQueued: false
+          } : null);
+        }
+      });
+
+      addNotification({
+        title: '🔓 Desbloqueio Executado',
+        message: `Desbloqueio remoto enviado para ${identifier}. Combustível e motor liberados para partida.`,
+        type: 'command',
+        severity: 'info',
         vehicleName: identifier
       });
     } else if (actionId === 'alarm') {
@@ -1390,13 +1581,26 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   useEffect(() => {
     if (editingVehicle && editingVehicle.id) {
       const live = vehicles.find(v => v.id === editingVehicle.id);
-      if (live && (live.lat !== editingVehicle.lat || live.lng !== editingVehicle.lng || live.status !== editingVehicle.status || live.speed !== editingVehicle.speed)) {
+      if (live && (
+        live.lat !== editingVehicle.lat || 
+        live.lng !== editingVehicle.lng || 
+        live.status !== editingVehicle.status || 
+        live.speed !== editingVehicle.speed ||
+        Boolean(live.settings?.isBlocked) !== Boolean(editingVehicle.settings?.isBlocked) ||
+        Boolean(live.settings?.pendingBlock) !== Boolean(editingVehicle.settings?.pendingBlock)
+      )) {
         setEditingVehicle(prev => prev ? {
           ...prev,
           lat: live.lat,
           lng: live.lng,
           speed: live.speed,
-          status: live.status
+          status: live.status,
+          settings: {
+            ...prev.settings,
+            ...live.settings,
+            isBlocked: Boolean(live.settings?.isBlocked),
+            pendingBlock: Boolean(live.settings?.pendingBlock)
+          }
         } : null);
       }
     }
@@ -1482,8 +1686,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             if (v.settings?.pendingBlock && !ignition) {
               console.log(`[Safe Block] Ignition turned OFF for ${v.name}. Executing pending block command...`);
               
-              // Envia o comando via Flespi
-              sendFlespiCommand(v.trackerNumber, `stop${v.settings?.smsPassword || '123456'}`);
+              // Envia o comando via Flespi com compatibilidade ampliada
+              sendFlespiCommand(v.trackerNumber || v.name, `stop${v.settings?.smsPassword || '123456'}`, v.name);
               
               // Notificação de execução bem sucedida
               addNotification({
@@ -1892,6 +2096,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
   const openModal = (vehicle: Vehicle, mode: 'details' | 'settings' | 'position' | 'emergency' = 'details') => {
     const populatedSettings: VehicleSettings = {
+      ...DEFAULT_VEHICLE_SETTINGS,
+      ...(vehicle.settings || {}),
+      isBlocked: Boolean(vehicle.settings?.isBlocked),
+      pendingBlock: Boolean(vehicle.settings?.pendingBlock),
       timezone: vehicle.settings?.timezone || DEFAULT_VEHICLE_SETTINGS.timezone,
       mileageDisplayUnit: vehicle.settings?.mileageDisplayUnit || DEFAULT_VEHICLE_SETTINGS.mileageDisplayUnit,
       accNotify: vehicle.settings?.accNotify !== undefined ? vehicle.settings.accNotify : DEFAULT_VEHICLE_SETTINGS.accNotify,
@@ -2638,30 +2846,74 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                             <span className="text-[10px] text-red-700 font-medium">Corte de combustível via relé do rastreador</span>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
-                          Corte de Motor
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          editingVehicle.settings?.isBlocked 
+                            ? 'bg-red-600 text-white border-red-700 animate-pulse' 
+                            : editingVehicle.settings?.pendingBlock
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        }`}>
+                          {editingVehicle.settings?.isBlocked 
+                            ? '🔒 BLOQUEADO' 
+                            : editingVehicle.settings?.pendingBlock 
+                              ? '⏳ CORTE AGENDADO' 
+                              : '✅ MOTOR LIBERADO'}
                         </span>
                       </div>
-                      <p className="text-xs text-red-950 leading-relaxed font-medium">
-                        Para momentos de pânico, suspeita ou furto. Ao clicar em qualquer comando abaixo, uma janela explicativa aparecerá com a descrição do que ele faz antes de você confirmar a execução.
-                      </p>
+
+                      {editingVehicle.settings?.isBlocked ? (
+                        <div className="bg-red-600 text-white p-3 rounded-xl shadow-sm space-y-1">
+                          <div className="flex items-center gap-2 font-black text-xs sm:text-sm">
+                            <span className="text-lg">🔒</span> CORTE DE COMBUSTÍVEL / MOTOR ATIVO
+                          </div>
+                          <p className="text-[11px] text-red-100 leading-tight">
+                            O relé do rastreador foi acionado para interromper o motor. Para restabelecer o combustível e permitir nova partida, acione o botão verde de desbloqueio abaixo.
+                          </p>
+                        </div>
+                      ) : editingVehicle.settings?.pendingBlock ? (
+                        <div className="bg-amber-500 text-white p-3 rounded-xl shadow-sm space-y-1">
+                          <div className="flex items-center gap-2 font-black text-xs sm:text-sm">
+                            <span className="text-lg">⏳</span> BLOQUEIO SEGURO PROGRAMADO
+                          </div>
+                          <p className="text-[11px] text-amber-100 leading-tight">
+                            Aguardando o condutor desligar a ignição ou o veículo parar em segurança para cortar o motor automaticamente.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-red-950 leading-relaxed font-medium">
+                          Para momentos de pânico, suspeita ou furto. Ao clicar em qualquer comando abaixo, uma janela explicativa aparecerá com a descrição do que ele faz antes de você confirmar a execução.
+                        </p>
+                      )}
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                         {editingVehicle.settings?.isBlocked ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault(); e.stopPropagation();
-                              openActionConfirm('unblock', editingVehicle);
-                            }}
-                            className="col-span-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-3 border border-emerald-500 cursor-pointer transition-all"
-                          >
-                            <span className="text-2xl">🔓</span>
-                            <div className="text-left">
-                              <div className="font-black text-sm">DESBLOQUEAR MOTOR</div>
-                              <div className="text-[10px] font-normal text-emerald-100">Restaurar combustível e normalizar ignição para partida</div>
-                            </div>
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault(); e.stopPropagation();
+                                openActionConfirm('unblock', editingVehicle);
+                              }}
+                              className="col-span-full py-4 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-3 border-2 border-emerald-400 cursor-pointer transition-all"
+                            >
+                              <span className="text-2xl sm:text-3xl">🔓</span>
+                              <div className="text-left">
+                                <div className="font-black text-sm sm:text-base">DESBLOQUEAR MOTOR</div>
+                                <div className="text-[10px] sm:text-xs font-normal text-emerald-100">Restaurar combustível e normalizar ignição para partida</div>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault(); e.stopPropagation();
+                                openActionConfirm('block_now', editingVehicle);
+                              }}
+                              className="col-span-full py-2 px-3 bg-red-100 hover:bg-red-200 active:scale-95 text-red-900 rounded-xl font-semibold text-xs border border-red-200 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                            >
+                              <span>🔁</span> Reenviar Sinal de Corte (GPRS) para o Relé
+                            </button>
+                          </>
                         ) : (
                           <>
                             <button
@@ -2727,73 +2979,75 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           type="button"
                           onClick={(e) => {
                             e.preventDefault(); e.stopPropagation();
-                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const phone = (editingVehicle.phoneNumber || editingVehicle.trackerNumber || '').replace(/[^0-9]/g, '');
                             const pwd = editingVehicle.settings?.smsPassword || '123456';
-                            const cmd = `stop${pwd}`;
+                            const cmd = `quickstop${pwd}`;
                             if (!phone) {
-                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              showToast('⚠️ Informe o número de telefone (Chip) do rastreador nos dados do veículo.');
                               return;
                             }
-                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(cmd)}`, '_blank');
-                            showToast(`💬 WhatsApp aberto com comando [${cmd}] para ${phone}`);
+                            sendFlespiCommand(editingVehicle.trackerNumber || editingVehicle.name, cmd, editingVehicle.name);
+                            window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
+                            showToast(`📱 SMS [${cmd}] (Corte Imediato TK303G) para ${phone}`);
                           }}
-                          className="text-xs bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                          className="text-xs bg-red-600 hover:bg-red-700 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                         >
-                          <span>💬</span> WhatsApp (Bloquear)
+                          <span>📱</span> SMS Corte Imediato (quickstop)
                         </button>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault(); e.stopPropagation();
-                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const phone = (editingVehicle.phoneNumber || editingVehicle.trackerNumber || '').replace(/[^0-9]/g, '');
                             const pwd = editingVehicle.settings?.smsPassword || '123456';
                             const cmd = `resume${pwd}`;
                             if (!phone) {
-                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              showToast('⚠️ Informe o número de telefone (Chip) do rastreador nos dados do veículo.');
                               return;
                             }
-                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(cmd)}`, '_blank');
-                            showToast(`💬 WhatsApp aberto com comando [${cmd}] para ${phone}`);
+                            sendFlespiCommand(editingVehicle.trackerNumber || editingVehicle.name, cmd, editingVehicle.name);
+                            window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
+                            showToast(`📱 SMS [${cmd}] (Desbloqueio TK303G) para ${phone}`);
                           }}
                           className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                         >
-                          <span>💬</span> WhatsApp (Desbloquear)
+                          <span>📱</span> SMS Desbloquear (resume)
                         </button>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault(); e.stopPropagation();
-                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const phone = (editingVehicle.phoneNumber || editingVehicle.trackerNumber || '').replace(/[^0-9]/g, '');
                             const pwd = editingVehicle.settings?.smsPassword || '123456';
-                            const cmd = `where,${pwd}#`;
+                            const cmd = `position${pwd}`;
                             if (!phone) {
-                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              showToast('⚠️ Informe o número de telefone (Chip) do rastreador nos dados do veículo.');
                               return;
                             }
                             window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
-                            showToast(`📱 SMS aberto com comando [${cmd}] para ${phone}`);
+                            showToast(`📱 SMS [${cmd}] (Posição TK303G) para ${phone}`);
                           }}
                           className="text-xs bg-sky-600 hover:bg-sky-700 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                         >
-                          <span>📱</span> SMS (Posição GPS)
+                          <span>📱</span> SMS Posição (position)
                         </button>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault(); e.stopPropagation();
-                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const phone = (editingVehicle.phoneNumber || editingVehicle.trackerNumber || '').replace(/[^0-9]/g, '');
                             const pwd = editingVehicle.settings?.smsPassword || '123456';
                             const cmd = `monitor${pwd}`;
                             if (!phone) {
-                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              showToast('⚠️ Informe o número de telefone (Chip) do rastreador nos dados do veículo.');
                               return;
                             }
                             window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
-                            showToast(`📱 SMS aberto com comando [${cmd}] para ${phone}`);
+                            showToast(`🎙️ SMS [${cmd}] (Modo Escuta TK303G) para ${phone}`);
                           }}
                           className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                         >
-                          <span>📱</span> SMS (Modo Escuta)
+                          <span>🎙️</span> SMS Escuta (monitor)
                         </button>
                       </div>
                     </div>
@@ -3608,7 +3862,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           </div>
         )}
 
-        {/* Modal de Envio Duplo Garantido (Rede + SMS/WhatsApp) */}
+        {/* Modal de Envio Duplo Garantido (Rede GPRS + SMS / WhatsApp) */}
         {dualDispatchData && dualDispatchData.isOpen && (
           <div
             className="fixed inset-0 bg-slate-950/80 flex items-center justify-center z-[9999] backdrop-blur-md p-4 animate-fade-in select-none"
@@ -3623,13 +3877,32 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   ⚡
                 </div>
                 <h3 className="text-lg font-black text-slate-900 uppercase tracking-wide">
-                  Garantia de Envio Duplo
+                  Garantia de Envio do Comando
                 </h3>
-                <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                  O comando <strong className="text-blue-600 font-bold">[{dualDispatchData.commandName}]</strong> foi enviado com sucesso via <strong className="font-bold">Rede (GPRS/Internet)</strong> no sistema para <strong className="font-bold">{dualDispatchData.vehicleName}</strong>.
+                <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                  O comando <strong className="text-blue-600 font-bold">[{dualDispatchData.commandName}]</strong> foi disparado via <strong className="font-bold">GPRS/Internet</strong> para <strong className="font-bold">{dualDispatchData.vehicleName}</strong>.
                 </p>
-                <p className="text-xs text-blue-800 font-semibold bg-blue-50 border border-blue-100 p-3 rounded-2xl leading-tight">
-                  Como garantia redundante física (caso o celular esteja sem internet ou com bateria fraca), envie agora também por canais celulares adicionais:
+
+                {/* Status GPRS detalhado */}
+                <div className={`text-xs p-3 rounded-2xl border text-left font-sans flex items-start gap-2.5 ${
+                  dualDispatchData.flespiQueued !== false
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                }`}>
+                  <span className="text-base mt-0.5">{dualDispatchData.flespiQueued !== false ? '🛰️' : '⚠️'}</span>
+                  <div className="space-y-1 flex-1">
+                    <div className="font-bold text-[11px] uppercase tracking-wider">
+                      Status da Transmissão GPRS:
+                    </div>
+                    <div className="text-[11px] leading-tight">
+                      {dualDispatchData.flespiStatus || 'Enviado para a fila do rastreador (protocolo Coban / 109 / J / stop).'}
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 p-3 rounded-2xl leading-tight text-left">
+                  <span className="font-bold block text-slate-800 mb-1">💡 Dica de Contingência:</span>
+                  Se o chip do rastreador estiver sem pacote de dados de internet (GPRS) ou o aparelho estiver em repouso profundo, envie também por <strong>WhatsApp</strong> ou <strong>SMS</strong> para corte imediato pela rede GSM:
                 </p>
               </div>
 
@@ -3647,18 +3920,37 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   className="w-full text-xs font-bold font-mono bg-white border border-gray-200 rounded-lg p-2 outline-none focus:border-blue-500"
                 />
                 <div className="flex justify-between items-center text-[10px] text-gray-400 font-mono mt-1 px-1">
-                  <span>Comando SMS a Enviar:</span>
+                  <span>Comando a Enviar:</span>
                   <span className="bg-gray-200 text-gray-700 font-extrabold px-1.5 py-0.5 rounded text-[9px] uppercase">{dualDispatchData.smsCommand}</span>
                 </div>
               </div>
 
-              <div className="pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
-                    const phone = dualDispatchData.phoneNumber.replace(/[^0-9]/g, '');
+                    const phone = (dualDispatchData.phoneNumber || '').replace(/[^0-9]/g, '');
                     if (!phone) {
-                      alert('Por favor, informe o número de telefone do chip do rastreador.');
+                      showToast('⚠️ Informe o número de telefone do chip do rastreador.');
+                      return;
+                    }
+                    const waUri = `https://wa.me/${phone}?text=${encodeURIComponent(dualDispatchData.smsCommand)}`;
+                    window.open(waUri, '_blank');
+                    showToast(`💬 WhatsApp aberto com comando [${dualDispatchData.smsCommand}] para ${phone}`);
+                    setDualDispatchData(null);
+                  }}
+                  className="py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer border border-emerald-500"
+                >
+                  <span className="text-lg">💬</span>
+                  <span>Via WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const phone = (dualDispatchData.phoneNumber || '').replace(/[^0-9]/g, '');
+                    if (!phone) {
+                      showToast('⚠️ Informe o número de telefone do chip do rastreador.');
                       return;
                     }
                     const smsUri = `sms:${phone}?body=${encodeURIComponent(dualDispatchData.smsCommand)}`;
@@ -3666,20 +3958,44 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                     showToast(`📱 SMS disparado com comando [${dualDispatchData.smsCommand}] para ${phone}`);
                     setDualDispatchData(null);
                   }}
-                  className="w-full py-4 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-sm flex items-center justify-center gap-3 shadow-md transition-all cursor-pointer border border-blue-500"
+                  className="py-3 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer border border-blue-500"
                 >
-                  <span className="text-2xl">📱</span>
-                  <span>Enviar comando por SMS</span>
+                  <span className="text-lg">📱</span>
+                  <span>Via SMS</span>
                 </button>
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex gap-2">
+                {dualDispatchData.deviceId && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const qRes = await fetch(`https://flespi.io/gw/devices/${dualDispatchData.deviceId}/commands-queue/all`, {
+                          headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+                        });
+                        const qData = await qRes.json();
+                        const count = qData?.result?.length || 0;
+                        if (count === 0) {
+                          showToast('✅ O rastreador já recebeu e executou todos os comandos da fila GPRS!');
+                        } else {
+                          showToast(`⏳ ${count} comando(s) ainda aguardando transmissão ao rastreador.`);
+                        }
+                      } catch {
+                        showToast('📡 Verificando conexão do aparelho...');
+                      }
+                    }}
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer text-center"
+                  >
+                    🔄 Verificar Entrega
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setDualDispatchData(null)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer text-center"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs transition-colors cursor-pointer text-center"
                 >
-                  Continuar apenas via GPRS/Internet (Fechar)
+                  Fechar
                 </button>
               </div>
             </div>

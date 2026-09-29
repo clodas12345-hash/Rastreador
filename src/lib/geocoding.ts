@@ -1,4 +1,4 @@
-// Real Reverse Geocoding Service with Google Maps Geocoder & OpenStreetMap Nominatim Fallback + Road Speed Limit Detection + Caching
+// Real Reverse Geocoding Service with OpenStreetMap Nominatim & Photon + Road Speed Limit Detection + Caching
 
 export interface RoadSpeedInfo {
   speedLimit: number;
@@ -254,8 +254,31 @@ function formatOsmAddress(data: any): string {
   return data.display_name || 'Endereço identificado';
 }
 
+function formatPhotonAddress(props: any): string {
+  if (!props) return '';
+  const parts: string[] = [];
+  const road = props.street || props.name;
+  if (road) {
+    parts.push(props.housenumber ? `${road}, ${props.housenumber}` : road);
+  }
+  const district = props.locality || props.district || props.suburb;
+  if (district && district !== road) {
+    parts.push(district);
+  }
+  const city = props.city || props.town || props.village;
+  const state = props.state;
+  if (city) {
+    parts.push(state ? `${city} - ${state}` : city);
+  }
+  if (props.postcode) {
+    parts.push(`CEP ${props.postcode}`);
+  }
+  return parts.length > 0 ? parts.join(', ') : (props.name || '');
+}
+
 /**
- * Fetches real reverse geocoded address asynchronously from Google Maps or OpenStreetMap.
+ * Fetches real reverse geocoded address asynchronously from OpenStreetMap Nominatim or Photon.
+ * Completely avoids legacy Google Maps Geocoder which requires active billing.
  */
 export async function getRealAddress(lat: number, lng: number): Promise<string> {
   if (!lat || !lng || (lat === 0 && lng === 0)) {
@@ -272,38 +295,7 @@ export async function getRealAddress(lat: number, lng: number): Promise<string> 
   }
 
   const promise = (async () => {
-    // 1. Try Google Maps Geocoder if loaded in window
-    if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
-      try {
-        const geocoder = new (window as any).google.maps.Geocoder();
-        const res = await geocoder.geocode({ location: { lat, lng } });
-        if (res && res.results && res.results.length > 0) {
-          const formatted = res.results[0].formatted_address;
-          if (formatted) {
-            addressCache[key] = formatted;
-            
-            // Extract route name and deduce road speed
-            let routeName = '';
-            for (const comp of res.results[0].address_components || []) {
-              if (comp.types.includes('route')) {
-                routeName = comp.long_name || comp.short_name;
-                break;
-              }
-            }
-            if (routeName) {
-              const speedInfo = determineRoadSpeedLimit(routeName);
-              roadSpeedCache[key] = speedInfo;
-            }
-            saveCache();
-            return formatted;
-          }
-        }
-      } catch (err) {
-        // Fallback to OSM
-      }
-    }
-
-    // 2. OpenStreetMap Nominatim Reverse Geocoding
+    // 1. Primary: OpenStreetMap Nominatim Reverse Geocoding
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&extratags=1`;
       const response = await fetch(url, {
@@ -327,8 +319,33 @@ export async function getRealAddress(lat: number, lng: number): Promise<string> 
           return formatted;
         }
       }
-    } catch (err) {
-      console.warn('Geocoding network fetch error:', err);
+    } catch {
+      // Graceful fallback to secondary geocoder
+    }
+
+    // 2. Secondary: Photon OSM Reverse Geocoding
+    try {
+      const photonUrl = `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`;
+      const response = await fetch(photonUrl);
+      if (response.ok) {
+        const data = await response.json();
+        const feature = data.features?.[0];
+        if (feature?.properties) {
+          const formatted = formatPhotonAddress(feature.properties);
+          if (formatted) {
+            addressCache[key] = formatted;
+
+            const roadName = feature.properties.street || feature.properties.name || '';
+            const speedInfo = determineRoadSpeedLimit(roadName);
+            roadSpeedCache[key] = speedInfo;
+
+            saveCache();
+            return formatted;
+          }
+        }
+      }
+    } catch {
+      // Graceful fallback to coordinates
     }
 
     // 3. Coordinate fallback
