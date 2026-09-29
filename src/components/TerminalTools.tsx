@@ -1308,8 +1308,7 @@ export default function TerminalTools({
                             }
                           });
                           if (addNotification) addNotification({ title: '🔓 Comando Executado', message: `Desbloqueio ativado para ${identifier}. O motor e combustível estão liberados.`, type: 'command', severity: 'info', vehicleName: identifier });
-                          if (showToast) showToast('🔓 Desbloqueio executado com sucesso.');
-                          try { window.alert(`O veículo ${identifier} foi desbloqueado com sucesso!`); } catch(e) {}
+                          if (showToast) showToast(`🔓 O veículo ${identifier} foi desbloqueado com sucesso!`);
                         } else {
                           handleUpdateVehicle({ 
                             ...v, 
@@ -1321,8 +1320,7 @@ export default function TerminalTools({
                             }
                           });
                           if (addNotification) addNotification({ title: '🔒 Comando Executado', message: `Bloqueio ativado para ${identifier}. Corte de combustível acionado.`, type: 'command', severity: 'critical', vehicleName: identifier });
-                          if (showToast) showToast('🔒 Bloqueio executado com sucesso.');
-                          try { window.alert(`O veículo ${identifier} foi bloqueado com sucesso (Corte de combustível)!`); } catch(e) {}
+                          if (showToast) showToast(`🔒 O veículo ${identifier} foi bloqueado com sucesso (Corte de combustível)!`);
                         }
 
                         if (triggerDualDispatch) {

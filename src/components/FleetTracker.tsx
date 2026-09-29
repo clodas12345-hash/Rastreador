@@ -466,6 +466,14 @@ interface FleetTrackerProps {
   playbackIndex?: number | null;
   onCloseActiveRoute?: () => void;
   onOpenHistorico?: () => void;
+  onOpenTimeline?: (vehicle: Vehicle, dateStr?: string) => void;
+  timelineDate?: string;
+  onChangeTimelineDate?: (date: string) => void;
+  isPlayingPlayback?: boolean;
+  onTogglePlayback?: () => void;
+  onSeekPlayback?: (index: number) => void;
+  playbackSpeed?: number;
+  onChangePlaybackSpeed?: (speed: number) => void;
   geofences?: Geofence[];
   isCreatingGeofence?: boolean;
   onGeofenceCreateClick?: (lat: number, lng: number) => void;
@@ -484,6 +492,14 @@ export default function FleetTracker({
   playbackIndex = null,
   onCloseActiveRoute,
   onOpenHistorico,
+  onOpenTimeline,
+  timelineDate,
+  onChangeTimelineDate,
+  isPlayingPlayback = false,
+  onTogglePlayback,
+  onSeekPlayback,
+  playbackSpeed = 1,
+  onChangePlaybackSpeed,
   geofences = [],
   isCreatingGeofence = false,
   onGeofenceCreateClick
@@ -492,6 +508,7 @@ export default function FleetTracker({
   const [isShowingAll, setIsShowingAll] = useState(true);
   const [startPoint, setStartPoint] = useState<RoutePoint | null>(null);
   const [endPoint, setEndPoint] = useState<RoutePoint | null>(null);
+  const [showTimelineDrawer, setShowTimelineDrawer] = useState(false);
   const currentPlaybackPoint = activeRoute && playbackIndex !== null && activeRoute.points[playbackIndex] ? activeRoute.points[playbackIndex] : null;
 
   const lastClickMapRef = useRef<{ [id: string]: number }>({});
@@ -670,40 +687,100 @@ export default function FleetTracker({
         </div>
       )}
 
-      {/* Top Banner when viewing a saved route */}
+      {/* Top Banner when viewing a Timeline / Saved Route on the Map */}
       {activeRoute && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-xl shadow-lg border border-blue-200 flex items-center gap-3 text-sm font-medium">
-          <div className="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
-          <div>
-            <span className="text-gray-500 text-xs block">Exibindo Trajeto Salvo</span>
-            <span className="font-bold text-gray-800">{activeRoute.name} ({activeRoute.distanceKm} km)</span>
+        <div className="absolute top-4 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-auto max-w-4xl z-20 bg-slate-900/95 backdrop-blur-md text-white px-3.5 sm:px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 pointer-events-auto">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow">
+              ⏱️
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase font-black tracking-wider text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
+                  Linha do Tempo
+                </span>
+                <span className="text-xs text-slate-300 font-bold font-mono">
+                  {activeRoute.distanceKm} km
+                </span>
+              </div>
+              <h4 className="font-bold text-white text-xs sm:text-sm truncate">
+                {activeRoute.name}
+              </h4>
+            </div>
           </div>
           
-          <div className="flex flex-col sm:flex-row gap-2 ml-2">
-            <button
-              onClick={() => setShowOnlyStops(!showOnlyStops)}
-              className={`text-xs font-bold px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap cursor-pointer ${showOnlyStops ? 'bg-amber-600 text-white shadow' : 'bg-amber-100 hover:bg-amber-200 text-amber-800'}`}
-            >
-              {showOnlyStops ? '📍 Mostrando Apenas Estacionamentos' : '🅿️ Filtrar Só Estacionamentos'}
-            </button>
-            {onOpenHistorico && (
-              <button
-                onClick={onOpenHistorico}
-                className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap cursor-pointer"
-              >
-                Voltar ao Histórico
-              </button>
+          {/* Quick Date Selectors right on the map */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {timelineDate && onChangeTimelineDate && (
+              <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date().toISOString().split('T')[0];
+                    onChangeTimelineDate(d);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    timelineDate === new Date().toISOString().split('T')[0] ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Hoje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                    onChangeTimelineDate(d);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    timelineDate !== new Date().toISOString().split('T')[0] && new Date(timelineDate).getDate() === new Date(Date.now() - 86400000).getDate() ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Ontem
+                </button>
+                <input
+                  type="date"
+                  value={timelineDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => onChangeTimelineDate(e.target.value)}
+                  className="bg-transparent text-white font-bold text-[10px] outline-none cursor-pointer px-1"
+                />
+              </div>
             )}
+
+            <button
+              type="button"
+              onClick={() => setShowTimelineDrawer(!showTimelineDrawer)}
+              className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                showTimelineDrawer ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+              }`}
+            >
+              <span>🅿️</span>
+              <span className="hidden sm:inline">Paradas ({routeStops.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowOnlyStops(!showOnlyStops)}
+              className={`text-xs font-bold px-2.5 py-1.5 rounded-xl transition-all cursor-pointer ${
+                showOnlyStops ? 'bg-amber-600 text-white shadow' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+              }`}
+              title="Filtrar para ver somente os pontos de parada"
+            >
+              {showOnlyStops ? 'Ver Rota' : 'Só Paradas'}
+            </button>
+
             {onCloseActiveRoute && (
               <button
+                type="button"
                 onClick={onCloseActiveRoute}
-                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap cursor-pointer"
+                className="text-xs bg-red-600/80 hover:bg-red-600 text-white px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1"
+                title="Sair da Linha do Tempo e Voltar ao Ao Vivo"
               >
-                Limpar Rota
+                <span>✕</span>
+                <span className="hidden sm:inline">Ao Vivo</span>
               </button>
             )}
           </div>
-
         </div>
       )}
 
@@ -963,8 +1040,29 @@ export default function FleetTracker({
             </div>
           </div>
 
+          {/* Blocked Alert Banner if vehicle is blocked */}
+          {currentSelected.settings?.isBlocked && (
+            <div className="bg-red-600 text-white p-3 rounded-xl border border-red-700 mb-2.5 flex items-center justify-between shadow-md shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🔒</span>
+                <div>
+                  <strong className="block text-xs font-black uppercase text-white">MOTOR BLOQUEADO NO SISTEMA</strong>
+                  <span className="text-red-100 text-[10px] block">Relé acionado. Clique ao lado para liberar.</span>
+                </div>
+              </div>
+              {onMarkerDoubleClick && (
+                <button
+                  onClick={() => onMarkerDoubleClick(currentSelected)}
+                  className="bg-white text-red-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow-sm hover:bg-red-50 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  🔓 Desbloquear
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Power Cut Alert Banner if detected */}
-          {(currentSelected.powerCut || currentSelected.status === 'NoBattery' || (currentSelected.externalVoltage !== undefined && currentSelected.externalVoltage < 5)) && (
+          {(currentSelected.powerCut || currentSelected.status === 'NoBattery') && (
             <div className="bg-red-600 text-white p-2.5 rounded-xl border border-red-700 mb-2.5 flex items-start gap-2 shadow-md animate-pulse shrink-0">
               <span className="text-base shrink-0">⚡</span>
               <div className="flex-1 text-[11px] leading-tight">
@@ -972,6 +1070,18 @@ export default function FleetTracker({
                 <span className="text-red-100 text-[10px]">Cabo da bateria principal (12V) desconectado ou cortado. O aparelho está funcionando com a bateria interna de emergência.</span>
               </div>
             </div>
+          )}
+
+          {/* Linha do Tempo Button */}
+          {onOpenTimeline && (
+            <button
+              type="button"
+              onClick={() => onOpenTimeline(currentSelected)}
+              className="w-full mb-2.5 py-2 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span className="text-sm">⏱️</span>
+              <span>Linha do Tempo (Trajeto do Dia)</span>
+            </button>
           )}
 
           {/* Telemetry Status Grid */}
@@ -1250,6 +1360,143 @@ export default function FleetTracker({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* On-Map Day Timeline Playback Bar */}
+      {activeRoute && activeRoute.points && activeRoute.points.length > 1 && (
+        <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-auto max-w-xl z-30 bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-slate-700 flex flex-col gap-2 pointer-events-auto">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onTogglePlayback}
+                className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center font-bold shadow transition-all active:scale-95 cursor-pointer text-sm"
+                title={isPlayingPlayback ? 'Pausar Animação' : 'Reproduzir Trajeto'}
+              >
+                {isPlayingPlayback ? '⏸️' : '▶️'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSeekPlayback && onSeekPlayback(0)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-xs"
+                title="Voltar ao início"
+              >
+                🔄
+              </button>
+
+              {onChangePlaybackSpeed && (
+                <div className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-xl text-xs">
+                  {[1, 2, 5, 10].map(spd => (
+                    <button
+                      key={spd}
+                      type="button"
+                      onClick={() => onChangePlaybackSpeed(spd)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                        playbackSpeed === spd ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {spd}x
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 font-mono">
+              <span className="text-xs font-bold text-blue-400">
+                🕒 {currentPlaybackPoint?.timestamp 
+                  ? new Date(Number(currentPlaybackPoint.timestamp)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+                  : '--:--'}
+              </span>
+              <span className="text-xs bg-slate-800 px-2 py-1 rounded-lg text-slate-200">
+                ⚡ {Math.round(currentPlaybackPoint?.speed || 0)} km/h
+              </span>
+            </div>
+          </div>
+
+          {/* Scrubber slider */}
+          {onSeekPlayback && (
+            <input
+              type="range"
+              min={0}
+              max={Math.max(1, activeRoute.points.length - 1)}
+              value={playbackIndex || 0}
+              onChange={(e) => onSeekPlayback(Number(e.target.value))}
+              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+          )}
+        </div>
+      )}
+
+      {/* On-Map Side Drawer for Day's Stops / Timeline */}
+      {showTimelineDrawer && activeRoute && (
+        <div className="absolute top-20 right-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] w-80 sm:w-96 z-30 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in slide-in-from-right-4 duration-200 pointer-events-auto">
+          <div className="bg-slate-900 text-white p-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📋</span>
+              <div>
+                <h4 className="font-bold text-xs">Paradas da Linha do Tempo</h4>
+                <p className="text-[10px] text-slate-400">{routeStops.length} locais estacionados no dia</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowTimelineDrawer(false)}
+              className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-3 overflow-y-auto flex-1 space-y-2.5">
+            {routeStops.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 text-xs font-medium">
+                Nenhuma parada longa (&gt;5 min) registrada nesta rota.
+              </div>
+            ) : (
+              routeStops.map((stop, sIdx) => {
+                const hours = Math.floor(stop.durationMs / (1000 * 60 * 60));
+                const minutes = Math.floor((stop.durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                const durStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+                const isSelected = activeStopIndex === sIdx;
+
+                return (
+                  <div
+                    key={`drawer-stop-${sIdx}`}
+                    onClick={() => {
+                      setActiveStopIndex(sIdx);
+                      if (map) {
+                        map.panTo({ lat: stop.lat, lng: stop.lng });
+                        map.setZoom(17);
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+                      isSelected ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-300/40 shadow-xs' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-amber-500 text-white font-black text-[10px] flex items-center justify-center">
+                          {sIdx + 1}
+                        </span>
+                        <span className="text-xs font-bold text-slate-800">
+                          Parada ({durStr})
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500 font-bold">
+                        {stop.startTime} ➔ {stop.endTime}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-600 flex items-start gap-1 mt-1">
+                      <MapPin className="w-3 h-3 text-amber-600 shrink-0 mt-0.5" />
+                      <AddressDisplay lat={stop.lat} lng={stop.lng} />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}

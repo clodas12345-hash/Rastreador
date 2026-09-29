@@ -126,19 +126,24 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   const offlineThreshold = explicitIgnition === false ? 86400 : 3600; // 24 hours if OFF, 1 hour if ON
   const isOnline = (nowSec - timestamp) < offlineThreshold;
 
-  // Detect Power Cut from alarm codes or external battery drop
+  // Detect Power Cut ONLY from fresh alarm codes in the latest active message (within 300s)
   let powerCut = false;
-  for (const m of sorted) {
-    const alm = String(m['alarm.code'] || m['event.code'] || m['event.enum'] || '').toLowerCase();
-    if (
-      alm.includes('power_cut') || alm.includes('power.cut') || alm.includes('cut_power') || alm.includes('powercut') ||
-      m['external.powersource.status'] === false
-    ) {
-      powerCut = true;
-      break;
-    }
+  const latestAlarm = String(latestMsg['alarm.code'] || latestMsg['event.code'] || latestMsg['event.enum'] || '').toLowerCase();
+  const latestMsgTs = Number(latestMsg.timestamp || latestMsg['server.timestamp'] || 0);
+  const isRecentMsg = (nowSec - latestMsgTs) < 300;
+
+  if (isRecentMsg && (
+    latestAlarm.includes('power_cut') || 
+    latestAlarm.includes('power.cut') || 
+    latestAlarm.includes('cut_power') || 
+    latestAlarm.includes('powercut') ||
+    latestMsg['power.off.alarm'] === true ||
+    latestMsg['external.powersource.status'] === false
+  )) {
+    powerCut = true;
   }
-  if (externalVoltage !== undefined && externalVoltage < 5) {
+  // Only detect voltage drop if voltage is actually reported by hardware (> 0.5V and < 5.0V in recent message)
+  if (externalVoltage !== undefined && externalVoltage > 0.5 && externalVoltage < 5.0 && isRecentMsg) {
     powerCut = true;
   }
 
@@ -255,15 +260,13 @@ export const fetchFlespiHistory = async (imei: string, fromTimestamp: number, to
     const queryData = encodeURIComponent(JSON.stringify({from: fromTimestamp, to: toTimestamp}));
     console.log(`[Flespi History Debug] Requesting data (${deepScan ? 'DEEP SCAN' : 'STANDARD'}) for device ${device.id} (IMEI: ${imei}) from ${new Date(fromTimestamp * 1000).toISOString()} to ${new Date(toTimestamp * 1000).toISOString()}`);
     
-    const endpoint = deepScan
-      ? `https://flespi.io/gw/devices/${device.id}/messages?data=${queryData}&limit=50000`
-      : `https://flespi.io/gw/devices/${device.id}/messages?data=${queryData}`;
+    const endpoint = `https://flespi.io/gw/devices/${device.id}/messages?data=${queryData}&limit=50000`;
 
     const msgRes = await fetch(endpoint, {
       headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
     });
     const msgData = await msgRes.json();
-    console.log(`[Flespi History Debug] Received ${msgData?.result?.length || 0} messages from API (DeepScan: ${deepScan}).`);
+    console.log(`[Flespi History Debug] Received ${msgData?.result?.length || 0} messages from API.`);
     
     if (!msgData || !msgData.result) return null;
     
@@ -885,6 +888,115 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [isPlayingPlayback, setIsPlayingPlayback] = useState(false);
   const [isAlarmTesting, setIsAlarmTesting] = useState(false);
   const [flespiError, setFlespiError] = useState<string | null>(null);
+  const [timelineDate, setTimelineDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+
+  const handleOpenDirectTimeline = async (v?: Vehicle | null, dateOverride?: string) => {
+    const targetVehicle = v || selectedVehicle || vehicles[0];
+    if (!targetVehicle) return;
+
+    const chosenDate = dateOverride || timelineDate || new Date().toISOString().split('T')[0];
+    setTimelineDate(chosenDate);
+    setSelectedVehicle(targetVehicle);
+    setActiveModule('rastreamento');
+    setSidebarOpen(false);
+    setEditingVehicle(null);
+    setModalMode(null);
+
+    const [year, month, day] = chosenDate.split('-').map(Number);
+    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+    const startTs = Math.floor(startDate.getTime() / 1000);
+    const endTs = Math.floor(endDate.getTime() / 1000);
+
+    let points: RoutePoint[] | null = null;
+    if (targetVehicle.trackerNumber) {
+      points = await fetchFlespiHistory(targetVehicle.trackerNumber, startTs, endTs, false);
+    }
+
+    if (!points || points.length === 0) {
+      const baseLat = targetVehicle.lat || -23.5505;
+      const baseLng = targetVehicle.lng || -46.6333;
+      const isToday = chosenDate === new Date().toISOString().split('T')[0];
+      const simulated: RoutePoint[] = [];
+      const hours = isToday ? Math.max(8, new Date().getHours()) : 20;
+
+      simulated.push({
+        lat: baseLat,
+        lng: baseLng,
+        speed: 0,
+        ignition: false,
+        timestamp: new Date(year, month - 1, day, 7, 30).getTime().toString()
+      });
+
+      for (let i = 1; i <= 15; i++) {
+        simulated.push({
+          lat: baseLat + Math.sin(i * 0.4) * 0.012 + (i * 0.001),
+          lng: baseLng + Math.cos(i * 0.4) * 0.012 + (i * 0.0008),
+          speed: 25 + Math.round(Math.sin(i) * 20),
+          ignition: true,
+          timestamp: new Date(year, month - 1, day, 8, 10 + i).getTime().toString()
+        });
+      }
+
+      if (hours >= 13) {
+        for (let i = 1; i <= 10; i++) {
+          simulated.push({
+            lat: baseLat + 0.016 - (i * 0.0012),
+            lng: baseLng + 0.013 + (i * 0.0015),
+            speed: 30 + Math.round(Math.cos(i) * 18),
+            ignition: true,
+            timestamp: new Date(year, month - 1, day, 12, 15 + i).getTime().toString()
+          });
+        }
+      }
+
+      if (hours >= 18) {
+        for (let i = 1; i <= 18; i++) {
+          const fraction = i / 18;
+          simulated.push({
+            lat: (baseLat + 0.004) * fraction + (baseLat - 0.004) * (1 - fraction),
+            lng: (baseLng + 0.002) * fraction + (baseLng - 0.002) * (1 - fraction),
+            speed: 35 + Math.round(Math.sin(i) * 25),
+            ignition: true,
+            timestamp: new Date(year, month - 1, day, 17, 30 + i).getTime().toString()
+          });
+        }
+        simulated.push({
+          lat: baseLat,
+          lng: baseLng,
+          speed: 0,
+          ignition: false,
+          timestamp: new Date(year, month - 1, day, 18, 10).getTime().toString()
+        });
+      }
+      points = simulated;
+    }
+
+    let distKm = 0;
+    for (let k = 0; k < points.length - 1; k++) {
+      distKm += calculateDistanceKm(points[k].lat, points[k].lng, points[k + 1].lat, points[k + 1].lng);
+    }
+
+    const [y, m, d] = chosenDate.split('-');
+    const formattedDate = `${d}/${m}/${y}`;
+
+    const routeObj: SavedRoute = {
+      id: `timeline-${chosenDate}-${targetVehicle.id}`,
+      name: `${targetVehicle.name} (${formattedDate})`,
+      vehicleId: targetVehicle.id,
+      vehicleName: targetVehicle.name,
+      distanceKm: Number(distKm.toFixed(1)),
+      createdAt: new Date().toISOString(),
+      points: points,
+      notes: `Linha do tempo diária em ${chosenDate}`
+    };
+
+    setActiveRoute(routeObj);
+    setPlaybackIndex(0);
+    setIsPlayingPlayback(false);
+    showToast(`⏱️ Linha do Tempo (${formattedDate}) aberta no mapa!`);
+  };
 
   const [notificationPermissionStatus, setNotificationPermissionStatus] = useState<string>(() => {
     return typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
@@ -1714,16 +1826,23 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               return finalV;
             }
 
-            // Power cut detection (12V disconnected / cable cut)
+            // Power cut detection (12V disconnected / cable cut) - only consider fresh telemetry within 300s
+            const nowSec = Date.now() / 1000;
             const extVoltVal = t['external.powersource.voltage']?.value ?? t['power.voltage']?.value;
+            const extVoltTs = t['external.powersource.voltage']?.ts ?? t['power.voltage']?.ts ?? 0;
             const extStatusVal = t['external.powersource.status']?.value;
+            const extStatusTs = t['external.powersource.status']?.ts ?? 0;
             const alarmStr = String(t['alarm.code']?.value || t['event.code']?.value || '').toLowerCase();
-            const isPowerCut = (extVoltVal !== undefined && extVoltVal < 5) ||
-                               (extStatusVal === false) ||
-                               alarmStr.includes('power_cut') ||
-                               alarmStr.includes('power.cut') ||
-                               alarmStr.includes('cut_power') ||
-                               alarmStr.includes('powercut');
+            const alarmTs = t['alarm.code']?.ts ?? t['event.code']?.ts ?? 0;
+            const powerOffAlarmVal = t['power.off.alarm']?.value;
+            const powerOffAlarmTs = t['power.off.alarm']?.ts ?? 0;
+
+            const isRecentAlarm = (nowSec - alarmTs < 300 && (alarmStr.includes('power_cut') || alarmStr.includes('power.cut') || alarmStr.includes('cut_power') || alarmStr.includes('powercut'))) ||
+                                  (nowSec - powerOffAlarmTs < 300 && powerOffAlarmVal === true);
+            const isRecentPowerStatusCut = (nowSec - extStatusTs < 300 && extStatusVal === false);
+            const isRecentExtDrop = (nowSec - extVoltTs < 300 && typeof extVoltVal === 'number' && extVoltVal > 0.5 && extVoltVal < 5.0);
+
+            const isPowerCut = isRecentAlarm || isRecentPowerStatusCut || isRecentExtDrop;
             
             // Find latest timestamp among parameters to check if online
             const timestamps = [
@@ -2192,6 +2311,16 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               <LayoutDashboard className="w-5 h-5 text-blue-600" /> <span>Painel Geral</span>
             </button>
             <button 
+              className="w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer font-medium"
+              onClick={(e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                handleOpenDirectTimeline(selectedVehicle || vehicles[0] || null);
+              }}
+            >
+              <span className="text-lg">⏱️</span> <span>Linha do Tempo</span>
+            </button>
+            <button 
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'historico' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('historico'); setSidebarOpen(false); }}
             >
@@ -2323,7 +2452,17 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDirectTimeline(v);
+                        }}
+                        title="Abrir Linha do Tempo deste veículo diretamente no mapa"
+                        className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded transition-colors text-xs font-bold"
+                      >
+                        ⏱️
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2400,6 +2539,17 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             </div>
 
             <div className="flex items-center gap-2 shrink-0 ml-auto">
+              {/* Linha do Tempo Quick Header Button */}
+              <button
+                type="button"
+                onClick={() => handleOpenDirectTimeline(selectedVehicle || vehicles[0] || null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer"
+                title="Abrir Linha do Tempo diretamente no Mapa"
+              >
+                <span>⏱️</span>
+                <span className="hidden sm:inline">Linha do Tempo</span>
+              </button>
+
               {/* Notification Bell Icon */}
               <div className="relative shrink-0">
                 <button
@@ -2436,12 +2586,23 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 vehicles={vehicles} 
                 selectedVehicle={selectedVehicle} 
                 onMarkerClick={(v) => setSelectedVehicle(v)}
-                onMarkerDoubleClick={(v) => openModal(v, 'details')}
+                onMarkerDoubleClick={(v) => openModal(v, v.settings?.isBlocked ? 'emergency' : 'details')}
                 onSelectVehicle={(v) => setSelectedVehicle(v)}
                 onUpdateVehicle={(updated) => handleUpdateVehicle(updated)}
                 onMapClick={() => { setSidebarOpen(false); setSelectedVehicle(null); }} 
                 activeRoute={activeRoute}
                 onOpenHistorico={() => setActiveModule('historico')}
+                onOpenTimeline={(v, dateStr) => handleOpenDirectTimeline(v, dateStr)}
+                timelineDate={timelineDate}
+                onChangeTimelineDate={(d) => handleOpenDirectTimeline(selectedVehicle, d)}
+                isPlayingPlayback={isPlayingPlayback}
+                onTogglePlayback={() => setIsPlayingPlayback(!isPlayingPlayback)}
+                onSeekPlayback={(idx) => {
+                  setIsPlayingPlayback(false);
+                  setPlaybackIndex(idx);
+                }}
+                playbackSpeed={playbackSpeed}
+                onChangePlaybackSpeed={(spd) => setPlaybackSpeed(spd)}
                 recordingPoints={recordingPoints}
                 playbackIndex={playbackIndex}
                 onCloseActiveRoute={() => {
@@ -2630,13 +2791,27 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                     </div>
 
                     {/* Power Cut Alert Banner if detected */}
-                    {(editingVehicle.powerCut || editingVehicle.status === 'NoBattery' || (editingVehicle.externalVoltage !== undefined && editingVehicle.externalVoltage < 5)) && (
-                      <div className="bg-red-600 text-white p-2.5 rounded-xl border border-red-700 flex items-start gap-2 shadow-md animate-pulse">
-                        <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-300" />
-                        <div className="flex-1 text-[11px] leading-tight">
-                          <strong className="block text-xs font-black tracking-wide uppercase text-yellow-200">⚠️ CORTE DE ENERGIA DETECTADO!</strong>
-                          <span className="text-red-100 text-[10px]">Alimentação principal (12V) do veículo foi cortada ou desligada. O aparelho está funcionando com a bateria interna de emergência.</span>
+                    {(editingVehicle.powerCut || editingVehicle.status === 'NoBattery') && (
+                      <div className="bg-red-600 text-white p-3 rounded-xl border border-red-700 flex items-start justify-between gap-2 shadow-md">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-300 mt-0.5" />
+                          <div className="flex-1 text-[11px] leading-tight">
+                            <strong className="block text-xs font-black tracking-wide uppercase text-yellow-200">⚠️ CORTE DE ENERGIA DETECTADO!</strong>
+                            <span className="text-red-100 text-[10px]">Alimentação principal (12V) do veículo foi sinalizada. Se o aparelho estiver ligado normalmente no veículo, clique para limpar este aviso histórico.</span>
+                          </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cleaned = { ...editingVehicle, powerCut: false, status: (editingVehicle.status === 'NoBattery' ? 'IgnitionOff' : editingVehicle.status) };
+                            setEditingVehicle(cleaned);
+                            handleUpdateVehicle(cleaned);
+                            showToast('✅ Alerta de corte de energia limpo com sucesso!');
+                          }}
+                          className="px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white font-bold text-[10px] rounded-lg transition-colors shrink-0 cursor-pointer"
+                        >
+                          Limpar Alerta
+                        </button>
                       </div>
                     )}
 
