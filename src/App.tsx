@@ -1962,12 +1962,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               flespiMileageKm = flespiMileageRaw > 500000 ? flespiMileageRaw / 1000 : flespiMileageRaw;
             }
 
-            // Compute real distance increment if vehicle moved (com filtro anti-jitter para evitar km fantasma parado)
+            // Compute real distance increment if vehicle moved (com filtro otimizado para rastreadores reais)
             let deltaKm = 0;
             if (v.lat && v.lng && (v.lat !== realLat || v.lng !== realLng)) {
               const dist = calculateDistanceKm(v.lat, v.lng, realLat, realLng);
-              // Accumulate distance ONLY if real displacement is between 6 meters (0.006km) and 8km AND vehicle is moving (speed >= 2 km/h or Moving status)
-              if (dist >= 0.006 && dist <= 8 && (realSpeed >= 2 || newStatus === 'Moving')) {
+              // Accumulate distance if displacement is >= 3 meters (0.003km) and <= 15km, and vehicle is moving, ignition is on, or status indicates movement/activity
+              if (dist >= 0.003 && dist <= 15 && (realSpeed >= 1 || newStatus === 'Moving' || newStatus === 'IgnitionOn' || ignition)) {
                 deltaKm = dist;
               }
             }
@@ -3134,23 +3134,23 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                       )}
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            openActionConfirm('unblock', editingVehicle);
+                          }}
+                          className="col-span-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-3 border-2 border-emerald-400 cursor-pointer transition-all"
+                        >
+                          <span className="text-2xl">🔓</span>
+                          <div className="text-left">
+                            <div className="font-black text-sm sm:text-base">DESBLOQUEIO MANUAL DIRETO (DUPLO ENVIO ⚡)</div>
+                            <div className="text-[10px] sm:text-xs font-normal text-emerald-100">Forçar religamento do motor e restauração de combustível agora</div>
+                          </div>
+                        </button>
+
                         {editingVehicle.settings?.isBlocked ? (
                           <>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault(); e.stopPropagation();
-                                openActionConfirm('unblock', editingVehicle);
-                              }}
-                              className="col-span-full py-4 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-3 border-2 border-emerald-400 cursor-pointer transition-all"
-                            >
-                              <span className="text-2xl sm:text-3xl">🔓</span>
-                              <div className="text-left">
-                                <div className="font-black text-sm sm:text-base">DESBLOQUEAR MOTOR</div>
-                                <div className="text-[10px] sm:text-xs font-normal text-emerald-100">Restaurar combustível e normalizar ignição para partida</div>
-                              </div>
-                            </button>
-
                             <button
                               type="button"
                               onClick={(e) => {
@@ -3689,10 +3689,11 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         handleUpdateVehicle(editingVehicle, (saved) => {
                           setSelectedVehicle(saved);
                           setActiveModule('rastreamento');
+                          showToast(`✅ Odômetro Total (${Math.round(saved.totalMileage || 0)} km) e KM Diário salvos com sucesso!`);
                           closeModal();
                         });
                       }} 
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm cursor-pointer"
                     >
                       Salvar Alterações
                     </button>
