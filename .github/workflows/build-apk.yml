@@ -16,11 +16,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          
+
       - name: Usar a mesma assinatura de teste em todas as compilações
         run: |
           mkdir -p ~/.android
-          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > ~/.android/debug.keystore
+          echo "Tamanho do arquivo decodificado:"
+          ls -la ~/.android/debug.keystore
 
       - name: Instalar Java (necessário pro Android)
         uses: actions/setup-java@v4
@@ -65,9 +67,38 @@ jobs:
           }
           EOF
 
+      - name: Forçar signingConfig do App para Usar o Keystore Fixo
+        run: |
+          if grep -q "android.signingConfigs.debug.storeFile" android/app/build.gradle; then
+            echo "signingConfig já estava forçado — nada a fazer"
+            exit 0
+          fi
+          cat >> android/app/build.gradle << 'EOF'
+
+          android.signingConfigs.debug.storeFile = new File(System.getProperty("user.home") + "/.android/debug.keystore")
+          android.signingConfigs.debug.storePassword = "android"
+          android.signingConfigs.debug.keyAlias = "androiddebugkey"
+          android.signingConfigs.debug.keyPassword = "android"
+          android.buildTypes.debug.signingConfig = android.signingConfigs.debug
+          EOF
+          echo "signingConfig do buildType debug forçado a usar ~/.android/debug.keystore"
+
       - name: Compilar o APK
         working-directory: android
         run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Verificar Fingerprint da Assinatura do APK
+        continue-on-error: true
+        run: |
+          SDK=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          APKSIGNER=$(ls $SDK/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          echo "=== Fingerprint da assinatura deste APK (compare entre builds) ==="
+          if [ -z "$APKSIGNER" ]; then
+            echo "apksigner nao encontrado - pulando verificacao"
+            exit 0
+          fi
+          "$APKSIGNER" verify --print-certs "$APK" | grep -i "SHA-256\|SHA-1"
 
       - name: Disponibilizar o APK pra download
         uses: actions/upload-artifact@v4
