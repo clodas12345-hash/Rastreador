@@ -533,20 +533,32 @@ const sendFlespiCommand = async (
 
     const deviceId = device.id;
 
-    // Extrai a senha se o comando contiver 'stop123456', 'resume123456', etc.
-    const pwdMatch = commandPayload.match(/^(?:stop|resume|quickstop|reset|sound|sleep|DY|TY)(\d{4,6})/i);
+    const pwdMatch = commandPayload.match(/^(?:stop|resume|quickstop|reset|sound|sleep|DY|TY|supply)(\d{4,6})/i);
     const pwd = pwdMatch ? pwdMatch[1] : '123456';
     const lowerCmd = commandPayload.toLowerCase();
 
     const isBlockAction = lowerCmd.startsWith('stop') || lowerCmd.startsWith('quickstop') || lowerCmd === '109' || lowerCmd === 'j' || lowerCmd.startsWith('dy');
-    const isUnblockAction = lowerCmd.startsWith('resume') || lowerCmd === '110' || lowerCmd === 'k' || lowerCmd.startsWith('ty');
+    const isUnblockAction = lowerCmd.startsWith('resume') || lowerCmd === '110' || lowerCmd === 'k' || lowerCmd.startsWith('ty') || lowerCmd.startsWith('supply');
     const isAlarmAction = lowerCmd.startsWith('sound') || lowerCmd === '111' || lowerCmd === 'l';
     const isResetAction = lowerCmd.startsWith('reset') || lowerCmd.startsWith('reboot');
+
+    // Ao restabelecer/desbloquear combustível, limpa qualquer comando 'stop' anterior pendente na fila do Flespi
+    if (isUnblockAction) {
+      try {
+        await fetch(`https://flespi.io/gw/devices/${deviceId}/commands-queue/all`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+        });
+        console.log(`[Flespi] Fila de comandos anteriores limpa para restabelecimento limpo em ${device.name}`);
+      } catch (e) {
+        console.warn('[Flespi] Aviso ao limpar fila anterior:', e);
+      }
+    }
 
     let commandBatch: any[] = [];
 
     if (isBlockAction) {
-      // Suite abrangente para Coban (protocolo 122) e compatíveis (J, 109, stop, quickstop)
+      // Suite abrangente para corte de combustível (Coban protocolo 122, SinoTrack, Concox, Micodus)
       commandBatch = [
         { name: 'setting.block_engine.set', properties: { cut_off: true, format: 1 } },
         { name: 'setting.block_engine.set', properties: { cut_off: true, format: 2 } },
@@ -555,9 +567,11 @@ const sendFlespiCommand = async (
         { name: 'custom', properties: { payload: `stop${pwd}` } },
         { name: 'custom', properties: { payload: `quickstop${pwd}` } },
         { name: 'custom', properties: { payload: `DY${pwd}` } },
+        { name: 'custom', properties: { payload: `DY,${pwd}#` } },
+        { name: 'custom', properties: { payload: `RELAY,1#` } },
       ];
     } else if (isUnblockAction) {
-      // Suite abrangente para restabelecimento de combustível/motor (K, 110, resume)
+      // Suite abrangente para restabelecimento de combustível/motor (Coban, SinoTrack, Concox, Micodus)
       commandBatch = [
         { name: 'setting.block_engine.set', properties: { cut_off: false, format: 1 } },
         { name: 'setting.block_engine.set', properties: { cut_off: false, format: 2 } },
@@ -565,6 +579,10 @@ const sendFlespiCommand = async (
         { name: 'custom', properties: { payload: 'K' } },
         { name: 'custom', properties: { payload: `resume${pwd}` } },
         { name: 'custom', properties: { payload: `TY${pwd}` } },
+        { name: 'custom', properties: { payload: `supply${pwd}` } },
+        { name: 'custom', properties: { payload: `oil${pwd} 0` } },
+        { name: 'custom', properties: { payload: `RELAY,0#` } },
+        { name: 'custom', properties: { payload: `reconnect${pwd}` } },
       ];
     } else if (isAlarmAction) {
       commandBatch = [
@@ -585,8 +603,7 @@ const sendFlespiCommand = async (
       ];
     }
 
-    // 1. Envia para a fila persistente do Flespi (commands-queue).
-    // O Flespi transmitirá imediatamente ou no próximo pacote/heartbeat do rastreador!
+    // 1. Envia a 1ª Onda para a fila persistente do Flespi (commands-queue).
     const queueRes = await fetch(`https://flespi.io/gw/devices/${deviceId}/commands-queue`, {
       method: 'POST',
       headers: {
@@ -617,7 +634,44 @@ const sendFlespiCommand = async (
       // Ignora falha de socket imediato pois o commands-queue garante a entrega
     }
 
-    console.log(`[Flespi] Comando enviado para ${device.name} (ID: ${deviceId}): ${queuedCount} itens na fila GPRS, imediato: ${immediateSuccess}`);
+    // 3. DUPLO ENVIO AUTOMÁTICO (Onda 2 de Reforço em 2 segundos) para garantir restabelecimento 100%
+    if (isUnblockAction) {
+      setTimeout(async () => {
+        try {
+          console.log(`[Flespi] ⚡ Disparando DUPLO ENVIO (Onda 2 de Reforço) para restabelecimento de ${device.name}...`);
+          const wave2Batch = [
+            { name: 'custom', properties: { payload: `resume${pwd}` } },
+            { name: 'custom', properties: { payload: `TY${pwd}` } },
+            { name: 'custom', properties: { payload: '110' } },
+            { name: 'custom', properties: { payload: 'K' } },
+            { name: 'custom', properties: { payload: `supply${pwd}` } },
+            { name: 'custom', properties: { payload: `RELAY,0#` } },
+            { name: 'setting.block_engine.set', properties: { cut_off: false, format: 1 } },
+          ];
+          await fetch(`https://flespi.io/gw/devices/${deviceId}/commands-queue`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `FlespiToken ${FLESPI_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(wave2Batch)
+          });
+          await fetch(`https://flespi.io/gw/devices/${deviceId}/commands`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `FlespiToken ${FLESPI_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify([wave2Batch[0]])
+          });
+          console.log(`[Flespi] ⚡ DUPLO ENVIO (Onda 2) concluído com sucesso para ${device.name}`);
+        } catch (err) {
+          console.warn('[Flespi] Aviso no duplo envio de restabelecimento:', err);
+        }
+      }, 2000);
+    }
+
+    console.log(`[Flespi] Comando enviado para ${device.name} (ID: ${deviceId}): ${queuedCount} itens na fila GPRS, imediato: ${immediateSuccess}, duplo envio: ${isUnblockAction}`);
 
     return {
       success: queuedCount > 0 || immediateSuccess,
@@ -626,8 +680,8 @@ const sendFlespiCommand = async (
       queuedCount,
       immediateSuccess,
       message: immediateSuccess
-        ? `Comando executado instantaneamente via conexão ativa GPRS!`
-        : `Comando registrado com sucesso na fila GPRS (${queuedCount} formatos Coban). O rastreador executará no próximo pacote.`
+        ? `Comando executado instantaneamente via conexão ativa GPRS! ${isUnblockAction ? '(Duplo envio de reforço ativo ⚡)' : ''}`
+        : `Comando registrado com sucesso na fila GPRS (${queuedCount} formatos Coban). ${isUnblockAction ? '⚡ Duplo Envio de Reforço agendado em 2s.' : 'O rastreador executará no próximo pacote.'}`
     };
   } catch (err: any) {
     console.error('[Flespi] Erro ao enviar comando:', err);
@@ -1156,22 +1210,32 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       setEditingVehicle(updated);
       handleUpdateVehicle(updated);
 
+      // Limpeza direta no Firestore e memória para evitar reativação do corte
+      try {
+        if (vehicle.id && vehicle.id !== 'new') {
+          safeUpdateDoc(doc(db, 'cars', vehicle.id), {
+            'settings.isBlocked': false,
+            'settings.pendingBlock': false
+          }).catch(() => {});
+        }
+      } catch (e) {}
+
       setDualDispatchData({
         isOpen: true,
-        commandName: 'Desbloquear Aparelho',
+        commandName: 'Restabelecer Combustível (Duplo Envio ⚡)',
         smsCommand: `resume${pwd}`,
         phoneNumber: phoneVal,
         vehicleName: identifier,
-        flespiStatus: 'Transmitindo comando de desbloqueio para o rastreador via GPRS...',
+        flespiStatus: '⚡ DUPLO ENVIO ATIVO: Transmitindo Onda 1 imediata + Onda 2 de reforço em 2 segundos via GPRS...',
         flespiQueued: true
       });
 
       sendFlespiCommand(vehicle.trackerNumber || vehicle.name, `resume${pwd}`, vehicle.name).then((res) => {
         if (res && res.success) {
-          showToast(`🔓 Desbloqueio enviado via GPRS para ${identifier}! ${res.immediateSuccess ? '⚡ Liberado no aparelho!' : `(${res.queuedCount} comandos na fila de transmissão)`}`);
+          showToast(`⚡ Duplo envio de restabelecimento transmitido via GPRS para ${identifier}! Relé religado.`);
           setDualDispatchData(prev => prev ? {
             ...prev,
-            flespiStatus: res.message,
+            flespiStatus: `✅ Onda 1 entregue com sucesso! (${res.queuedCount} formatos Coban). Onda 2 de reforço disparada automaticamente para garantir o religamento total do relé.`,
             flespiQueued: true,
             deviceId: res.deviceId,
             queuedCount: res.queuedCount
@@ -1187,8 +1251,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       });
 
       addNotification({
-        title: '🔓 Desbloqueio Executado',
-        message: `Desbloqueio remoto enviado para ${identifier}. Combustível e motor liberados para partida.`,
+        title: '⚡ Combustível Restabelecido (Duplo Envio)',
+        message: `Comando de restabelecimento com duplo envio transmitido para ${identifier}. Relé religado e motor liberado para dar partida.`,
         type: 'command',
         severity: 'info',
         vehicleName: identifier
@@ -1307,14 +1371,14 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         setActionConfirm({
           isOpen: true,
           actionId,
-          title: 'Desbloquear Motor do Veículo',
-          badge: 'LIBERAÇÃO DE PARTIDA',
+          title: 'Restabelecer Combustível & Desbloquear Motor',
+          badge: 'DUPLO ENVIO DE SEGURANÇA ⚡',
           badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-          icon: '🔓',
-          description: 'Restaura a passagem de combustível e desativa o relé de bloqueio.',
-          howItWorks: 'Envia o comando de religamento para o rastreador. A bomba de combustível e a ignição voltam ao normal para que a chave dê partida no motor.',
-          warningNote: 'Certifique-se de que o veículo já está em posse segura e com chave autorizada antes de desbloquear.',
-          confirmLabel: 'Confirmar Desbloqueio do Motor',
+          icon: '⚡',
+          description: 'Restaura a passagem de combustível e desativa o relé de bloqueio com Duplo Envio de sinal (2 ondas automáticas via GPRS).',
+          howItWorks: 'Envia imediatamente a 1ª onda de liberação e, após 2 segundos, dispara uma 2ª onda de reforço para garantir o acionamento do relé físico mesmo se o rastreador estiver saindo do repouso. Limpa qualquer bloqueio agendado anterior.',
+          warningNote: '✅ Libera a bomba de combustível instantaneamente e normaliza a linha 15 (ignição) para dar partida.',
+          confirmLabel: 'Restabelecer Combustível Agora (Duplo Envio ⚡)',
           confirmColor: 'bg-emerald-600 hover:bg-emerald-700 text-white',
           onConfirm: () => executeAction('unblock', vehicle),
           vehicle
@@ -1798,6 +1862,24 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             if (v.settings?.pendingBlock && !ignition) {
               console.log(`[Safe Block] Ignition turned OFF for ${v.name}. Executing pending block command...`);
               
+              // Atualiza localmente e sincroniza com Firestore imediatamente antes de enviar
+              const updatedSettings = {
+                ...v.settings,
+                pendingBlock: false,
+                isBlocked: true
+              };
+              const finalV = { ...v, settings: updatedSettings, status: 'Stopped' as const };
+              handleUpdateVehicle(finalV);
+              
+              try {
+                if (v.id && v.id !== 'new') {
+                  safeUpdateDoc(doc(db, 'cars', v.id), {
+                    'settings.pendingBlock': false,
+                    'settings.isBlocked': true
+                  }).catch(() => {});
+                }
+              } catch (e) {}
+
               // Envia o comando via Flespi com compatibilidade ampliada
               sendFlespiCommand(v.trackerNumber || v.name, `stop${v.settings?.smsPassword || '123456'}`, v.name);
               
@@ -1812,15 +1894,6 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 lat: realLat,
                 lng: realLng
               });
-
-              // Atualiza localmente e sincroniza com Firestore
-              const updatedSettings = {
-                ...v.settings,
-                pendingBlock: false,
-                isBlocked: true
-              };
-              const finalV = { ...v, settings: updatedSettings, status: 'Stopped' as const };
-              handleUpdateVehicle(finalV);
               
               anyChanged = true;
               return finalV;

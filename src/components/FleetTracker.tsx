@@ -1047,15 +1047,37 @@ export default function FleetTracker({
                 <span className="text-xl">🔒</span>
                 <div>
                   <strong className="block text-xs font-black uppercase text-white">MOTOR BLOQUEADO NO SISTEMA</strong>
-                  <span className="text-red-100 text-[10px] block">Relé acionado. Clique ao lado para liberar.</span>
+                  <span className="text-red-100 text-[10px] block">Relé acionado. Clique para restabelecer com duplo envio.</span>
                 </div>
               </div>
               {onMarkerDoubleClick && (
                 <button
                   onClick={() => onMarkerDoubleClick(currentSelected)}
-                  className="bg-white text-red-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow-sm hover:bg-red-50 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0"
+                  className="bg-white text-emerald-800 hover:text-emerald-900 font-black text-xs py-1.5 px-3 rounded-lg shadow-sm hover:bg-emerald-50 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1"
                 >
-                  🔓 Desbloquear
+                  <span>⚡</span>
+                  <span>Restabelecer</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Pending Safe Block Alert Banner */}
+          {currentSelected.settings?.pendingBlock && !currentSelected.settings?.isBlocked && (
+            <div className="bg-amber-600 text-white p-3 rounded-xl border border-amber-700 mb-2.5 flex items-center justify-between shadow-md shrink-0 animate-pulse">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🛡️</span>
+                <div>
+                  <strong className="block text-xs font-black uppercase text-white">BLOQUEIO SEGURO AGENDADO</strong>
+                  <span className="text-amber-100 text-[10px] block">Cortará combustível assim que desligar o motor.</span>
+                </div>
+              </div>
+              {onMarkerDoubleClick && (
+                <button
+                  onClick={() => onMarkerDoubleClick(currentSelected)}
+                  className="bg-white text-amber-900 font-bold text-xs py-1.5 px-3 rounded-lg shadow-sm hover:bg-amber-50 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  Cancelar / Liberar
                 </button>
               )}
             </div>
