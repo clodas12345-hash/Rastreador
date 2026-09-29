@@ -1821,7 +1821,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   useEffect(() => {
     const fetchRealTimeFlespi = async () => {
       try {
-        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ignition.status,io.ignition,din.1,acc,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code`, {
+        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ignition.status,io.ignition,din.1,acc,input.1,input.2,io.1,io.2,ignition,engine.status,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code`, {
           headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
         });
         const data = await response.json();
@@ -1850,11 +1850,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             if (!device || !device.telemetry) return v;
 
             const t = device.telemetry;
+            console.log(`[DEBUG] Telemetry for ${v.name}:`, t);
             const realLat = t['position.latitude']?.value ?? v.lat;
             const realLng = t['position.longitude']?.value ?? v.lng;
             const realSpeed = Math.round(Number(t['position.speed']?.value || 0));
             
-            const explicitIgnition = t['engine.ignition.status']?.value ?? t['ignition.status']?.value ?? t['io.ignition']?.value ?? t['din.1']?.value ?? t['acc']?.value;
+            const explicitIgnition = t['engine.ignition.status']?.value ?? t['ignition.status']?.value ?? t['io.ignition']?.value ?? t['din.1']?.value ?? t['acc']?.value ?? t['input.1']?.value ?? t['input.2']?.value ?? t['io.1']?.value ?? t['io.2']?.value ?? t['ignition']?.value ?? t['engine.status']?.value;
             const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (realSpeed > 2 || v.status === 'IgnitionOn' || v.status === 'Moving');
             
             // --- BLOQUEIO SEGURO (SAFE BLOCK) LOGIC ---
@@ -1916,6 +1917,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             const isRecentExtDrop = (nowSec - extVoltTs < 300 && typeof extVoltVal === 'number' && extVoltVal > 0.5 && extVoltVal < 5.0);
 
             const isPowerCut = isRecentAlarm || isRecentPowerStatusCut || isRecentExtDrop;
+            
+            if (isPowerCut) {
+              console.log(`[Debug] Power Cut detected for ${v.name}: Alarm=${isRecentAlarm}, StatusCut=${isRecentPowerStatusCut}, VoltDrop=${isRecentExtDrop}, Volt=${extVoltVal}, AlarmStr=${alarmStr}`);
+            }
             
             // Find latest timestamp among parameters to check if online
             const timestamps = [
