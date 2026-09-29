@@ -53,11 +53,6 @@ export interface VehicleSettings {
   initialMileageMeters?: number;
   mileageDisplayUnit: 'km' | 'miles';
   accNotify: boolean;
-  speedNotify?: boolean;
-  batteryNotify?: boolean;
-  powerNotify?: boolean;
-  shockNotify?: boolean;
-  geofenceNotify?: boolean;
   turningAngle: number;
   alarmSendingTimes: string;
   sensitivity: string;
@@ -109,8 +104,6 @@ export interface Vehicle {
   hdop?: number;
   batteryLevel?: number; // 0-100%
   externalVoltage?: number; // em Volts
-  powerCut?: boolean; // Verdadeiro se a alimentação principal 12V foi cortada/desconectada
-  lastTelemetryTime?: number; // Timestamp da última telemetria recebida
   heading?: number; // Ângulo de direção em graus (0 - 360)
   insideGeofences?: string[]; // IDs das cercas onde o veículo está
   commandQueue?: Array<{ id: string; name: string; timestamp: string }>;

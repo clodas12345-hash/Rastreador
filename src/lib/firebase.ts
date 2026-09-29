@@ -1,6 +1,7 @@
 import { initializeApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getAuth, Auth } from "firebase/auth";
+import { setQuotaExceeded } from "../utils/firestoreQuota";
 import firebaseAppletConfig from "../../firebase-applet-config.json";
 
 let app: FirebaseApp | null = null;
@@ -59,11 +60,13 @@ export function isFirestoreQuotaExceeded(): boolean {
   return quotaExceededNotified;
 }
 
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errMsg = error instanceof Error ? error.message : String(error);
   const isQuota = errMsg.includes('resource-exhausted') || errMsg.includes('Quota limit exceeded') || errMsg.includes('quota metric');
 
   if (isQuota) {
+    setQuotaExceeded();
     if (!quotaExceededNotified) {
       quotaExceededNotified = true;
       console.warn(

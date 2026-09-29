@@ -489,7 +489,7 @@ export default function FleetTracker({
   onGeofenceCreateClick
 }: FleetTrackerProps) {
   const [mapZoom, setMapZoom] = useState(13);
-  const [isShowingAll, setIsShowingAll] = useState(false);
+  const [isShowingAll, setIsShowingAll] = useState(true);
   const [startPoint, setStartPoint] = useState<RoutePoint | null>(null);
   const [endPoint, setEndPoint] = useState<RoutePoint | null>(null);
   const currentPlaybackPoint = activeRoute && playbackIndex !== null && activeRoute.points[playbackIndex] ? activeRoute.points[playbackIndex] : null;
@@ -500,6 +500,31 @@ export default function FleetTracker({
   const [activePopupVehicleId, setActivePopupVehicleId] = useState<string | null>(null);
   const [activeStopIndex, setActiveStopIndex] = useState<number | null>(null);
   const [showOnlyStops, setShowOnlyStops] = useState(false);
+  const [showStreetViewModal, setShowStreetViewModal] = useState(false);
+
+  const openNativeStreetView = (lat: number, lng: number) => {
+    const isAndroid = /android/i.test(navigator.userAgent || '');
+    const nativeUrl = `google.streetview:cbll=${lat},${lng}`;
+    const webUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+    
+    if (isAndroid) {
+      try {
+        const link = document.createElement('a');
+        link.href = nativeUrl;
+        link.target = '_system';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => {
+          window.open(webUrl, '_blank');
+        }, 800);
+      } catch (e) {
+        window.open(webUrl, '_blank');
+      }
+    } else {
+      window.open(webUrl, '_blank');
+    }
+  };
 
   const routeStops = React.useMemo(() => {
     if (!activeRoute || !activeRoute.points || activeRoute.points.length < 2) return [];
@@ -938,22 +963,33 @@ export default function FleetTracker({
             </div>
           </div>
 
+          {/* Power Cut Alert Banner if detected */}
+          {(currentSelected.powerCut || currentSelected.status === 'NoBattery' || (currentSelected.externalVoltage !== undefined && currentSelected.externalVoltage < 5)) && (
+            <div className="bg-red-600 text-white p-2.5 rounded-xl border border-red-700 mb-2.5 flex items-start gap-2 shadow-md animate-pulse shrink-0">
+              <span className="text-base shrink-0">⚡</span>
+              <div className="flex-1 text-[11px] leading-tight">
+                <strong className="block text-xs font-black tracking-wide uppercase text-yellow-200">⚠️ CORTE DE ENERGIA DETECTADO!</strong>
+                <span className="text-red-100 text-[10px]">Cabo da bateria principal (12V) desconectado ou cortado. O aparelho está funcionando com a bateria interna de emergência.</span>
+              </div>
+            </div>
+          )}
+
           {/* Telemetry Status Grid */}
           <div className="grid grid-cols-2 gap-2 mb-2.5 shrink-0">
             <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
               <span className="text-[10px] text-gray-500 font-semibold block mb-0.5">Status & Conexão</span>
               <span className={`font-bold text-xs ${
+                currentSelected.powerCut || currentSelected.status === 'NoBattery' ? 'text-red-600 animate-pulse' :
                 currentSelected.status === 'Offline' ? 'text-red-600' :
-                currentSelected.status === 'NoBattery' ? 'text-red-600 animate-pulse' :
                 (currentSelected.speed && currentSelected.speed > 0) || currentSelected.status === 'Moving' || currentSelected.status === 'IgnitionOn' ? 'text-emerald-600' :
                 'text-gray-700'
               }`}>
-                {currentSelected.status === 'Offline' ? '🔴 Offline' :
-                 currentSelected.status === 'NoBattery' ? '🔴 Sem Bateria / Cortado' :
+                {currentSelected.powerCut || currentSelected.status === 'NoBattery' ? '🔴 Corte de Energia (Sem 12V)' :
+                 currentSelected.status === 'Offline' ? '🔴 Sem Sinal (Offline)' :
                  (currentSelected.speed && currentSelected.speed > 0) ? '🟢 Em Movimento' :
                  currentSelected.status === 'Moving' ? '🟢 Em Movimento' :
                  currentSelected.status === 'IgnitionOn' ? '🟢 Ignição Ligada' :
-                 '⚪ Desligado'}
+                 '⚪ Desligado (Conectado 🟢)'}
               </span>
             </div>
 
@@ -961,7 +997,7 @@ export default function FleetTracker({
               <span className="text-[10px] text-gray-500 font-semibold block mb-0.5">Bateria / Alimentação</span>
               <div className="flex items-center gap-1.5">
                 <span className={`font-bold text-xs ${
-                  currentSelected.status === 'NoBattery' || (currentSelected.externalVoltage && currentSelected.externalVoltage < 5) ? 'text-red-600 animate-pulse' : 
+                  currentSelected.powerCut || currentSelected.status === 'NoBattery' || (currentSelected.externalVoltage && currentSelected.externalVoltage < 5) ? 'text-red-600 animate-pulse' : 
                   (currentSelected.batteryLevel && currentSelected.batteryLevel <= 20) ? 'text-orange-500' : 'text-blue-700'
                 }`}>
                   🔋 {currentSelected.batteryLevel != null ? `${Math.round(currentSelected.batteryLevel)}%` : '100%'}
@@ -1019,42 +1055,44 @@ export default function FleetTracker({
           </div>
 
           {/* Street View Preview & Interactive 360 Road Confirmation */}
-          <div className="bg-gray-50 rounded-xl border border-gray-200 mb-2.5 overflow-hidden relative group shrink-0">
-            <div className="p-1.5 px-2.5 bg-slate-800 text-white flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+          <div className="bg-slate-900 rounded-xl border border-slate-700 mb-2.5 overflow-hidden relative shadow-md shrink-0">
+            <div className="p-2 px-3 bg-slate-800 text-white flex items-center justify-between border-b border-slate-700">
+              <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-emerald-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Street View 360° (Confirmar Placas / Via)
+                Street View 360° da Via
               </span>
-              <a
-                href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${currentSelected.lat},${currentSelected.lng}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded font-bold transition-colors flex items-center gap-1"
-                title="Abrir imagem real da via em 360°"
+              <button
+                type="button"
+                onClick={() => openNativeStreetView(currentSelected.lat, currentSelected.lng)}
+                className="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-lg font-bold transition-colors flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                title="Abrir no Google Maps (Nativo / APK)"
               >
-                Abrir 360° ↗
-              </a>
+                <span>Google Maps</span>
+                <span>↗</span>
+              </button>
             </div>
-            <a
-              href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${currentSelected.lat},${currentSelected.lng}`}
-              target="_blank"
-              rel="noreferrer"
-              className="block relative cursor-pointer"
+            
+            <div 
+              onClick={() => setShowStreetViewModal(true)}
+              className="p-3 bg-gradient-to-br from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 transition-all cursor-pointer group flex items-center justify-between text-white"
             >
-              <img 
-                src={`https://maps.googleapis.com/maps/api/streetview?size=400x120&location=${currentSelected.lat},${currentSelected.lng}&key=${((globalThis as any).process?.env?.GOOGLE_MAPS_PLATFORM_KEY || (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY || (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY || '')}`} 
-                alt="Street View" 
-                className="w-full h-20 sm:h-24 object-cover transition-transform duration-700 group-hover:scale-105"
-                loading="lazy"
-                onError={(e) => {
-                  const target = e.target as HTMLElement;
-                  target.style.display = 'none';
-                }}
-              />
-              <div className="py-1 px-2 bg-gray-100 text-[10px] text-gray-600 text-center font-medium border-t border-gray-200 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-                🔍 Clique para inspecionar fotos reais, placas de velocidade e faixa da via
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600/30 border border-blue-500/50 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                  👁️
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white group-hover:text-blue-300 transition-colors flex items-center gap-1">
+                    Ver Câmera Panorâmica 360°
+                  </div>
+                  <div className="text-[10px] text-slate-300">
+                    Fotos reais da rua, faixas e fachada do local
+                  </div>
+                </div>
               </div>
-            </a>
+              <div className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg shadow transition-colors flex items-center gap-1 shrink-0">
+                Ver 360°
+              </div>
+            </div>
           </div>
 
           {/* Real Address */}
@@ -1136,6 +1174,82 @@ export default function FleetTracker({
             >
               <span>Centralizar no Mapa</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Street View 360 Interactive Modal */}
+      {showStreetViewModal && currentSelected && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[2000] flex flex-col p-2 sm:p-4 animate-fadeIn pointer-events-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex-1 flex flex-col overflow-hidden max-w-4xl w-full mx-auto">
+            {/* Modal Header */}
+            <div className="p-3 sm:p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 rounded-xl text-lg">
+                  👁️
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold flex items-center gap-2">
+                    <span>Street View 360°</span>
+                    <span className="text-xs text-blue-400 font-normal">({currentSelected.name})</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    Navegue pela via, confirme faixas, postes, placas e comércio do local
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openNativeStreetView(currentSelected.lat, currentSelected.lng)}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                  title="Abrir diretamente no app do Google Maps"
+                >
+                  <span>Google Maps Nativo</span>
+                  <span>↗</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowStreetViewModal(false)}
+                  className="p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded Interactive 360 View */}
+            <div className="flex-1 w-full bg-black relative min-h-[300px]">
+              <iframe
+                title="Google Maps Street View 360"
+                src={`https://maps.google.com/maps?q=&layer=c&cbll=${currentSelected.lat},${currentSelected.lng}&cbp=11,0,0,0,0&output=svembed`}
+                className="w-full h-full border-0 absolute inset-0"
+                allowFullScreen
+                loading="lazy"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-800/95 border-t border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-300 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-bold text-white shrink-0">📍 Local:</span>
+                <span className="truncate text-[11px] text-slate-300">
+                  <AddressDisplay lat={currentSelected.lat} lng={currentSelected.lng} />
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-mono text-[10px] text-slate-400">
+                  {currentSelected.lat.toFixed(5)}, {currentSelected.lng.toFixed(5)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowStreetViewModal(false)}
+                  className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

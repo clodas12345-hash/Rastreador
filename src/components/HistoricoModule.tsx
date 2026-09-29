@@ -7,7 +7,8 @@ import {
   RotateCw, Compass, Gauge, Satellite, Mountain, Fuel, X, Layers, ChevronRight, CheckCircle2,
   Radar, Sparkles, Cpu, Radio, Flame
 } from 'lucide-react';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection } from 'firebase/firestore';
+import { safeAddDoc } from '../utils/firestoreWrapper';
 import { db, cleanFirestoreData } from '../lib/firebase';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, 
@@ -113,52 +114,72 @@ function getDailyBreakdown(points: RoutePoint[]): DayBreakdownSummary[] {
 
     for (let i = 0; i < dayPoints.length; i++) {
       const pt = dayPoints[i];
-      const speed = Number(pt.speed || 0);
-      const isIgn = Boolean(pt.ignition || speed > 2);
+      const speed = Math.max(0, Number(pt.speed || 0));
       const t = parsePtTimestamp(pt.timestamp);
       const timeStr = t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
-      if (speed > maxSpeed) maxSpeed = speed;
-      if (speed > 2) {
-        sumSpeed += speed;
-        movingCount++;
-      }
+      if (speed > maxSpeed && speed < 220) maxSpeed = speed;
 
       if (pt.harshBraking || pt.harshCornering || pt.harshAcceleration) {
         harshEvents++;
       }
 
-      if (pt.batteryVoltage && pt.batteryVoltage > 0) {
+      if (pt.batteryVoltage && pt.batteryVoltage >= 8 && pt.batteryVoltage <= 32) {
         if (pt.batteryVoltage < minBat) minBat = pt.batteryVoltage;
         if (pt.batteryVoltage > maxBat) maxBat = pt.batteryVoltage;
-      }
-
-      if (isIgn) {
-        if (!firstStartTime) firstStartTime = timeStr;
-        lastStopTime = timeStr;
       }
 
       if (i > 0) {
         const prev = dayPoints[i - 1];
         const prevT = parsePtTimestamp(prev.timestamp);
-        const dt = t - prevT;
-        if (dt > 0 && dt < 1000 * 60 * 60) {
-          if (isIgn && speed > 2) {
+        const prevSpeed = Math.max(0, Number(prev.speed || 0));
+        const dt = Math.max(0, t - prevT);
+        const dtSec = dt / 1000;
+        const segDist = calculateDistanceKm(prev.lat, prev.lng, pt.lat, pt.lng);
+        const effectiveSpeed = dtSec > 0 ? (segDist / (dtSec / 3600)) : 0;
+
+        // Movimento real: requer velocidade ou deslocamento físico compatível
+        const isRealMovement = (speed >= 3.0 || prevSpeed >= 3.0 || effectiveSpeed >= 3.0) && (segDist >= 0.015 || effectiveSpeed >= 2.0);
+
+        if (isRealMovement) {
+          dayDist += segDist;
+          sumSpeed += Math.max(speed, prevSpeed, effectiveSpeed);
+          movingCount++;
+
+          if (!firstStartTime) firstStartTime = timeStr;
+          lastStopTime = timeStr;
+
+          if (dt <= 180000) {
             movingTimeMs += dt;
-          } else if (isIgn && speed <= 2) {
+          } else {
+            const avgTravelSpeed = Math.max(speed, prevSpeed, effectiveSpeed, 20);
+            const estMoveMs = Math.min(dt, Math.max(10000, Math.round((segDist / avgTravelSpeed) * 3600 * 1000)));
+            movingTimeMs += estMoveMs;
+            const remainingDt = Math.max(0, dt - estMoveMs);
+            if (pt.ignition) {
+              idleTimeMs += remainingDt;
+            } else {
+              stoppedTimeMs += remainingDt;
+            }
+          }
+        } else {
+          // Veículo parado (filtra ruído GPS)
+          if (prev.ignition || pt.ignition) {
             idleTimeMs += dt;
+            if (!firstStartTime) firstStartTime = timeStr;
+            lastStopTime = timeStr;
           } else {
             stoppedTimeMs += dt;
           }
-        }
-        if (speed > 2 || isIgn) {
-          dayDist += calculateDistanceKm(prev.lat, prev.lng, pt.lat, pt.lng);
         }
       }
     }
 
     const [yyyy, mm, dd] = dateKey.split('-');
     const dateFormatted = `${dd}/${mm}/${yyyy}`;
+
+    const calculatedAvgSpeed = movingTimeMs > 0 ? (dayDist / (movingTimeMs / 3600000)) : 0;
+    const finalAvgSpeed = calculatedAvgSpeed > 0 ? Math.min(calculatedAvgSpeed, maxSpeed || 120) : (movingCount > 0 ? sumSpeed / movingCount : 0);
 
     result.push({
       dateStr: dateFormatted,
@@ -170,7 +191,7 @@ function getDailyBreakdown(points: RoutePoint[]): DayBreakdownSummary[] {
       firstStartTime: firstStartTime || '--:--',
       lastStopTime: lastStopTime || '--:--',
       maxSpeed: Number(maxSpeed.toFixed(1)),
-      avgSpeed: movingCount > 0 ? Number((sumSpeed / movingCount).toFixed(1)) : 0,
+      avgSpeed: Number(finalAvgSpeed.toFixed(1)),
       harshEvents,
       minBattery: minBat < 900 ? Number(minBat.toFixed(1)) : undefined,
       maxBattery: maxBat > -900 ? Number(maxBat.toFixed(1)) : undefined,
@@ -221,8 +242,10 @@ export default function HistoricoModule({
     if (!ms || isNaN(ms) || ms <= 0) return '0m';
     const hours = Math.floor(ms / (1000 * 60 * 60));
     const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((ms % (1000 * 60)) / 1000);
     if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
+    if (minutes > 0) return `${minutes}m`;
+    return `${seconds}s`;
   };
 
   const applyPreset = (preset: 'hoje' | 'ontem' | '7d' | '15d' | '30d') => {
@@ -297,6 +320,9 @@ export default function HistoricoModule({
       const routePoints = await fetchFlespiHistory(imei, fromTs, toTs, deepScanMode);
       
       if (routePoints && routePoints.length > 0) {
+        // Ordena cronologicamente os pontos
+        routePoints.sort((a, b) => parsePtTimestamp(a.timestamp) - parsePtTimestamp(b.timestamp));
+
         let dist = 0;
         let movingTimeMs = 0;
         let idleTimeMs = 0;
@@ -327,43 +353,70 @@ export default function HistoricoModule({
         let minAlt = 99999;
         let maxAlt = -99999;
 
+        // Ajuste de lacunas de borda do período consultado
+        const periodStartMs = fromTs * 1000;
+        const periodEndMs = Math.min(toTs * 1000, Date.now());
+        const firstPtTs = parsePtTimestamp(routePoints[0].timestamp);
+        const lastPtTs = parsePtTimestamp(routePoints[routePoints.length - 1].timestamp);
+
+        if (firstPtTs > periodStartMs) {
+          const leadGap = firstPtTs - periodStartMs;
+          if (routePoints[0].ignition) {
+            idleTimeMs += leadGap;
+          } else {
+            stoppedTimeMs += leadGap;
+          }
+        }
+
         for (let i = 1; i < routePoints.length; i++) {
-          const p1 = routePoints[i-1];
+          const p1 = routePoints[i - 1];
           const p2 = routePoints[i];
 
-          // Distância
-          const R = 6371; // km
-          const dLat = (p2.lat - p1.lat) * Math.PI / 180;
-          const dLon = (p2.lng - p1.lng) * Math.PI / 180;
-          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                    Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
-                    Math.sin(dLon/2) * Math.sin(dLon/2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-          const segDist = R * c;
-          dist += segDist;
-
-          // Tempo e Classificação
-          const t1 = parseInt(p1.timestamp || '0', 10);
-          const t2 = parseInt(p2.timestamp || '0', 10);
-          const diffMs = Math.abs(t2 - t1);
+          const t1 = parsePtTimestamp(p1.timestamp);
+          const t2 = parsePtTimestamp(p2.timestamp);
+          const diffMs = Math.max(0, t2 - t1);
           const diffSec = diffMs / 1000;
 
-          const isMovingSegment = (p1.speed || 0) > 2 || (p2.speed || 0) > 2 || segDist >= 0.02;
-          const isEngineOn = p1.ignition || p2.ignition;
+          // Distância do segmento
+          const segDist = calculateDistanceKm(p1.lat, p1.lng, p2.lat, p2.lng);
+          const s1 = Math.max(0, p1.speed || 0);
+          const s2 = Math.max(0, p2.speed || 0);
+          const effectiveSpeed = diffSec > 0 ? (segDist / (diffSec / 3600)) : 0; // km/h
 
-          if (diffMs > 0 && diffMs < 1000 * 60 * 60 * 12) {
-            if (isMovingSegment) {
-              movingTimeMs += Math.min(diffMs, 1000 * 60 * 30);
-              if (!firstStartTime && t1 > 0) {
-                const dateObj = new Date(t1);
-                firstStartTime = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')} ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+          // Movimento real: filtra oscilação de GPS parado (drift)
+          const isRealMovement = (s1 >= 3.0 || s2 >= 3.0 || effectiveSpeed >= 3.0) && (segDist >= 0.015 || effectiveSpeed >= 2.0);
+
+          if (isRealMovement) {
+            dist += segDist;
+
+            // Duração do deslocamento
+            if (diffMs <= 180000) { // Até 3 minutos entre pacotes em trânsito contínuo
+              movingTimeMs += diffMs;
+            } else {
+              // Lacuna longa entre pacotes (ex: veículo parado por horas entre viagens)
+              const avgTravelSpeed = Math.max(s1, s2, effectiveSpeed, 20);
+              const estTravelMs = Math.min(diffMs, Math.max(10000, Math.round((segDist / avgTravelSpeed) * 3600 * 1000)));
+              movingTimeMs += estTravelMs;
+              const remainingGapMs = Math.max(0, diffMs - estTravelMs);
+              if (p2.ignition) {
+                idleTimeMs += remainingGapMs;
+              } else {
+                stoppedTimeMs += remainingGapMs;
               }
-              if (t2 > 0) {
-                const dateObj = new Date(t2);
-                lastStopTime = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')} ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
-              }
-            } else if (isEngineOn) {
-              idleTimeMs += Math.min(diffMs, 1000 * 60 * 60);
+            }
+
+            if (!firstStartTime && t1 > 0) {
+              const dateObj = new Date(t1);
+              firstStartTime = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')} ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+            }
+            if (t2 > 0) {
+              const dateObj = new Date(t2);
+              lastStopTime = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')} ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+            }
+          } else {
+            // Veículo estacionado / parado
+            if (p1.ignition || p2.ignition) {
+              idleTimeMs += diffMs;
               if (diffSec >= 15 && diffSec <= 300) {
                 microStopsCount++;
               }
@@ -375,10 +428,10 @@ export default function HistoricoModule({
             }
           }
 
-          const currentSpeed = p2.speed || 0;
-          const prevSpeed = p1.speed || 0;
-          if (currentSpeed > maxSpeed) maxSpeed = currentSpeed;
-          if (currentSpeed > 0) {
+          const currentSpeed = s2;
+          const prevSpeed = s1;
+          if (currentSpeed > maxSpeed && currentSpeed < 220) maxSpeed = currentSpeed;
+          if (isRealMovement && currentSpeed > 0) {
             speedSum += currentSpeed;
             speedCount++;
           }
@@ -389,9 +442,9 @@ export default function HistoricoModule({
             headingDiff = Math.abs(p2.direction - p1.direction);
             if (headingDiff > 180) headingDiff = 360 - headingDiff;
           }
-          const minTurnAngle = deepScanMode ? 25 : 45;
-          const minTurnSpeed = deepScanMode ? 18 : 25;
-          const isSharpTurnDetected = p2.harshCornering || (currentSpeed >= minTurnSpeed && headingDiff >= minTurnAngle && diffSec <= 4);
+          const minTurnAngle = deepScanMode ? 25 : 40;
+          const minTurnSpeed = deepScanMode ? 18 : 22;
+          const isSharpTurnDetected = p2.harshCornering || (currentSpeed >= minTurnSpeed && headingDiff >= minTurnAngle && diffSec >= 0.5 && diffSec <= 4);
           if (isSharpTurnDetected && (t2 - lastSharpTurnTs > 8000)) {
             sharpTurnsCount++;
             lastSharpTurnTs = t2;
@@ -399,10 +452,10 @@ export default function HistoricoModule({
 
           // 2. Acelerações Bruscas (Hardware Tracker ou Aumento Súbito de Velocidade)
           const speedGain = currentSpeed - prevSpeed;
-          const accelRate = diffSec > 0 ? speedGain / diffSec : 0;
+          const accelRate = diffSec >= 0.5 ? speedGain / diffSec : 0;
           const minAccelGain = deepScanMode ? 14 : 18;
           const minAccelRate = deepScanMode ? 5 : 6.5;
-          const isHarshAccelDetected = p2.harshAcceleration || (speedGain >= minAccelGain && (accelRate >= minAccelRate || diffSec <= 3.5) && prevSpeed >= 4);
+          const isHarshAccelDetected = p2.harshAcceleration || (speedGain >= minAccelGain && (accelRate >= minAccelRate || (diffSec <= 3.5 && diffSec >= 0.5)) && prevSpeed >= 4);
           if (isHarshAccelDetected && (t2 - lastHarshAccelTs > 10000)) {
             harshAccelCount++;
             lastHarshAccelTs = t2;
@@ -410,27 +463,29 @@ export default function HistoricoModule({
 
           // 3. Frenagem Brusca (Hardware Tracker ou Queda Súbita)
           const speedDrop = prevSpeed - currentSpeed;
-          const decelRate = diffSec > 0 ? speedDrop / diffSec : 0;
+          const decelRate = diffSec >= 0.5 ? speedDrop / diffSec : 0;
           const minDrop = deepScanMode ? 15 : 20;
           const minDecelRate = deepScanMode ? 7.5 : 9;
-          const isHarshBrakeDetected = p2.harshBraking || (prevSpeed >= 28 && speedDrop >= minDrop && (decelRate >= minDecelRate || (speedDrop >= 18 && diffSec <= 3.5)));
+          const isHarshBrakeDetected = p2.harshBraking || (prevSpeed >= 25 && speedDrop >= minDrop && (decelRate >= minDecelRate || (speedDrop >= 18 && diffSec <= 3.5 && diffSec >= 0.5)));
           if (isHarshBrakeDetected && (t2 - lastHarshBrakeTs > 10000)) {
             harshBrakingCount++;
             lastHarshBrakeTs = t2;
           }
 
-          // 4. Excesso de velocidade (> 85 km/h)
-          if (currentSpeed > 85 && (t2 - lastOverspeedTs > 30000)) {
+          // 4. Excesso de velocidade (> limite do veículo ou > 85 km/h)
+          const configuredSpeedLimit = vehicle.settings?.speedLimit || 85;
+          if (currentSpeed > configuredSpeedLimit && (t2 - lastOverspeedTs > 30000)) {
             overspeedCount++;
             lastOverspeedTs = t2;
           }
         }
-        
-        // Ajuste de tempo de movimento se necessário
-        if (dist > 1 && movingTimeMs < (dist / 100) * 3600000) {
-          const estimatedMovingMs = Math.round((dist / (maxSpeed > 30 ? (maxSpeed * 0.55) : 40)) * 3600000);
-          if (estimatedMovingMs > movingTimeMs) {
-            movingTimeMs = estimatedMovingMs;
+
+        if (lastPtTs < periodEndMs) {
+          const tailGap = periodEndMs - lastPtTs;
+          if (routePoints[routePoints.length - 1].ignition) {
+            idleTimeMs += tailGap;
+          } else {
+            stoppedTimeMs += tailGap;
           }
         }
 
@@ -446,7 +501,7 @@ export default function HistoricoModule({
           
           // Bateria
           const volt = pt.batteryVoltage;
-          if (typeof volt === 'number' && volt > 0) {
+          if (typeof volt === 'number' && volt >= 8 && volt <= 32) {
             if (volt < minBatVolt) minBatVolt = volt;
             if (volt > maxBatVolt) maxBatVolt = volt;
             batVoltSum += volt;
@@ -454,7 +509,7 @@ export default function HistoricoModule({
           }
 
           // Satélites
-          if (typeof pt.satellites === 'number' && pt.satellites > 0) {
+          if (typeof pt.satellites === 'number' && pt.satellites > 0 && pt.satellites <= 40) {
             satSum += pt.satellites;
             satCount++;
             if (pt.satellites < minSat) minSat = pt.satellites;
@@ -465,15 +520,15 @@ export default function HistoricoModule({
           }
 
           // Altitude
-          if (typeof pt.altitude === 'number' && pt.altitude !== 0) {
+          if (typeof pt.altitude === 'number' && pt.altitude > -500 && pt.altitude < 9000) {
             if (pt.altitude < minAlt) minAlt = pt.altitude;
             if (pt.altitude > maxAlt) maxAlt = pt.altitude;
           }
           
           if (i > 0) {
             const pPrev = routePoints[i - 1];
-            const t1 = parseInt(pPrev.timestamp || '0', 10);
-            const t2 = parseInt(pt.timestamp || '0', 10);
+            const t1 = parsePtTimestamp(pPrev.timestamp);
+            const t2 = parsePtTimestamp(pt.timestamp);
             const dMs = Math.abs(t2 - t1);
             
             if (pPrev.ignition && (pPrev.speed || 0) <= 2 && (pPrev.batteryVoltage ? pPrev.batteryVoltage < 12.6 : true)) {
@@ -503,11 +558,11 @@ export default function HistoricoModule({
 
         const batteryDrainAlert = batteryDrainMinutes >= 5 || (finalMinVolt !== undefined && finalMinVolt < 11.8);
         const calculatedAvg = movingTimeMs > 0 ? (dist / (movingTimeMs / 3600000)) : 0;
-        const avgSpeed = calculatedAvg > 0 ? calculatedAvg : (speedCount > 0 ? speedSum / speedCount : 0);
+        const avgSpeed = calculatedAvg > 0 ? Math.min(calculatedAvg, maxSpeed || 120) : (speedCount > 0 ? speedSum / speedCount : 0);
 
-        // Estimativa de Combustível Gasto (km rodados / 9.5km/l + 1.2L/h de ocioso)
+        // Estimativa de Combustível Gasto (km rodados / 10.5km/l + 0.9L/h de ocioso)
         const idleHours = idleTimeMs / 3600000;
-        const estimatedFuelLiters = Number(((dist / 9.5) + (idleHours * 1.2)).toFixed(1));
+        const estimatedFuelLiters = Number(((dist / 10.5) + (idleHours * 0.9)).toFixed(1));
 
         const avgSatellites = satCount > 0 ? Math.round(satSum / satCount) : 12;
         const minSatellites = minSat < 999 ? minSat : 8;
@@ -559,7 +614,7 @@ export default function HistoricoModule({
         try {
           const { id, ...routeWithoutId } = savedRoute;
           const cleanedPayload = cleanFirestoreData(routeWithoutId);
-          await addDoc(collection(db, 'trajetos'), cleanedPayload);
+          await safeAddDoc(collection(db, 'trajetos'), cleanedPayload);
         } catch (err) {
           console.error("Erro ao salvar trajeto automaticamente:", err);
         }

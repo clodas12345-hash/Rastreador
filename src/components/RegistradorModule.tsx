@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Mic, MicOff, Volume2, VolumeX, Disc, Play, Pause, Download, Plus, Trash2, Search, Filter, FileText, Calendar, CheckCircle2, ShieldCheck, Car, PhoneCall, Phone, PhoneOff, RefreshCw, AlertCircle, Clock, Save, FileSpreadsheet, ArrowLeft } from 'lucide-react';
 import { Vehicle } from '../types';
 import { playDtmfTone, playRingbackTone, startRingbackLoop, stopRingbackLoop, playAmbientNoise, unlockAudio } from '../lib/audioService';
-import { collection, onSnapshot, setDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { safeSetDoc, safeDeleteDoc } from '../utils/firestoreWrapper';
 import { db, cleanFirestoreData } from '../lib/firebase';
 
 export interface AudioRecordEntry {
@@ -142,7 +143,7 @@ export default function RegistradorModule({ vehicles = [], onOpenListenModal, sh
       operatorName: 'Discador In-App'
     };
 
-    setDoc(doc(db, 'registrador_records', newEntry.id), cleanFirestoreData(newEntry)).catch(err => {
+    safeSetDoc(doc(db, 'registrador_records', newEntry.id), cleanFirestoreData(newEntry)).catch(err => {
       console.error('Error saving record to cloud:', err);
     });
 
@@ -204,7 +205,7 @@ export default function RegistradorModule({ vehicles = [], onOpenListenModal, sh
           }
         ];
         defaultRecords.forEach(r => {
-          setDoc(doc(db, 'registrador_records', r.id), cleanFirestoreData(r)).catch(err => {});
+          safeSetDoc(doc(db, 'registrador_records', r.id), cleanFirestoreData(r)).catch(err => {});
         });
       }
     }, (error) => {
@@ -242,7 +243,7 @@ export default function RegistradorModule({ vehicles = [], onOpenListenModal, sh
       operatorName: 'Gestor da Frota'
     };
 
-    setDoc(doc(db, 'registrador_records', newEntry.id), cleanFirestoreData(newEntry)).catch(err => {});
+    safeSetDoc(doc(db, 'registrador_records', newEntry.id), cleanFirestoreData(newEntry)).catch(err => {});
 
     setRecords(prev => [newEntry, ...prev]);
     setNewNoteText('');
@@ -251,7 +252,7 @@ export default function RegistradorModule({ vehicles = [], onOpenListenModal, sh
   };
 
   const handleDeleteRecord = (id: string) => {
-    deleteDoc(doc(db, 'registrador_records', id)).catch(err => {});
+    safeDeleteDoc(doc(db, 'registrador_records', id)).catch(err => {});
     setRecords(prev => prev.filter(r => r.id !== id));
     if (showToast) showToast('🗑️ Registro removido da nuvem.');
   };

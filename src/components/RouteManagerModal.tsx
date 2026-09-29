@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { safeAddDoc, safeDeleteDoc } from '../utils/firestoreWrapper';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
 import { SavedRoute, Vehicle, RoutePoint } from '../types';
 import { Route, Play, Pause, Trash2, Eye, Plus, X, Save, Navigation, Clock, Check, RefreshCw } from 'lucide-react';
@@ -141,7 +142,7 @@ export default function RouteManagerModal({
       };
 
       const cleanedRoute = cleanFirestoreData(newRoute);
-      await addDoc(collection(db, 'trajetos'), cleanedRoute);
+      await safeAddDoc(collection(db, 'trajetos'), cleanedRoute);
       setSuccessMsg('Trajeto salvo com sucesso no Firestore!');
       setRouteName('');
       setRouteNotes('');
@@ -168,7 +169,7 @@ export default function RouteManagerModal({
       return;
     }
     try {
-      await deleteDoc(doc(db, 'trajetos', id));
+      await safeDeleteDoc(doc(db, 'trajetos', id));
       if (activeRoute?.id === id) {
         onSelectRouteForMap(null);
       }

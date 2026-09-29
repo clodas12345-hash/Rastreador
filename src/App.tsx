@@ -4,7 +4,7 @@
  */
 import {useState, useEffect, useRef} from 'react';
 import {APIProvider} from '@vis.gl/react-google-maps';
-import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target} from 'lucide-react';
+import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, X} from 'lucide-react';
 import {Vehicle, VehicleSettings, SavedRoute, RoutePoint, AppNotification, Geofence} from './types';
 import FleetTracker from './components/FleetTracker';
 import Dashboard from './components/Dashboard';
@@ -19,7 +19,8 @@ import RegistradorModule from './components/RegistradorModule';
 import RouteManagerModal from './components/RouteManagerModal';
 
 
-import {collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, setDoc} from 'firebase/firestore';
+import {collection, onSnapshot, doc} from 'firebase/firestore';
+import {safeUpdateDoc, safeAddDoc, safeDeleteDoc, safeSetDoc} from './utils/firestoreWrapper';
 import {db, handleFirestoreError, OperationType, cleanFirestoreData} from './lib/firebase';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed } from './lib/geocoding';
 
@@ -120,13 +121,35 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
 
   // 3. Robust Status & Glitch/Debounce Protection
   const nowSec = Date.now() / 1000;
-  const isOnline = (nowSec - timestamp) < 900; // 15 min connection threshold
+  // If ignition is OFF, we allow 24 hours before calling it "Offline" (No Signal)
+  // because trackers often go to deep sleep and stop pinging every few minutes.
+  const offlineThreshold = explicitIgnition === false ? 86400 : 3600; // 24 hours if OFF, 1 hour if ON
+  const isOnline = (nowSec - timestamp) < offlineThreshold;
+
+  // Detect Power Cut from alarm codes or external battery drop
+  let powerCut = false;
+  for (const m of sorted) {
+    const alm = String(m['alarm.code'] || m['event.code'] || m['event.enum'] || '').toLowerCase();
+    if (
+      alm.includes('power_cut') || alm.includes('power.cut') || alm.includes('cut_power') || alm.includes('powercut') ||
+      m['external.powersource.status'] === false
+    ) {
+      powerCut = true;
+      break;
+    }
+  }
+  if (externalVoltage !== undefined && externalVoltage < 5) {
+    powerCut = true;
+  }
 
   let status: Vehicle['status'] = previousVehicle?.status || 'IgnitionOff';
 
   if (previousVehicle?.settings?.isBlocked) {
     status = 'Stopped';
+  } else if (powerCut) {
+    status = 'NoBattery';
   } else if (!isOnline) {
+    // Only show Offline if it's truly beyond the grace period
     status = 'Offline';
   } else if (speed > 2) {
     // If vehicle is moving (> 2 km/h), vehicle is in motion and engine is ON
@@ -148,9 +171,6 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
     }
   }
 
-  if (externalVoltage !== undefined && externalVoltage < 5) {
-    status = 'NoBattery';
-  }
   const ignition = (status === 'Moving' || status === 'IgnitionOn');
 
   return {
@@ -164,7 +184,9 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
     ignition,
     timestamp,
     batteryLevel,
-    externalVoltage
+    externalVoltage,
+    powerCut,
+    lastTelemetryTime: timestamp
   };
 }
 
@@ -453,6 +475,29 @@ const getPreciseAddress = (lat: number, lng: number) => {
   return `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
 };
 
+const sendFlespiCommand = async (imei: string, commandPayload: string) => {
+  if (!imei || !FLESPI_TOKEN) return;
+  try {
+    const devRes = await fetch(`https://flespi.io/gw/devices/all`, {
+      headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+    });
+    const devData = await devRes.json();
+    if (devData && devData.result) {
+      const device = devData.result.find((d: any) => String(d.configuration?.ident) === String(imei));
+      if (device) {
+        await fetch(`https://flespi.io/gw/devices/${device.id}/commands`, {
+          method: 'POST',
+          headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify([{name: "custom", properties: { payload: commandPayload }}])
+        });
+        console.log(`[Flespi] Comando "${commandPayload}" enviado ao dispositivo ${device.id}`);
+      }
+    }
+  } catch (err) {
+    console.error('[Flespi] Erro ao enviar comando:', err);
+  }
+};
+
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const showToast = (msg: string) => {
@@ -604,7 +649,7 @@ export default function App() {
           insideGeofences: vehicleToSave.insideGeofences || [],
           settings: vehicleToSave.settings || {}
         });
-        const docRef = await addDoc(collection(db, 'cars'), newVehiclePayload);
+        const docRef = await safeAddDoc(collection(db, 'cars'), newVehiclePayload);
         console.log('Added successfully with ID:', docRef.id);
         const saved = { ...vehicleToSave, id: docRef.id };
         setVehicles(prev => prev.map(v => v.id === 'new' ? saved : v));
@@ -628,7 +673,7 @@ export default function App() {
           insideGeofences: vehicleToSave.insideGeofences || [],
           settings: vehicleToSave.settings || {}
         });
-        await updateDoc(vehicleRef, updateData);
+        await safeUpdateDoc(vehicleRef, updateData);
         console.log('Updated successfully in Firestore');
       }
     } catch (error) {
@@ -643,7 +688,7 @@ export default function App() {
         console.error('No vehicle ID provided for deletion');
         return;
       }
-      await deleteDoc(doc(db, 'cars', vehicleId));
+      await safeDeleteDoc(doc(db, 'cars', vehicleId));
       console.log('Vehicle deleted successfully');
       setEditingVehicle(null);
     } catch (error) {
@@ -689,7 +734,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [searchTerm, setSearchTerm] = useState('');
   const [activeEntityTab, setActiveEntityTab] = useState<'pessoas' | 'carros'>('pessoas');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-  const [modalMode, setModalMode] = useState<'details' | 'position' | 'settings' | 'data' | null>(null);
+  const [modalMode, setModalMode] = useState<'details' | 'position' | 'settings' | 'data' | 'emergency' | null>(null);
   const [photoViewerUrl, setPhotoViewerUrl] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isCommunicating, setIsCommunicating] = useState(false);
@@ -721,6 +766,311 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   } | null>(null);
   const [selectedVehicleForMessage, setSelectedVehicleForMessage] = useState<Vehicle | null>(null);
   const [showMessageModal, setShowMessageModal] = useState<boolean>(false);
+  const [actionConfirm, setActionConfirm] = useState<{
+    isOpen: boolean;
+    actionId: string;
+    title: string;
+    badge: string;
+    badgeColor: string;
+    icon: string;
+    description: string;
+    howItWorks: string;
+    warningNote?: string;
+    confirmLabel: string;
+    confirmColor: string;
+    onConfirm: () => void;
+    vehicle: Vehicle;
+  } | null>(null);
+
+  const executeAction = (actionId: string, vehicle: Vehicle) => {
+    const identifier = vehicle.name || vehicle.licensePlate || 'Veículo';
+    const pwd = vehicle.settings?.smsPassword || '123456';
+    const phoneVal = vehicle.phoneNumber || vehicle.trackerNumber || '';
+
+    if (actionId === 'block_now') {
+      const updated = {
+        ...vehicle,
+        status: 'Stopped' as const,
+        speed: 0,
+        settings: {
+          ...vehicle.settings,
+          isBlocked: true,
+          pendingBlock: false
+        }
+      };
+      setEditingVehicle(updated);
+      handleUpdateVehicle(updated);
+      sendFlespiCommand(vehicle.trackerNumber, `stop${pwd}`);
+      addNotification({
+        title: '🚨 Bloqueio Imediato Executado',
+        message: `Comando de corte de combustível ativado com sucesso para ${identifier}.`,
+        type: 'command',
+        severity: 'critical',
+        vehicleName: identifier
+      });
+      showToast(`🚨 Bloqueio Imediato executado para (${identifier})!`);
+      setDualDispatchData({
+        isOpen: true,
+        commandName: 'Bloqueio Imediato (Corte)',
+        smsCommand: `stop${pwd}`,
+        phoneNumber: phoneVal,
+        vehicleName: identifier
+      });
+    } else if (actionId === 'safe_block') {
+      const isMovingOrOn = (vehicle.status === 'Moving' || vehicle.status === 'IgnitionOn' || (vehicle.speed || 0) > 2);
+      if (isMovingOrOn) {
+        const updated = {
+          ...vehicle,
+          settings: {
+            ...vehicle.settings,
+            pendingBlock: true
+          }
+        };
+        setEditingVehicle(updated);
+        handleUpdateVehicle(updated);
+        addNotification({
+          title: '🛡️ Bloqueio Seguro Programado',
+          message: `O veículo ${identifier} está em movimento ou com a ignição ligada. O corte será acionado automaticamente assim que o motor for desligado ou o veículo parar.`,
+          type: 'command',
+          severity: 'warning',
+          vehicleId: vehicle.id,
+          vehicleName: identifier
+        });
+        showToast(`🛡️ Bloqueio Seguro agendado para (${identifier})!`);
+      } else {
+        const updated = {
+          ...vehicle,
+          status: 'Stopped' as const,
+          speed: 0,
+          settings: {
+            ...vehicle.settings,
+            isBlocked: true,
+            pendingBlock: false
+          }
+        };
+        setEditingVehicle(updated);
+        handleUpdateVehicle(updated);
+        sendFlespiCommand(vehicle.trackerNumber, `stop${pwd}`);
+        addNotification({
+          title: '🔒 Bloqueio Efetuado',
+          message: `O veículo ${identifier} já está desligado. Corte de combustível aplicado imediatamente.`,
+          type: 'command',
+          severity: 'critical',
+          vehicleId: vehicle.id,
+          vehicleName: identifier
+        });
+        showToast(`🔒 Veículo ${identifier} bloqueado com sucesso!`);
+      }
+    } else if (actionId === 'unblock') {
+      const updated = {
+        ...vehicle,
+        status: 'IgnitionOff' as const,
+        commandQueue: [],
+        settings: {
+          ...vehicle.settings,
+          isBlocked: false,
+          pendingBlock: false
+        }
+      };
+      setEditingVehicle(updated);
+      handleUpdateVehicle(updated);
+      sendFlespiCommand(vehicle.trackerNumber, `resume${pwd}`);
+      addNotification({
+        title: '🔓 Desbloqueio Executado',
+        message: `Desbloqueio remoto enviado para ${identifier}. Combustível e motor liberados para partida.`,
+        type: 'command',
+        severity: 'info',
+        vehicleName: identifier
+      });
+      showToast(`🔓 Desbloqueio executado para (${identifier})!`);
+      setDualDispatchData({
+        isOpen: true,
+        commandName: 'Desbloquear Aparelho',
+        smsCommand: `resume${pwd}`,
+        phoneNumber: phoneVal,
+        vehicleName: identifier
+      });
+    } else if (actionId === 'alarm') {
+      const isOfflineOrOff = vehicle.status === 'NoBattery' || vehicle.status === 'Offline';
+      if (isOfflineOrOff) {
+        const newQueue = [...(vehicle.commandQueue || []), { id: Date.now().toString(), name: 'Tocar Alarme', timestamp: new Date().toLocaleTimeString() }];
+        const updated = { ...vehicle, commandQueue: newQueue };
+        setEditingVehicle(updated);
+        handleUpdateVehicle(updated);
+        showToast(`⏳ Alarme adicionado à Fila de Espera (${identifier}).`);
+      } else {
+        sendFlespiCommand(vehicle.trackerNumber, `sound${pwd}`);
+        addNotification({
+          title: '🔊 Alarme Sonoro Disparado',
+          message: `Sirene/buzina remota acionada em ${identifier}.`,
+          type: 'command',
+          severity: 'warning',
+          vehicleName: identifier
+        });
+        showToast(`🔊 Comando de alarme disparado para (${identifier})!`);
+      }
+      setDualDispatchData({
+        isOpen: true,
+        commandName: 'Tocar Alarme',
+        smsCommand: `sound${pwd}`,
+        phoneNumber: phoneVal,
+        vehicleName: identifier
+      });
+    } else if (actionId === 'reboot') {
+      sendFlespiCommand(vehicle.trackerNumber, `reset${pwd}`);
+      addNotification({
+        title: '🔄 Reiniciando Rastreador',
+        message: `Comando de reinicialização de sistema/4G enviado para ${identifier}.`,
+        type: 'command',
+        severity: 'info',
+        vehicleName: identifier
+      });
+      showToast(`🔄 Comando de reinicialização enviado para (${identifier})!`);
+      setDualDispatchData({
+        isOpen: true,
+        commandName: 'Reiniciar Sistema',
+        smsCommand: `reset${pwd}`,
+        phoneNumber: phoneVal,
+        vehicleName: identifier
+      });
+    } else if (actionId === 'shutdown') {
+      sendFlespiCommand(vehicle.trackerNumber, `sleep${pwd}`);
+      const updated = { ...vehicle, status: 'IgnitionOff' as const };
+      setEditingVehicle(updated);
+      handleUpdateVehicle(updated);
+      addNotification({
+        title: '🔌 Rastreador em Modo Repouso',
+        message: `Aparelho ${identifier} colocado em modo de espera/repouso.`,
+        type: 'command',
+        severity: 'info',
+        vehicleName: identifier
+      });
+      showToast(`🔌 Rastreador em modo repouso (${identifier})!`);
+      setDualDispatchData({
+        isOpen: true,
+        commandName: 'Suspender Rastreador',
+        smsCommand: `sleep${pwd}`,
+        phoneNumber: phoneVal,
+        vehicleName: identifier
+      });
+    }
+  };
+
+  const openActionConfirm = (actionId: string, vehicle: Vehicle) => {
+    const identifier = vehicle.name || vehicle.licensePlate || 'Veículo';
+    const speed = vehicle.speed || 0;
+    const isMoving = vehicle.status === 'Moving' || speed > 2;
+
+    switch (actionId) {
+      case 'block_now':
+        setActionConfirm({
+          isOpen: true,
+          actionId,
+          title: 'Bloqueio Imediato (Corte de Combustível)',
+          badge: 'EMERGÊNCIA / ROUBO',
+          badgeColor: 'bg-red-100 text-red-800 border-red-300',
+          icon: '🔒',
+          description: 'Corta instantaneamente o fornecimento de combustível ou ignição através do relé elétrico do rastreador.',
+          howItWorks: 'O motor morrerá de imediato assim que o rastreador receber o sinal. O veículo não poderá dar partida até que você execute o comando de desbloqueio.',
+          warningNote: isMoving
+            ? `⚠️ ATENÇÃO: O veículo está em movimento (${speed} km/h)! Cortar o combustível agora fará o motor apagar em trânsito. Se o veículo estiver em alta velocidade em via expressa, considere usar o 'Bloqueio Seguro' para aguardar a parada.`
+            : '✅ O veículo está parado / desligado. O bloqueio pode ser aplicado com total segurança.',
+          confirmLabel: 'Confirmar Corte de Combustível Agora',
+          confirmColor: 'bg-red-600 hover:bg-red-700 text-white',
+          onConfirm: () => executeAction('block_now', vehicle),
+          vehicle
+        });
+        break;
+
+      case 'safe_block':
+        setActionConfirm({
+          isOpen: true,
+          actionId,
+          title: 'Bloqueio Seguro Anti-Acidente',
+          badge: 'RECOMENDADO NA HORA DO PÂNICO',
+          badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
+          icon: '🛡️',
+          description: 'Agenda o corte de combustível para o momento em que a ignição for desligada ou o carro parar.',
+          howItWorks: 'O sistema monitora o veículo continuamente. Assim que o motor for desligado pelo condutor ou o veículo parar em segurança, o bloqueio do relé é ativado definitivamente, impedindo nova partida.',
+          warningNote: '🛡️ Esta opção protege vidas contra colisões em alta velocidade e garante que o carro trave assim que for abandonado ou desligado.',
+          confirmLabel: 'Confirmar Bloqueio Seguro',
+          confirmColor: 'bg-amber-600 hover:bg-amber-700 text-white',
+          onConfirm: () => executeAction('safe_block', vehicle),
+          vehicle
+        });
+        break;
+
+      case 'unblock':
+        setActionConfirm({
+          isOpen: true,
+          actionId,
+          title: 'Desbloquear Motor do Veículo',
+          badge: 'LIBERAÇÃO DE PARTIDA',
+          badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+          icon: '🔓',
+          description: 'Restaura a passagem de combustível e desativa o relé de bloqueio.',
+          howItWorks: 'Envia o comando de religamento para o rastreador. A bomba de combustível e a ignição voltam ao normal para que a chave dê partida no motor.',
+          warningNote: 'Certifique-se de que o veículo já está em posse segura e com chave autorizada antes de desbloquear.',
+          confirmLabel: 'Confirmar Desbloqueio do Motor',
+          confirmColor: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+          onConfirm: () => executeAction('unblock', vehicle),
+          vehicle
+        });
+        break;
+
+      case 'alarm':
+        setActionConfirm({
+          isOpen: true,
+          actionId,
+          title: 'Disparar Alarme Sonoro / Sirene',
+          badge: 'LOCALIZAÇÃO & DISSUASÃO',
+          badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
+          icon: '🔊',
+          description: 'Aciona a sirene ou buzina conectada ao rastreador do veículo.',
+          howItWorks: 'O aparelho emitirá alerta sonoro contínuo para ajudar a localizar o automóvel em pátios ou afugentar suspeitos.',
+          confirmLabel: 'Disparar Alarme Agora',
+          confirmColor: 'bg-blue-600 hover:bg-blue-700 text-white',
+          onConfirm: () => executeAction('alarm', vehicle),
+          vehicle
+        });
+        break;
+
+      case 'reboot':
+        setActionConfirm({
+          isOpen: true,
+          actionId,
+          title: 'Reiniciar Rastreador (Reboot do Aparelho)',
+          badge: 'MANUTENÇÃO DE SINAL',
+          badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+          icon: '🔄',
+          description: 'Reinicia o hardware do rastreador e o modem de chip celular 4G/GPRS.',
+          howItWorks: 'Reinicializa a busca de satélites GPS e restabelece a conexão de internet com a operadora celular. Nenhuma configuração salva é perdida.',
+          warningNote: 'O aparelho pode demorar cerca de 30 a 60 segundos para restabelecer a conexão.',
+          confirmLabel: 'Confirmar Reinicialização',
+          confirmColor: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+          onConfirm: () => executeAction('reboot', vehicle),
+          vehicle
+        });
+        break;
+
+      case 'shutdown':
+        setActionConfirm({
+          isOpen: true,
+          actionId,
+          title: 'Suspender / Standby do Rastreador',
+          badge: 'ECONOMIA DE BATERIA',
+          badgeColor: 'bg-slate-100 text-slate-800 border-slate-300',
+          icon: '🔌',
+          description: 'Coloca o rastreador em modo de repouso ou suspende a atualização contínua.',
+          howItWorks: 'Economiza a bateria interna e a bateria do veículo. Pode ser despertado ao ligar o veículo ou enviar novo comando.',
+          confirmLabel: 'Confirmar Modo Standby',
+          confirmColor: 'bg-slate-700 hover:bg-slate-800 text-white',
+          onConfirm: () => executeAction('shutdown', vehicle),
+          vehicle
+        });
+        break;
+    }
+  };
   const vehiclesRef = useRef(vehicles);
 
   // Auto-select first vehicle on startup so map focuses immediately (disabled to show all cars on screen on startup)
@@ -867,7 +1217,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     }
 
     // Save to Firestore cloud
-    setDoc(doc(db, 'notifications', newNotif.id), cleanFirestoreData(newNotif)).catch(err => {
+    safeSetDoc(doc(db, 'notifications', newNotif.id), cleanFirestoreData(newNotif)).catch(err => {
       console.warn('Error saving notification to cloud:', err);
     });
 
@@ -884,7 +1234,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const markAllNotificationsAsRead = () => {
     notifications.forEach(n => {
       if (!n.read) {
-        setDoc(doc(db, 'notifications', n.id), { ...n, read: true }, { merge: true }).catch(err => {});
+        safeSetDoc(doc(db, 'notifications', n.id), { ...n, read: true }, { merge: true }).catch(err => {});
       }
     });
 
@@ -897,7 +1247,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
   const handleDeleteNotification = async (notifId: string) => {
     try {
-      await deleteDoc(doc(db, 'notifications', notifId));
+      await safeDeleteDoc(doc(db, 'notifications', notifId));
     } catch (e) {
       console.warn('Error deleting notification from firestore:', e);
     }
@@ -915,7 +1265,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
   const clearNotifications = () => {
     notifications.forEach(n => {
-      deleteDoc(doc(db, 'notifications', n.id)).catch(err => {});
+      safeDeleteDoc(doc(db, 'notifications', n.id)).catch(err => {});
     });
     setNotifications([]);
     try {
@@ -1091,7 +1441,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   useEffect(() => {
     const fetchRealTimeFlespi = async () => {
       try {
-        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage`, {
+        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ignition.status,io.ignition,din.1,acc,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code`, {
           headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
         });
         const data = await response.json();
@@ -1124,23 +1474,73 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             const realLng = t['position.longitude']?.value ?? v.lng;
             const realSpeed = Math.round(Number(t['position.speed']?.value || 0));
             
-            const explicitIgnition = t['engine.ignition.status']?.value;
+            const explicitIgnition = t['engine.ignition.status']?.value ?? t['ignition.status']?.value ?? t['io.ignition']?.value ?? t['din.1']?.value ?? t['acc']?.value;
             const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (realSpeed > 2 || v.status === 'IgnitionOn' || v.status === 'Moving');
+            
+            // --- BLOQUEIO SEGURO (SAFE BLOCK) LOGIC ---
+            // Se houver um bloqueio pendente e a ignição acabou de ser desligada
+            if (v.settings?.pendingBlock && !ignition) {
+              console.log(`[Safe Block] Ignition turned OFF for ${v.name}. Executing pending block command...`);
+              
+              // Envia o comando via Flespi
+              sendFlespiCommand(v.trackerNumber, `stop${v.settings?.smsPassword || '123456'}`);
+              
+              // Notificação de execução bem sucedida
+              addNotification({
+                title: '🔒 Bloqueio Seguro Executado',
+                message: `O veículo ${v.name} desligou a ignição e o bloqueio automático foi ativado com sucesso.`,
+                type: 'command',
+                severity: 'critical',
+                vehicleId: v.id,
+                vehicleName: v.name,
+                lat: realLat,
+                lng: realLng
+              });
+
+              // Atualiza localmente e sincroniza com Firestore
+              const updatedSettings = {
+                ...v.settings,
+                pendingBlock: false,
+                isBlocked: true
+              };
+              const finalV = { ...v, settings: updatedSettings, status: 'Stopped' as const };
+              handleUpdateVehicle(finalV);
+              
+              anyChanged = true;
+              return finalV;
+            }
+
+            // Power cut detection (12V disconnected / cable cut)
+            const extVoltVal = t['external.powersource.voltage']?.value ?? t['power.voltage']?.value;
+            const extStatusVal = t['external.powersource.status']?.value;
+            const alarmStr = String(t['alarm.code']?.value || t['event.code']?.value || '').toLowerCase();
+            const isPowerCut = (extVoltVal !== undefined && extVoltVal < 5) ||
+                               (extStatusVal === false) ||
+                               alarmStr.includes('power_cut') ||
+                               alarmStr.includes('power.cut') ||
+                               alarmStr.includes('cut_power') ||
+                               alarmStr.includes('powercut');
             
             // Find latest timestamp among parameters to check if online
             const timestamps = [
               t['position.latitude']?.ts,
               t['server.timestamp']?.ts,
               t['timestamp']?.ts,
-              t['ident']?.ts
+              t['ident']?.ts,
+              t['engine.ignition.status']?.ts,
+              t['ignition.status']?.ts,
+              t['external.powersource.voltage']?.ts
             ].filter(Boolean) as number[];
             const latestTs = timestamps.length > 0 ? Math.max(...timestamps) : (Date.now() / 1000);
             
-            const isOnline = ((Date.now() / 1000) - latestTs) < 900; // 15 min threshold
+            // If ignition is OFF, tracker sleeps and pings periodically. Allow 24 hours or if device is connected.
+            const isOnline = Boolean(device.connected) || (((Date.now() / 1000) - latestTs) < (ignition ? 3600 : 86400));
             
             let newStatus: Vehicle['status'] = v.status || 'IgnitionOff';
             if (v.settings?.isBlocked) {
               newStatus = 'Stopped';
+            } else if (isPowerCut) {
+              newStatus = 'NoBattery';
             } else if (!isOnline) {
               newStatus = 'Offline';
             } else if (realSpeed > 2) {
@@ -1203,76 +1603,100 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             const externalVoltage = extVoltage;
             
             // Checar corte de bateria e bateria baixa
-            if (externalVoltage !== undefined && externalVoltage < 5) {
+            if (isPowerCut) {
               newStatus = 'NoBattery';
-              if (v.externalVoltage === undefined || v.externalVoltage >= 5) {
+              if (!v.powerCut && (v.externalVoltage === undefined || v.externalVoltage >= 5)) {
                 // Corte de energia detectado (transição)
+                if (v.settings?.powerNotify !== false) {
+                  addNotification({
+                    title: '🚨 Corte de Energia / Bateria Desconectada',
+                    message: `O rastreador de ${v.name} perdeu a alimentação principal de 12V! Bateria do veículo foi removida ou cortada. Operando na bateria interna de emergência.`,
+                    type: 'battery',
+                    severity: 'critical',
+                    vehicleId: v.id,
+                    vehicleName: v.name,
+                    lat: realLat,
+                    lng: realLng
+                  });
+                }
+              }
+            }
+            if (batteryLevel !== undefined && batteryLevel <= 20 && (v.batteryLevel === undefined || v.batteryLevel > 20)) {
+              // Bateria fraca backup
+              if (v.settings?.batteryNotify !== false) {
                 addNotification({
-                  title: '🔌 Corte de Energia / Bateria Desconectada',
-                  message: `O rastreador de ${v.name} perdeu a alimentação principal! Bateria do veículo foi removida ou cortada.`,
+                  title: '🔋 Bateria de Backup Fraca',
+                  message: `O rastreador de ${v.name} está rodando na bateria de backup e restam apenas ${Math.round(batteryLevel)}%.`,
                   type: 'battery',
-                  severity: 'critical',
+                  severity: 'warning',
                   vehicleId: v.id,
                   vehicleName: v.name,
                   lat: realLat,
                   lng: realLng
                 });
               }
-            }
-            if (batteryLevel !== undefined && batteryLevel <= 20 && (v.batteryLevel === undefined || v.batteryLevel > 20)) {
-              // Bateria fraca backup
-              addNotification({
-                title: '🔋 Bateria de Backup Fraca',
-                message: `O rastreador de ${v.name} está rodando na bateria de backup e restam apenas ${Math.round(batteryLevel)}%.`,
-                type: 'battery',
-                severity: 'warning',
-                vehicleId: v.id,
-                vehicleName: v.name,
-                lat: realLat,
-                lng: realLng
-              });
             }
 
             // Alertas em tempo real de Ignição
             if (v.status && v.status !== newStatus) {
               if ((v.status === 'IgnitionOff' || v.status === 'Offline') && (newStatus === 'IgnitionOn' || newStatus === 'Moving')) {
-                addNotification({
-                  title: '🔑 Ignição Ligada',
-                  message: `O veículo ${v.name} deu partida / ligou a ignição.`,
-                  type: 'command',
-                  severity: 'info',
+                if (v.settings?.accNotify !== false) {
+                  addNotification({
+                    title: '🔑 Ignição Ligada',
+                    message: `O veículo ${v.name} deu partida / ligou a ignição.`,
+                    type: 'command',
+                    severity: 'info',
+                    vehicleId: v.id,
+                    vehicleName: v.name,
+                    lat: realLat,
+                    lng: realLng
+                  });
+                }
+              } else if ((v.status === 'IgnitionOn' || v.status === 'Moving') && newStatus === 'IgnitionOff') {
+                if (v.settings?.accNotify !== false) {
+                  addNotification({
+                    title: '🅿️ Ignição Desligada',
+                    message: `O veículo ${v.name} desligou o motor e estacionou.`,
+                    type: 'command',
+                    severity: 'info',
+                    vehicleId: v.id,
+                    vehicleName: v.name,
+                    lat: realLat,
+                    lng: realLng
+                  });
+                }
+              }
+            }
+
+                        // Alerta de Choque / Vibração
+            const shockEvent = t['alarm.shock']?.value || t['alarm.vibration']?.value || t['vibration.event']?.value;
+            if (shockEvent && v.settings?.shockNotify) {
+               addNotification({
+                  title: '📳 Alerta de Vibração / Choque',
+                  message: `O sensor de vibração de ${v.name} foi disparado! Possível tentativa de violação ou colisão.`,
+                  type: 'system',
+                  severity: 'warning',
                   vehicleId: v.id,
                   vehicleName: v.name,
                   lat: realLat,
                   lng: realLng
                 });
-              } else if ((v.status === 'IgnitionOn' || v.status === 'Moving') && newStatus === 'IgnitionOff') {
+            }
+            // Alerta de Excesso de Velocidade
+            const activeSpeedLimit = v.settings?.smartSpeedMode ? (v.settings?.detectedRoadSpeed || 60) : (v.settings?.speedLimit || 60);
+            if (realSpeed > activeSpeedLimit && (v.speed || 0) <= activeSpeedLimit) {
+              if (v.settings?.speedNotify !== false) {
                 addNotification({
-                  title: '🅿️ Ignição Desligada',
-                  message: `O veículo ${v.name} desligou o motor e estacionou.`,
-                  type: 'command',
-                  severity: 'info',
+                  title: '⚡ Excesso de Velocidade Detectado',
+                  message: `O veículo ${v.name} atingiu ${realSpeed} km/h (Limite configurado: ${activeSpeedLimit} km/h).`,
+                  type: 'speed',
+                  severity: 'warning',
                   vehicleId: v.id,
                   vehicleName: v.name,
                   lat: realLat,
                   lng: realLng
                 });
               }
-            }
-
-            // Alerta de Excesso de Velocidade
-            const activeSpeedLimit = v.settings?.smartSpeedMode ? (v.settings?.detectedRoadSpeed || 60) : (v.settings?.speedLimit || 60);
-            if (realSpeed > activeSpeedLimit && (v.speed || 0) <= activeSpeedLimit) {
-              addNotification({
-                title: '⚡ Excesso de Velocidade Detectado',
-                message: `O veículo ${v.name} atingiu ${realSpeed} km/h (Limite configurado: ${activeSpeedLimit} km/h).`,
-                type: 'speed',
-                severity: 'warning',
-                vehicleId: v.id,
-                vehicleName: v.name,
-                lat: realLat,
-                lng: realLng
-              });
             }
 
             const flespiDirection = t['position.direction']?.value ?? t['position.course']?.value;
@@ -1288,6 +1712,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               v.satellites !== realSatellites ||
               v.batteryLevel !== batteryLevel ||
               v.externalVoltage !== externalVoltage ||
+              v.powerCut !== isPowerCut ||
               v.heading !== realHeading ||
               deltaKm > 0
             ) {
@@ -1328,6 +1753,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 hdop: realHdop,
                 batteryLevel: batteryLevel ?? v.batteryLevel,
                 externalVoltage: externalVoltage ?? v.externalVoltage,
+                powerCut: isPowerCut,
+                lastTelemetryTime: latestTs,
                 totalMileage: newTotalMileage,
                 dailyMileage: newDailyMileage,
                 settings: newSettings
@@ -1463,7 +1890,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     }
   }, [editingVehicle?.trackerNumber, editingVehicle?.id]);
 
-  const openModal = (vehicle: Vehicle, mode: 'details' | 'settings' = 'details') => {
+  const openModal = (vehicle: Vehicle, mode: 'details' | 'settings' | 'position' | 'emergency' = 'details') => {
     const populatedSettings: VehicleSettings = {
       timezone: vehicle.settings?.timezone || DEFAULT_VEHICLE_SETTINGS.timezone,
       mileageDisplayUnit: vehicle.settings?.mileageDisplayUnit || DEFAULT_VEHICLE_SETTINGS.mileageDisplayUnit,
@@ -1592,13 +2019,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             >
               <HelpCircle className="w-5 h-5 text-gray-500" /> <span>Ajuda</span>
             </button>
-            <a 
-              href="/api/download-zip" 
-              download="Rastreador-SPA.zip"
-              className="w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 text-blue-600 hover:bg-blue-50 font-semibold transition-colors mt-1"
-            >
-              <span className="text-lg">📦</span> <span>Baixar App em .ZIP (SPA)</span>
-            </a>
+
 
             <div className="mt-8 mb-4">
               <input 
@@ -1659,8 +2080,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                       }`} title={
                         v.status === 'IgnitionOn' || v.status === 'Moving' ? 'Ligado / Em Movimento' :
                         v.status === 'IgnitionOff' || v.status === 'Stopped' ? 'Desligado / Parado' :
-                        v.status === 'NoBattery' ? 'Sem Bateria' :
-                        v.status === 'Offline' ? 'Sem Comunicação' :
+                        v.status === 'NoBattery' ? 'Sem Bateria / Cortado' :
+                        v.status === 'Offline' ? 'Sem Sinal (Offline)' :
                         'Manutenção'
                       } />
                     </div>
@@ -1668,32 +2089,37 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   <div className="flex justify-between items-end">
                     <div className="flex flex-col gap-1 items-start">
                       <span className="text-xs text-gray-500 font-mono bg-gray-200 px-1.5 py-0.5 rounded">{v.licensePlate || 'Sem placa'}</span>
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          const nextStatus = v.status === 'Offline' ? 'Stopped' : 'Offline';
-                          await handleUpdateVehicle({
-                            ...v,
-                            status: nextStatus,
-                            speed: nextStatus === 'Offline' ? 0 : v.speed
-                          });
-                          showToast(`🔌 ${v.name} está agora ${nextStatus === 'Offline' ? 'OFFLINE 🔴' : 'ONLINE 🟢'}`);
-                        }}
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-all ${
-                          v.status === 'Offline'
-                            ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/50'
-                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/50'
-                        }`}
-                        title={v.status === 'Offline' ? 'Clique para ligar o rastreador (Online)' : 'Clique para desligar o rastreador (Offline)'}
-                      >
-                        {v.status === 'Offline' ? '🔴 OFF' : '🟢 ON'}
-                      </button>
+                      {v.powerCut || v.status === 'NoBattery' ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-100 text-red-700 border border-red-200 animate-pulse flex items-center gap-1">
+                          ⚡ Corte de Energia
+                        </span>
+                      ) : v.status === 'Offline' ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 border border-gray-200 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                          🔴 Sem Sinal
+                        </span>
+                      ) : (v.speed && v.speed > 0) || v.status === 'Moving' ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          🟢 Em Movimento
+                        </span>
+                      ) : v.status === 'IgnitionOn' ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          🟢 Ignição Ligada
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1" title="Veículo desligado, rastreador conectado com sinal GPS">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          ⚪ Desligado (Conectado)
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          openModal(v, 'settings');
+                          openModal(v, 'details');
                         }}
                         title="Configurações"
                         className="p-1 text-gray-400 hover:text-blue-600 hover:bg-white rounded transition-colors"
@@ -1802,7 +2228,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 vehicles={vehicles} 
                 selectedVehicle={selectedVehicle} 
                 onMarkerClick={(v) => setSelectedVehicle(v)}
-                onMarkerDoubleClick={(v) => openModal(v, 'settings')}
+                onMarkerDoubleClick={(v) => openModal(v, 'details')}
                 onSelectVehicle={(v) => setSelectedVehicle(v)}
                 onUpdateVehicle={(updated) => handleUpdateVehicle(updated)}
                 onMapClick={() => { setSidebarOpen(false); setSelectedVehicle(null); }} 
@@ -1840,6 +2266,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                     phoneNumber,
                     vehicleName
                   });
+                  
+                  // Tenta enviar comando real via GPRS (Flespi) automaticamente se houver IMEI
+                  const matchedVehicle = vehicles.find((v: any) => v.name === vehicleName || v.phoneNumber === phoneNumber || v.trackerNumber === phoneNumber);
+                  if (matchedVehicle && matchedVehicle.trackerNumber) {
+                    sendFlespiCommand(matchedVehicle.trackerNumber, smsCommand);
+                  }
                 }}
                 messageController={{
                   setSelectedVehicleForMessage: setSelectedVehicleForMessage,
@@ -1938,24 +2370,34 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800">{editingVehicle.id === 'new' ? 'Novo Cadastro' : `Editar ${editingVehicle.name}`}</h2>
               </div>
-              <div className="flex bg-gray-100 p-1 rounded-lg mb-6">
+              <div className="grid grid-cols-4 bg-gray-100 p-1 rounded-xl mb-6 gap-1">
                 <button
-                  className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${modalMode === 'details' ? 'bg-white shadow-sm text-gray-800 font-bold' : 'text-gray-500 hover:text-gray-700'}`}
-                  onClick={() => setModalMode('details')}
-                >
-                  Detalhes
-                </button>
-                <button
-                  className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1 ${modalMode === 'position' ? 'bg-white shadow-sm text-blue-700 font-bold' : 'text-gray-500 hover:text-gray-700'}`}
+                  type="button"
+                  className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer ${modalMode === 'position' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-800'}`}
                   onClick={() => setModalMode('position')}
                 >
                   <span>📍</span> Posição
                 </button>
                 <button
-                  className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${modalMode === 'settings' ? 'bg-white shadow-sm text-gray-800 font-bold' : 'text-gray-500 hover:text-gray-700'}`}
+                  type="button"
+                  className={`py-2 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer ${modalMode === 'emergency' ? 'bg-red-600 shadow text-white ring-2 ring-red-400/40' : 'text-red-600 hover:bg-red-50'}`}
+                  onClick={() => setModalMode('emergency')}
+                >
+                  <span className="animate-pulse">🚨</span> Bloqueio
+                </button>
+                <button
+                  type="button"
+                  className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer ${modalMode === 'settings' ? 'bg-white shadow text-slate-800' : 'text-gray-500 hover:text-gray-800'}`}
                   onClick={() => setModalMode('settings')}
                 >
-                  Configurações
+                  <span>⚙️</span> Ajustes
+                </button>
+                <button
+                  type="button"
+                  className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer ${modalMode === 'details' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-800'}`}
+                  onClick={() => setModalMode('details')}
+                >
+                  <span>📝</span> Cadastro
                 </button>
               </div>
                 {modalMode === 'position' && (
@@ -1970,14 +2412,25 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         </p>
                       </div>
                       <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
-                        editingVehicle.status !== 'Offline' && editingVehicle.status !== 'NoBattery'
+                        editingVehicle.status !== 'Offline'
                           ? 'bg-green-100 text-green-700 border border-green-300'
                           : 'bg-red-100 text-red-700 border border-red-200'
                       }`}>
-                        <span className={`w-2 h-2 rounded-full ${editingVehicle.status !== 'Offline' && editingVehicle.status !== 'NoBattery' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                        {editingVehicle.status !== 'Offline' && editingVehicle.status !== 'NoBattery' ? 'Conectado 🟢' : 'Offline 🔴'}
+                        <span className={`w-2 h-2 rounded-full ${editingVehicle.status !== 'Offline' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                        {editingVehicle.status !== 'Offline' ? 'Conectado 🟢' : 'Sem Sinal 🔴'}
                       </span>
                     </div>
+
+                    {/* Power Cut Alert Banner if detected */}
+                    {(editingVehicle.powerCut || editingVehicle.status === 'NoBattery' || (editingVehicle.externalVoltage !== undefined && editingVehicle.externalVoltage < 5)) && (
+                      <div className="bg-red-600 text-white p-2.5 rounded-xl border border-red-700 flex items-start gap-2 shadow-md animate-pulse">
+                        <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-300" />
+                        <div className="flex-1 text-[11px] leading-tight">
+                          <strong className="block text-xs font-black tracking-wide uppercase text-yellow-200">⚠️ CORTE DE ENERGIA DETECTADO!</strong>
+                          <span className="text-red-100 text-[10px]">Alimentação principal (12V) do veículo foi cortada ou desligada. O aparelho está funcionando com a bateria interna de emergência.</span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Card de Informações do Posicionamento */}
                     <div className="bg-white rounded-xl p-3.5 border border-blue-100 shadow-sm space-y-3">
@@ -1996,11 +2449,11 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-100">
                             <span className="text-[10px] text-gray-500 font-medium block">Status Online</span>
                             <span className={`font-bold text-xs ${
-                              editingVehicle.status !== 'Offline' && editingVehicle.status !== 'NoBattery'
+                              editingVehicle.status !== 'Offline'
                                 ? 'text-green-600'
                                 : 'text-red-600'
                             }`}>
-                              {editingVehicle.status !== 'Offline' && editingVehicle.status !== 'NoBattery' ? 'Online 🟢 (Conectado)' : 'Offline 🔴 (Sem sinal)'}
+                              {editingVehicle.status !== 'Offline' ? 'Online 🟢 (Conectado)' : 'Offline 🔴 (Sem sinal)'}
                             </span>
                           </div>
                         ) : (
@@ -2016,23 +2469,25 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-100">
                             <span className="text-[10px] text-gray-500 font-medium block">Status / Ignição</span>
                             <span className={`font-bold text-xs ${
-                              editingVehicle.status === 'Offline' || editingVehicle.status === 'NoBattery'
+                              editingVehicle.powerCut || editingVehicle.status === 'NoBattery'
+                                ? 'text-red-600 font-black'
+                                : editingVehicle.status === 'Offline'
                                 ? 'text-red-600'
                                 : (editingVehicle.speed && editingVehicle.speed > 0) || editingVehicle.status === 'IgnitionOn' || editingVehicle.status === 'Moving'
                                 ? 'text-emerald-600'
                                 : 'text-gray-600'
                             }`}>
                               {editingVehicle.status === 'Offline'
-                                ? 'Offline 🔴 (Sem Internet)'
-                                : editingVehicle.status === 'NoBattery'
-                                ? 'Sem Bateria 🔴'
+                                ? 'Sem Sinal (Offline) 🔴'
+                                : editingVehicle.powerCut || editingVehicle.status === 'NoBattery'
+                                ? '⚡ Corte de Energia (Sem 12V)'
                                 : (editingVehicle.speed && editingVehicle.speed > 0)
                                 ? `Em Movimento 🚗 (${editingVehicle.speed || 0} km/h)`
                                 : editingVehicle.status === 'IgnitionOn'
                                 ? 'Ignição Ligada 🟢 (Ligado)'
                                 : editingVehicle.status === 'Moving'
                                 ? `Em Movimento 🚗 (${editingVehicle.speed || 0} km/h)`
-                                : 'Desligado ⚪'}
+                                : 'Desligado ⚪ (Conectado / Sinal OK 🟢)'}
                             </span>
                           </div>
                         )}
@@ -2151,397 +2606,259 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Status do Sinal / Dispositivo</label>
                       <select value={editingVehicle.status} onChange={e => setEditingVehicle({...editingVehicle, status: e.target.value as any})} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow bg-white">
-                        <option value="IgnitionOn">🟢 Ignição Ligada / Em Movimento (Verde)</option>
-                        <option value="IgnitionOff">⚪ Desligado / Parado (Cinza)</option>
-                        <option value="NoBattery">🔴 Dispositivo Desligado (Vermelho)</option>
-                        <option value="Offline">🔴 Sem Comunicação / Offline (Vermelho)</option>
-                        <option value="Alarm">🔴 Em Alarme (Vermelho)</option>
+                        <option value="IgnitionOn">🟢 Ignição Ligada / Em Movimento</option>
+                        <option value="IgnitionOff">⚪ Desligado / Parado</option>
+                        <option value="NoBattery">🔴 Sem Bateria / Cabo Cortado</option>
+                        <option value="Offline">🔴 Sem Sinal / Offline</option>
+                        <option value="Alarm">🚨 Em Alarme / Roubo</option>
                       </select>
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Rastreador / IMEI <span className="text-xs font-normal text-gray-500">(Opcional)</span></label>
                         <input type="text" placeholder="Ex: 8642940..." value={editingVehicle.trackerNumber} onChange={e => setEditingVehicle({...editingVehicle, trackerNumber: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-sm" />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">Número do Telefone / Celular</label>
-                        <div className="flex gap-2">
-                          <input type="text" placeholder="(11) 99999-9999" value={editingVehicle.phoneNumber} onChange={e => setEditingVehicle({...editingVehicle, phoneNumber: e.target.value})} className="flex-1 border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-sm" />
-                          
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-2.5">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-800 uppercase tracking-wide">⚙️ Comandos Remotos</label>
-                          <p className="text-[11px] text-gray-500 mb-1">Se o aparelho estiver desligado ou sem rede, os comandos aguardam na Fila de Espera.</p>
-                          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg flex items-start gap-1.5 mt-2 mb-2 leading-tight shadow-sm">
-                            <span className="text-sm">⚠️</span>
-                            <p><strong>Aviso Importante:</strong> Esta plataforma via web apenas altera o status virtual no sistema para fins de demonstração. Para que os comandos (como Desligar Aparelho) funcionem <strong>fisicamente no hardware do celular</strong>, é obrigatório ter o Aplicativo Nativo de Rastreamento instalado e configurado com permissões de Administrador.</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={(e) => { 
-                            e.preventDefault(); e.stopPropagation();
-                            const identifier = editingVehicle.name || editingVehicle.trackerNumber || editingVehicle.phoneNumber || 'Dispositivo';
-                            const isOfflineOrOff = editingVehicle.status === 'NoBattery' || editingVehicle.status === 'Offline';
-                            
-                            // Integração com Flespi para enviar comando real (ex: bloqueio de motor)
-                            if (editingVehicle.trackerNumber) {
-                               fetch(`https://flespi.io/gw/devices/all`, {
-                                 headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
-                               }).then(res => res.json()).then(devData => {
-                                 if (devData && devData.result) {
-                                   const device = devData.result.find((d: any) => String(d.configuration?.ident) === String(editingVehicle.trackerNumber));
-                                   if (device) {
-                                      // Envia o comando custom via Flespi (formato TK303 ex: stop123456)
-                                      const pwd = editingVehicle.settings?.smsPassword || '123456';
-                                      fetch(`https://flespi.io/gw/devices/${device.id}/commands`, {
-                                        method: 'POST',
-                                        headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}`, 'Content-Type': 'application/json' },
-                                        body: JSON.stringify([{name: "custom", properties: { payload: `stop${pwd}` }}])
-                                      });
-                                   }
-                                 }
-                               }).catch(console.error);
-                            }
-
-                            if (isOfflineOrOff) {
-                              const newQueue = [...(editingVehicle.commandQueue || []), { id: Date.now().toString(), name: 'Desligar Aparelho', timestamp: new Date().toLocaleTimeString() }];
-                              const updated = { ...editingVehicle, commandQueue: newQueue };
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '⏳ Comando Enfileirado: Desligar Aparelho',
-                                message: `O dispositivo ${identifier} está offline. Comando adicionado à fila de espera.`,
-                                type: 'command',
-                                severity: 'warning',
-                                vehicleName: identifier
-                              });
-                              showToast(`⏳ Comando [Desligar Aparelho] adicionado à Fila de Espera (${identifier}).`);
-                            } else {
-                              const updated = {...editingVehicle, status: 'IgnitionOff' as const};
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '🔌 Comando Executado: Desligar Aparelho',
-                                message: `Corte de ignição / energia enviado e executado no dispositivo ${identifier}.`,
-                                type: 'command',
-                                severity: 'critical',
-                                vehicleName: identifier
-                              });
-                              showToast(`🔌 Comando [DESLIGAR APARELHO] registrado no sistema para (${identifier})!`);
-                              try {
-                                window.alert(`O status virtual de ${identifier} foi alterado para Desligado.\n\nNota: Por se tratar de um painel web de demonstração, o aparelho físico só irá desligar caso possua o app nativo instalado com as devidas permissões de root/administrador.`);
-                              } catch(e) {}
-                            }
-
-                            // Dual Dispatch Fallback Guarantee
-                            const pwd = editingVehicle.settings?.smsPassword || '123456';
-                            const phoneVal = editingVehicle.phoneNumber || editingVehicle.trackerNumber || '';
-                            setDualDispatchData({
-                              isOpen: true,
-                              commandName: 'Desligar Aparelho',
-                              smsCommand: `stop${pwd}`,
-                              phoneNumber: phoneVal,
-                              vehicleName: identifier
-                            });
-                          }}
-                          className="text-xs bg-red-600 hover:bg-red-700 active:scale-95 text-white py-2.5 px-3 rounded-lg font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          🔌 Desligar Aparelho
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { 
-                            e.preventDefault(); e.stopPropagation();
-                            const identifier = editingVehicle.name || editingVehicle.trackerNumber || editingVehicle.phoneNumber || 'Dispositivo';
-                            const isBlocked = !!editingVehicle.settings?.isBlocked;
-                            const pwd = editingVehicle.settings?.smsPassword || '123456';
-                            const phoneVal = editingVehicle.phoneNumber || editingVehicle.trackerNumber || '';
-
-                            // Integração com Flespi para enviar comando real (ex: liberar motor)
-                            if (editingVehicle.trackerNumber) {
-                               fetch(`https://flespi.io/gw/devices/all`, {
-                                 headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
-                               }).then(res => res.json()).then(devData => {
-                                 if (devData && devData.result) {
-                                   const device = devData.result.find((d: any) => String(d.configuration?.ident) === String(editingVehicle.trackerNumber));
-                                   if (device) {
-                                      // Envia o comando custom via Flespi (formato TK303 ex: resume123456)
-                                      fetch(`https://flespi.io/gw/devices/${device.id}/commands`, {
-                                        method: 'POST',
-                                        headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}`, 'Content-Type': 'application/json' },
-                                        body: JSON.stringify([{name: "custom", properties: { payload: `resume${pwd}` }}])
-                                      });
-                                   }
-                                 }
-                               }).catch(console.error);
-                            }
-
-                            if (isBlocked) {
-                              const updated = { 
-                                ...editingVehicle, 
-                                status: 'IgnitionOn' as const, 
-                                commandQueue: [],
-                                settings: {
-                                  ...editingVehicle.settings,
-                                  isBlocked: false
-                                }
-                              };
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '🔓 Comando Executado: Desbloquear Aparelho',
-                                message: `Desbloqueio remoto executado com sucesso para ${identifier}. O motor e combustível estão liberados.`,
-                                type: 'command',
-                                severity: 'info',
-                                vehicleName: identifier
-                              });
-                              showToast(`🔓 Comando [DESBLOQUEAR APARELHO] executado com sucesso para (${identifier})!`);
-                              try {
-                                window.alert(`O veículo ${identifier} foi desbloqueado com sucesso!`);
-                              } catch(err) {}
-
-                              // Dual Dispatch Fallback Guarantee
-                              setDualDispatchData({
-                                isOpen: true,
-                                commandName: 'Desbloquear Aparelho',
-                                smsCommand: `resume${pwd}`,
-                                phoneNumber: phoneVal,
-                                vehicleName: identifier
-                              });
-                            } else {
-                              const updated = { 
-                                ...editingVehicle, 
-                                status: 'Stopped' as const, 
-                                speed: 0,
-                                settings: {
-                                  ...editingVehicle.settings,
-                                  isBlocked: true
-                                }
-                              };
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '🔒 Comando Executado: Bloquear Aparelho',
-                                message: `Bloqueio remoto total ativado com sucesso para ${identifier}. Corte de combustível acionado.`,
-                                type: 'command',
-                                severity: 'critical',
-                                vehicleName: identifier
-                              });
-                              showToast(`🔒 Comando [BLOQUEAR APARELHO] executado com sucesso para (${identifier})!`);
-                              try {
-                                window.alert(`O veículo ${identifier} foi bloqueado com sucesso (Corte de combustível)!`);
-                              } catch(err) {}
-
-                              // Dual Dispatch Fallback Guarantee
-                              setDualDispatchData({
-                                isOpen: true,
-                                commandName: 'Bloquear Aparelho',
-                                smsCommand: `stop${pwd}`,
-                                phoneNumber: phoneVal,
-                                vehicleName: identifier
-                              });
-                            }
-                          }}
-                          className={`text-xs active:scale-95 text-white py-2.5 px-3 rounded-lg font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer ${
-                            editingVehicle.settings?.isBlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
-                          }`}
-                        >
-                          {editingVehicle.settings?.isBlocked ? '🔓 Desbloquear Aparelho' : '🔒 Bloquear Aparelho'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { 
-                            e.preventDefault(); e.stopPropagation();
-                            const identifier = editingVehicle.name || editingVehicle.trackerNumber || editingVehicle.phoneNumber || 'Dispositivo';
-                            const isOfflineOrOff = editingVehicle.status === 'NoBattery' || editingVehicle.status === 'Offline';
-                            if (isOfflineOrOff) {
-                              const newQueue = [...(editingVehicle.commandQueue || []), { id: Date.now().toString(), name: 'Tocar Alarme', timestamp: new Date().toLocaleTimeString() }];
-                              const updated = { ...editingVehicle, commandQueue: newQueue };
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '⏳ Comando Enfileirado: Tocar Alarme',
-                                message: `O dispositivo ${identifier} está offline. Comando adicionado à fila de espera.`,
-                                type: 'command',
-                                severity: 'warning',
-                                vehicleName: identifier
-                              });
-                              showToast(`⏳ Comando [Tocar Alarme] adicionado à Fila de Espera (${identifier}).`);
-                            } else {
-                              const updated = {...editingVehicle, status: 'Alarm' as const};
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '🔊 Comando Executado: Tocar Alarme',
-                                message: `Alarme sonoro remoto acionado no dispositivo ${identifier}.`,
-                                type: 'command',
-                                severity: 'warning',
-                                vehicleName: identifier
-                              });
-                              showToast(`🔊 Comando [ALARME SONORO] enviado e disparado com sucesso em (${identifier})!`);
-                            }
-
-                            // Dual Dispatch Fallback Guarantee
-                            const pwd = editingVehicle.settings?.smsPassword || '123456';
-                            const phoneVal = editingVehicle.phoneNumber || editingVehicle.trackerNumber || '';
-                            setDualDispatchData({
-                              isOpen: true,
-                              commandName: 'Tocar Alarme',
-                              smsCommand: `sound${pwd}`,
-                              phoneNumber: phoneVal,
-                              vehicleName: identifier
-                            });
-                          }}
-                          className="text-xs bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-2.5 px-3 rounded-lg font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          🔊 Tocar Alarme
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { 
-                            e.preventDefault(); e.stopPropagation();
-                            const identifier = editingVehicle.name || editingVehicle.trackerNumber || editingVehicle.phoneNumber || 'Dispositivo';
-                            const isOfflineOrOff = editingVehicle.status === 'NoBattery' || editingVehicle.status === 'Offline';
-                            if (isOfflineOrOff) {
-                              const newQueue = [...(editingVehicle.commandQueue || []), { id: Date.now().toString(), name: 'Reiniciar Sistema', timestamp: new Date().toLocaleTimeString() }];
-                              const updated = { ...editingVehicle, commandQueue: newQueue };
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '⏳ Comando Enfileirado: Reiniciar Sistema',
-                                message: `O dispositivo ${identifier} está offline. Comando adicionado à fila de espera.`,
-                                type: 'command',
-                                severity: 'warning',
-                                vehicleName: identifier
-                              });
-                              showToast(`⏳ Comando [Reiniciar Sistema] adicionado à Fila de Espera (${identifier}).`);
-                            } else {
-                              const updated = {...editingVehicle, status: 'IgnitionOn' as const};
-                              setEditingVehicle(updated);
-                              handleUpdateVehicle(updated);
-                              addNotification({
-                                title: '🔄 Comando Executado: Reiniciar Sistema',
-                                message: `Reinício de sistema / firmware executado em ${identifier}.`,
-                                type: 'command',
-                                severity: 'info',
-                                vehicleName: identifier
-                              });
-                              showToast(`🔄 Comando [REINICIAR SISTEMA] executado com sucesso para (${identifier})!`);
-                            }
-
-                            // Dual Dispatch Fallback Guarantee
-                            const pwd = editingVehicle.settings?.smsPassword || '123456';
-                            const phoneVal = editingVehicle.phoneNumber || editingVehicle.trackerNumber || '';
-                            setDualDispatchData({
-                              isOpen: true,
-                              commandName: 'Reiniciar Sistema',
-                              smsCommand: `reset${pwd}`,
-                              phoneNumber: phoneVal,
-                              vehicleName: identifier
-                            });
-                          }}
-                          className="text-xs bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-3 rounded-lg font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          🔄 Reiniciar Sistema
-                        </button>
-                      </div>
-
-                      {/* Envio de Comandos por SMS / WhatsApp Direto */}
-                      <div className="mt-4 pt-3 border-t border-blue-100">
-                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2 flex items-center justify-between">
-                          <span>📱 Enviar Comando por SMS ou WhatsApp</span>
-                          <span className="text-[10px] text-blue-600 font-mono">Senha: {editingVehicle.settings?.smsPassword || '123456'}</span>
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault(); e.stopPropagation();
-                              const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
-                              const pwd = editingVehicle.settings?.smsPassword || '123456';
-                              const cmd = `stop${pwd}`;
-                              if (!phone) {
-                                alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
-                                return;
-                              }
-                              window.open(`https://wa.me/${phone}?text=${encodeURIComponent(cmd)}`, '_blank');
-                              showToast(`💬 WhatsApp aberto com comando [${cmd}] para ${phone}`);
-                            }}
-                            className="text-xs bg-emerald-700 hover:bg-emerald-800 text-white py-2 px-2.5 rounded-lg font-bold flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
-                          >
-                            💬 WhatsApp (Bloquear)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault(); e.stopPropagation();
-                              const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
-                              const pwd = editingVehicle.settings?.smsPassword || '123456';
-                              const cmd = `resume${pwd}`;
-                              if (!phone) {
-                                alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
-                                return;
-                              }
-                              window.open(`https://wa.me/${phone}?text=${encodeURIComponent(cmd)}`, '_blank');
-                              showToast(`💬 WhatsApp aberto com comando [${cmd}] para ${phone}`);
-                            }}
-                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-2.5 rounded-lg font-bold flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
-                          >
-                            💬 WhatsApp (Desbloquear)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault(); e.stopPropagation();
-                              const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
-                              const pwd = editingVehicle.settings?.smsPassword || '123456';
-                              const cmd = `where,${pwd}#`;
-                              if (!phone) {
-                                alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
-                                return;
-                              }
-                              window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
-                              showToast(`📱 SMS aberto com comando [${cmd}] para ${phone}`);
-                            }}
-                            className="text-xs bg-sky-600 hover:bg-sky-700 text-white py-2 px-2.5 rounded-lg font-bold flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
-                          >
-                            📱 SMS (Posição GPS)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault(); e.stopPropagation();
-                              const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
-                              const pwd = editingVehicle.settings?.smsPassword || '123456';
-                              const cmd = `monitor${pwd}`;
-                              if (!phone) {
-                                alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
-                                return;
-                              }
-                              window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
-                              showToast(`📱 SMS aberto com comando [${cmd}] para ${phone}`);
-                            }}
-                            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-2.5 rounded-lg font-bold flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
-                          >
-                            📱 SMS (Modo Escuta)
-                          </button>
-                        </div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Número do Telefone</label>
+                        <input type="text" placeholder="(11) 99999-9999" value={editingVehicle.phoneNumber} onChange={e => setEditingVehicle({...editingVehicle, phoneNumber: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-sm" />
                       </div>
                     </div>
                   </div>
                 )}
 
-                                {modalMode === 'settings' && (
-                  <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                {/* ABA 2: COMANDOS DE EMERGÊNCIA & BLOQUEIO (Corte de Motor) */}
+                {modalMode === 'emergency' && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="bg-red-50/80 border-2 border-red-300 rounded-2xl p-4 space-y-3 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-red-200 pb-2.5">
+                        <div className="flex items-center gap-2 text-red-900">
+                          <span className="text-xl">🚨</span>
+                          <div>
+                            <h4 className="text-sm font-black uppercase tracking-wide">Comandos de Emergência & Roubo</h4>
+                            <span className="text-[10px] text-red-700 font-medium">Corte de combustível via relé do rastreador</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                          Corte de Motor
+                        </span>
+                      </div>
+                      <p className="text-xs text-red-950 leading-relaxed font-medium">
+                        Para momentos de pânico, suspeita ou furto. Ao clicar em qualquer comando abaixo, uma janela explicativa aparecerá com a descrição do que ele faz antes de você confirmar a execução.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        {editingVehicle.settings?.isBlocked ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault(); e.stopPropagation();
+                              openActionConfirm('unblock', editingVehicle);
+                            }}
+                            className="col-span-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-3 border border-emerald-500 cursor-pointer transition-all"
+                          >
+                            <span className="text-2xl">🔓</span>
+                            <div className="text-left">
+                              <div className="font-black text-sm">DESBLOQUEAR MOTOR</div>
+                              <div className="text-[10px] font-normal text-emerald-100">Restaurar combustível e normalizar ignição para partida</div>
+                            </div>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault(); e.stopPropagation();
+                                openActionConfirm('block_now', editingVehicle);
+                              }}
+                              className="py-3 px-3.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-2.5 border border-red-500 cursor-pointer transition-all"
+                            >
+                              <span className="text-2xl">🔒</span>
+                              <div className="text-left">
+                                <div className="font-black text-xs sm:text-sm">BLOQUEIO IMEDIATO</div>
+                                <div className="text-[10px] font-normal text-red-100">Corta combustível agora</div>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault(); e.stopPropagation();
+                                openActionConfirm('safe_block', editingVehicle);
+                              }}
+                              className={`py-3 px-3.5 active:scale-95 text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-2.5 border cursor-pointer transition-all ${
+                                editingVehicle.settings?.pendingBlock
+                                  ? 'bg-amber-600 hover:bg-amber-700 border-amber-500 animate-pulse'
+                                  : 'bg-amber-500 hover:bg-amber-600 border-amber-400'
+                              }`}
+                            >
+                              <span className="text-2xl">🛡️</span>
+                              <div className="text-left">
+                                <div className="font-black text-xs sm:text-sm">
+                                  {editingVehicle.settings?.pendingBlock ? 'BLOQUEIO AGENDADO' : 'BLOQUEIO SEGURO'}
+                                </div>
+                                <div className="text-[10px] font-normal text-amber-100">
+                                  {editingVehicle.settings?.pendingBlock ? 'Aguardando desligar motor' : 'Corta ao parar ou desligar'}
+                                </div>
+                              </div>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Redundância por SMS ou WhatsApp Direto */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                            <span>📱</span> Redundância SMS & WhatsApp
+                          </h4>
+                          <p className="text-[11px] text-slate-500">
+                            Disparo direto via chip celular (funciona mesmo sem internet)
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-blue-600 font-mono bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-bold">
+                          Senha: {editingVehicle.settings?.smsPassword || '123456'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const pwd = editingVehicle.settings?.smsPassword || '123456';
+                            const cmd = `stop${pwd}`;
+                            if (!phone) {
+                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              return;
+                            }
+                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(cmd)}`, '_blank');
+                            showToast(`💬 WhatsApp aberto com comando [${cmd}] para ${phone}`);
+                          }}
+                          className="text-xs bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                        >
+                          <span>💬</span> WhatsApp (Bloquear)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const pwd = editingVehicle.settings?.smsPassword || '123456';
+                            const cmd = `resume${pwd}`;
+                            if (!phone) {
+                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              return;
+                            }
+                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(cmd)}`, '_blank');
+                            showToast(`💬 WhatsApp aberto com comando [${cmd}] para ${phone}`);
+                          }}
+                          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                        >
+                          <span>💬</span> WhatsApp (Desbloquear)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const pwd = editingVehicle.settings?.smsPassword || '123456';
+                            const cmd = `where,${pwd}#`;
+                            if (!phone) {
+                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              return;
+                            }
+                            window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
+                            showToast(`📱 SMS aberto com comando [${cmd}] para ${phone}`);
+                          }}
+                          className="text-xs bg-sky-600 hover:bg-sky-700 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                        >
+                          <span>📱</span> SMS (Posição GPS)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            const phone = (editingVehicle.phoneNumber || '').replace(/[^0-9]/g, '');
+                            const pwd = editingVehicle.settings?.smsPassword || '123456';
+                            const cmd = `monitor${pwd}`;
+                            if (!phone) {
+                              alert('Por favor, informe o número de telefone (Chip) do rastreador nos dados do veículo.');
+                              return;
+                            }
+                            window.open(`sms:${phone}?body=${encodeURIComponent(cmd)}`, '_self');
+                            showToast(`📱 SMS aberto com comando [${cmd}] para ${phone}`);
+                          }}
+                          className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                        >
+                          <span>📱</span> SMS (Modo Escuta)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ABA 3: AJUSTES & CONFIGURAÇÕES */}
+                {modalMode === 'settings' && (
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1 animate-in fade-in duration-200">
+                    {/* Utilitários e Manutenção do Rastreador */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div className="flex items-center gap-1.5 text-slate-800">
+                          <span className="text-lg">⚙️</span>
+                          <h4 className="text-xs font-black uppercase tracking-wide">Comandos Utilitários do Aparelho</h4>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                          Diagnóstico & Teste
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-snug">
+                        Comandos operacionais de rotina, teste e diagnóstico do rastreador. Clique para ler os detalhes antes de executar.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            openActionConfirm('alarm', editingVehicle);
+                          }}
+                          className="py-3 px-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-sm flex flex-col items-center justify-center text-center gap-1 cursor-pointer transition-all"
+                        >
+                          <span className="text-xl">🔊</span>
+                          <span className="font-bold text-xs">Tocar Alarme</span>
+                          <span className="text-[9px] text-blue-100 font-normal">Disparar sirene</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            openActionConfirm('reboot', editingVehicle);
+                          }}
+                          className="py-3 px-3 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-sm flex flex-col items-center justify-center text-center gap-1 cursor-pointer transition-all"
+                        >
+                          <span className="text-xl">🔄</span>
+                          <span className="font-bold text-xs">Reiniciar Rastreador</span>
+                          <span className="text-[9px] text-indigo-100 font-normal">Reboot do 4G/GPS</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            openActionConfirm('shutdown', editingVehicle);
+                          }}
+                          className="py-3 px-3 bg-slate-700 hover:bg-slate-800 active:scale-95 text-white rounded-xl font-bold text-xs shadow-sm flex flex-col items-center justify-center text-center gap-1 cursor-pointer transition-all"
+                        >
+                          <span className="text-xl">🔌</span>
+                          <span className="font-bold text-xs">Suspender / Standby</span>
+                          <span className="text-[9px] text-slate-200 font-normal">Modo repouso</span>
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Fuso Horário</label>
@@ -2570,22 +2887,92 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                     </div>
 
                     <div className="border-t pt-4">
-                      <h3 className="font-semibold text-gray-800 mb-3">Alertas e Notificações</h3>
-                      
-                      <div className="space-y-3">
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            checked={editingVehicle.settings?.accNotify ?? true}
-                            onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, accNotify: e.target.checked}})}
-                            className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
+                      <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-blue-600" />
+                        Alertas e Notificações
+                      </h3>
+                                            
+                      <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                        <label className="flex items-center justify-between cursor-pointer group">
                           <div>
-                            <span className="block text-sm font-semibold text-gray-800">Notificação de Ignição (ACC)</span>
-                            <span className="block text-xs text-gray-500">Receber alertas imediatos quando o veículo for ligado ou desligado</span>
+                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Ignição (ACC)</span>
+                            <span className="block text-[10px] text-gray-500">Alertar quando ligar/desligar</span>
                           </div>
+                          <input 
+                             type="checkbox" 
+                             checked={editingVehicle.settings?.accNotify ?? true}
+                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, accNotify: e.target.checked}})}
+                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
                         </label>
 
+                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
+                          <div>
+                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Excesso de Velocidade</span>
+                            <span className="block text-[10px] text-gray-500">Alertar quando ultrapassar o limite</span>
+                          </div>
+                          <input 
+                             type="checkbox" 
+                             checked={editingVehicle.settings?.speedNotify ?? true}
+                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, speedNotify: e.target.checked}})}
+                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
+                          <div>
+                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Corte de Energia</span>
+                            <span className="block text-[10px] text-gray-500">Bateria do veículo removida</span>
+                          </div>
+                          <input 
+                             type="checkbox" 
+                             checked={editingVehicle.settings?.powerNotify ?? true}
+                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, powerNotify: e.target.checked}})}
+                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
+                          <div>
+                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Bateria Fraca (Backup)</span>
+                            <span className="block text-[10px] text-gray-500">Bateria do rastreador abaixo de 20%</span>
+                          </div>
+                          <input 
+                             type="checkbox" 
+                             checked={editingVehicle.settings?.batteryNotify ?? true}
+                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, batteryNotify: e.target.checked}})}
+                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
+                          <div>
+                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Choque / Vibração</span>
+                            <span className="block text-[10px] text-gray-500">Detectar tentativa de furto ou colisão</span>
+                          </div>
+                          <input 
+                             type="checkbox" 
+                             checked={editingVehicle.settings?.shockNotify ?? false}
+                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, shockNotify: e.target.checked}})}
+                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
+                          <div>
+                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Cerca Virtual</span>
+                            <span className="block text-[10px] text-gray-500">Entrada e saída de áreas restritas</span>
+                          </div>
+                          <input 
+                             type="checkbox" 
+                             checked={editingVehicle.settings?.geofenceNotify ?? true}
+                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, geofenceNotify: e.target.checked}})}
+                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mt-4 space-y-3">
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-1">Tempos de Envio de Alarme (Repetições)</label>
                           <input 
@@ -3293,6 +3680,108 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer text-center"
                 >
                   Continuar apenas via GPRS/Internet (Fechar)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Interativo de Confirmação & Descrição de Comando */}
+        {actionConfirm && actionConfirm.isOpen && (
+          <div
+            className="fixed inset-0 bg-slate-950/80 flex items-center justify-center z-[10000] backdrop-blur-md p-4 animate-fade-in select-none"
+            onClick={() => setActionConfirm(null)}
+          >
+            <div
+              className="bg-white rounded-3xl shadow-2xl max-w-lg w-full relative overflow-hidden border border-gray-100 p-5 sm:p-6 space-y-4"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl shadow-inner shrink-0">
+                    {actionConfirm.icon}
+                  </div>
+                  <div>
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${actionConfirm.badgeColor}`}>
+                      {actionConfirm.badge}
+                    </span>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight mt-1">
+                      {actionConfirm.title}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActionConfirm(null)}
+                  className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Target Vehicle pill */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-500 text-[10px] block font-semibold uppercase">Veículo Alvo</span>
+                  <strong className="text-slate-800 text-sm font-bold">{actionConfirm.vehicle.name || 'Sem Nome'}</strong>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-500 text-[10px] block font-semibold uppercase">Placa / Status</span>
+                  <span className="font-mono font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    {actionConfirm.vehicle.licensePlate || 'Sem Placa'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Description Block */}
+              <div className="space-y-2.5 text-xs">
+                <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 space-y-1">
+                  <span className="font-bold text-blue-900 flex items-center gap-1.5 uppercase text-[10px] tracking-wide">
+                    ℹ️ O que este botão faz:
+                  </span>
+                  <p className="text-blue-950 font-medium leading-relaxed">
+                    {actionConfirm.description}
+                  </p>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-1">
+                  <span className="font-bold text-gray-800 flex items-center gap-1.5 uppercase text-[10px] tracking-wide">
+                    ⚙️ Como funciona no veículo:
+                  </span>
+                  <p className="text-gray-700 leading-relaxed">
+                    {actionConfirm.howItWorks}
+                  </p>
+                </div>
+
+                {actionConfirm.warningNote && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-amber-900 leading-relaxed font-medium">
+                    {actionConfirm.warningNote}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const onConf = actionConfirm.onConfirm;
+                    setActionConfirm(null);
+                    onConf();
+                  }}
+                  className={`w-full py-3.5 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-98 cursor-pointer ${actionConfirm.confirmColor}`}
+                >
+                  <span>{actionConfirm.icon}</span>
+                  <span>{actionConfirm.confirmLabel}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActionConfirm(null)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer text-center"
+                >
+                  Cancelar / Voltar
                 </button>
               </div>
             </div>

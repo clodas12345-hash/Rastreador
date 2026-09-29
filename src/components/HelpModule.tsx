@@ -38,9 +38,15 @@ import {
   Play, 
   Radio, 
   Shield,
-  ArrowLeft 
+  ArrowLeft,
+  Camera,
+  Users,
+  Bluetooth,
+  Image,
+  Music
 } from 'lucide-react';
-import { doc, setDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, collection } from 'firebase/firestore';
+import { safeSetDoc, safeAddDoc } from '../utils/firestoreWrapper';
 import { db, cleanFirestoreData } from '../lib/firebase';
 import PdfReader from './PdfReader';
 
@@ -100,36 +106,51 @@ export default function HelpModule({
     notifications: string;
     geolocation: string;
     microphone: string;
+    camera: string;
+    contacts: string;
+    bluetooth: string;
+    storage: string;
   }>({
     notifications: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported',
     geolocation: 'prompt',
-    microphone: 'prompt'
+    microphone: 'prompt',
+    camera: 'prompt',
+    contacts: 'unsupported',
+    bluetooth: 'prompt',
+    storage: 'prompt'
   });
 
   const checkBrowserPermissions = async () => {
     const notif = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported';
-    let geo = 'prompt';
+    let geo = 'prompt', mic = 'prompt', cam = 'prompt', bt = 'prompt', store = 'prompt';
+    
     if (navigator.permissions && navigator.permissions.query) {
       try {
-        const res = await navigator.permissions.query({ name: 'geolocation' as any });
-        geo = res.state;
-      } catch (e) {
-        geo = 'supported';
-      }
+        const geoRes = await navigator.permissions.query({ name: 'geolocation' as any });
+        geo = geoRes.state;
+        const micRes = await navigator.permissions.query({ name: 'microphone' as any });
+        mic = micRes.state;
+        const camRes = await navigator.permissions.query({ name: 'camera' as any });
+        cam = camRes.state;
+        try {
+          const btRes = await navigator.permissions.query({ name: 'bluetooth' as any });
+          bt = btRes.state;
+        } catch(e) {}
+        try {
+          const storeRes = await navigator.permissions.query({ name: 'persistent-storage' as any });
+          store = storeRes.state;
+        } catch(e) {}
+      } catch (e) {}
     }
-    let mic = 'prompt';
-    if (navigator.permissions && navigator.permissions.query) {
-      try {
-        const res = await navigator.permissions.query({ name: 'microphone' as any });
-        mic = res.state;
-      } catch (e) {
-        mic = 'supported';
-      }
-    }
+
     setPermissionStatus({
       notifications: notif,
       geolocation: geo,
-      microphone: mic
+      microphone: mic,
+      camera: cam,
+      contacts: 'contacts' in navigator ? 'prompt' : 'unsupported',
+      bluetooth: bt,
+      storage: store
     });
   };
 
@@ -183,6 +204,51 @@ export default function HelpModule({
     } catch (e) {
       setPermissionStatus(prev => ({ ...prev, microphone: 'denied' }));
       if (showToast) showToast('⚠️ Permissão de microfone negada ou indisponível.');
+    }
+  };
+
+  const testCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(t => t.stop());
+      setPermissionStatus(prev => ({ ...prev, camera: 'granted' }));
+      if (showToast) showToast('📷 Câmera autorizada para leitura de QR Code e fotos!');
+    } catch (e) {
+      setPermissionStatus(prev => ({ ...prev, camera: 'denied' }));
+      if (showToast) showToast('⚠️ Permissão de câmera negada.');
+    }
+  };
+
+  const testContacts = async () => {
+    if ('contacts' in navigator) {
+      try {
+        if (showToast) showToast('👥 Acessando contatos para importação de motoristas...');
+        setPermissionStatus(prev => ({ ...prev, contacts: 'granted' }));
+      } catch (e) {}
+    } else {
+      if (showToast) showToast('⚠️ Seu navegador não suporta acesso a contatos via Web.');
+    }
+  };
+
+  const testBluetooth = async () => {
+    if ('bluetooth' in navigator) {
+      try {
+        await (navigator as any).bluetooth.getAvailability();
+        setPermissionStatus(prev => ({ ...prev, bluetooth: 'granted' }));
+        if (showToast) showToast('📡 Dispositivos por perto (Bluetooth) autorizados!');
+      } catch (e) {
+        if (showToast) showToast('⚠️ Bluetooth não disponível ou negado.');
+      }
+    } else {
+      if (showToast) showToast('⚠️ Navegador não suporta Bluetooth Web API.');
+    }
+  };
+
+  const testStorage = async () => {
+    if (navigator.storage && navigator.storage.persist) {
+      const isPersisted = await navigator.storage.persist();
+      setPermissionStatus(prev => ({ ...prev, storage: isPersisted ? 'granted' : 'denied' }));
+      if (showToast) showToast(isPersisted ? '💾 Armazenamento persistente (Fotos/Vídeos) garantido!' : '⚠️ Armazenamento limitado pelo sistema.');
     }
   };
 
@@ -457,9 +523,9 @@ export default function HelpModule({
 
             const cleanedPayload = cleanFirestoreData(vehiclePayload);
             if (docId) {
-              await setDoc(doc(db, 'cars', docId), cleanedPayload, { merge: true });
+              await safeSetDoc(doc(db, 'cars', docId), cleanedPayload, { merge: true });
             } else {
-              await addDoc(collection(db, 'cars'), cleanedPayload);
+              await safeAddDoc(collection(db, 'cars'), cleanedPayload);
             }
           } catch (e) {
             console.warn('Erro ao restaurar item no Firestore:', e);
@@ -799,28 +865,23 @@ export default function HelpModule({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
             {/* Geolocalização */}
             <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3">
               <div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4" /> Geolocalização
+                    <MapPin className="w-4 h-4" /> Localização
                   </span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
                     permissionStatus.geolocation === 'granted' ? 'bg-emerald-500 text-slate-950' : 'bg-teal-500/60 text-white'
                   }`}>
-                    {permissionStatus.geolocation}
+                    {permissionStatus.geolocation === 'granted' ? 'Com Permissão' : 'Pendente'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300 mt-1">GPS para rastreamento no mapa e celular.</p>
+                <p className="text-[11px] text-slate-300 mt-1">Acesso ao GPS para rastreamento.</p>
               </div>
-              <button
-                onClick={testGeolocation}
-                className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-3 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow"
-              >
-                <span>Testar GPS / Posição</span>
-              </button>
+              <button onClick={testGeolocation} className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
             </div>
 
             {/* Microfone */}
@@ -828,22 +889,139 @@ export default function HelpModule({
               <div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                    <Volume2 className="w-4 h-4" /> Microfone / Áudio
+                    <Volume2 className="w-4 h-4" /> Microfone
                   </span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
                     permissionStatus.microphone === 'granted' ? 'bg-emerald-500 text-slate-950' : 'bg-cyan-500/60 text-white'
                   }`}>
-                    {permissionStatus.microphone}
+                    {permissionStatus.microphone === 'granted' ? 'Com Permissão' : 'Pendente'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300 mt-1">Escuta de cabine e gravador de voz.</p>
+                <p className="text-[11px] text-slate-300 mt-1">Escuta de cabine e gravador.</p>
               </div>
-              <button
-                onClick={testMicrophone}
-                className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-3 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow"
-              >
-                <span>Testar Microfone</span>
-              </button>
+              <button onClick={testMicrophone} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+            </div>
+
+            {/* Câmera */}
+            <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4" /> Câmera
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                    permissionStatus.camera === 'granted' ? 'bg-emerald-500 text-slate-950' : 'bg-blue-500/60 text-white'
+                  }`}>
+                    {permissionStatus.camera === 'granted' ? 'Com Permissão' : 'Pendente'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">Fotos e leitura de QR Code.</p>
+              </div>
+              <button onClick={testCamera} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+            </div>
+
+            {/* Contatos */}
+            <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-orange-300 flex items-center gap-1.5">
+                    <Users className="w-4 h-4" /> Contatos
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                    permissionStatus.contacts === 'granted' ? 'bg-emerald-500 text-slate-950' : 'bg-orange-500/60 text-white'
+                  }`}>
+                    {permissionStatus.contacts === 'granted' ? 'Com Permissão' : 'Pendente'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">Importação de motoristas.</p>
+              </div>
+              <button onClick={testContacts} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+            </div>
+
+            {/* Dispositivos por perto */}
+            <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                    <Bluetooth className="w-4 h-4" /> Dispositivos perto
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                    permissionStatus.bluetooth === 'granted' ? 'bg-emerald-500 text-slate-950' : 'bg-indigo-500/60 text-white'
+                  }`}>
+                    {permissionStatus.bluetooth === 'granted' ? 'Com Permissão' : 'Pendente'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">Sensores Bluetooth e periféricos.</p>
+              </div>
+              <button onClick={testBluetooth} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+            </div>
+
+            {/* Fotos e Vídeos / Armazenamento */}
+            <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Image className="w-4 h-4" /> Fotos e vídeos
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                    permissionStatus.storage === 'granted' ? 'bg-emerald-500 text-slate-950' : 'bg-amber-500/60 text-white'
+                  }`}>
+                    {permissionStatus.storage === 'granted' ? 'Com Permissão' : 'Pendente'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">Salvamento de evidências.</p>
+              </div>
+              <button onClick={testStorage} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+            </div>
+
+            {/* Música e Áudio */}
+            <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                    <Music className="w-4 h-4" /> Música e áudio
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase bg-emerald-500 text-slate-950`}>
+                    Com Permissão
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">Alertas sonoros e sirene.</p>
+              </div>
+              <div className="w-full bg-emerald-600/30 text-emerald-400 font-bold py-2 px-3 rounded-lg text-[10px] text-center border border-emerald-500/20">Ativo pelo Sistema</div>
+            </div>
+
+            {/* Notificações */}
+            <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                    <Bell className="w-4 h-4" /> Notificações
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                    permissionStatus.notifications === 'granted' ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500/60 text-white'
+                  }`}>
+                    {permissionStatus.notifications === 'granted' ? 'Com Permissão' : 'Pendente'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">Alertas push e em segundo plano.</p>
+              </div>
+              <button onClick={requestNotificationPermission} className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+            </div>
+
+            {/* Registro de Chamadas */}
+            <div className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-3 opacity-60">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4" /> Chamadas
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase bg-gray-500 text-white`}>
+                    Mobile Only
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">Apenas via App Android/iOS.</p>
+              </div>
+              <div className="w-full bg-gray-700 text-gray-400 font-bold py-2 px-3 rounded-lg text-[10px] text-center border border-white/5">Nativo do Aparelho</div>
             </div>
           </div>
         </div>

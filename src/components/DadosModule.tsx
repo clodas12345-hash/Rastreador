@@ -21,6 +21,19 @@ export default function DadosModule({ vehicles, onUpdateVehicle, onBackToMap }: 
   const [selectedVehicleDetails, setSelectedVehicleDetails] = useState<Vehicle | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [rawViewVehicleId, setRawViewVehicleId] = useState<string | null>(null);
+  const [streetViewVehicle, setStreetViewVehicle] = useState<Vehicle | null>(null);
+
+  const openNativeMaps = (lat: number, lng: number) => {
+    const isAndroid = /android/i.test(navigator.userAgent || '');
+    if (isAndroid) {
+      window.location.href = `google.streetview:cbll=${lat},${lng}`;
+      setTimeout(() => {
+        window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`, '_blank');
+      }, 500);
+    } else {
+      window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`, '_blank');
+    }
+  };
 
   const filteredVehicles = useMemo(() => {
     return vehicles.filter(v => {
@@ -222,15 +235,14 @@ export default function DadosModule({ vehicles, onUpdateVehicle, onBackToMap }: 
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <a
-                      href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${vehicle.lat},${vehicle.lng}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-blue-200"
+                    <button
+                      type="button"
+                      onClick={() => setStreetViewVehicle(vehicle)}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-blue-200 cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       Street View 360°
-                    </a>
+                    </button>
                     <button
                       onClick={() => setRawViewVehicleId(isRawOpen ? null : vehicle.id)}
                       className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-colors"
@@ -360,6 +372,82 @@ export default function DadosModule({ vehicles, onUpdateVehicle, onBackToMap }: 
           )}
         </div>
       </div>
+
+      {/* Street View 360 Modal */}
+      {streetViewVehicle && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[2000] flex flex-col p-2 sm:p-4 animate-fadeIn pointer-events-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex-1 flex flex-col overflow-hidden max-w-4xl w-full mx-auto">
+            {/* Header */}
+            <div className="p-3 sm:p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 rounded-xl text-lg">
+                  👁️
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold flex items-center gap-2">
+                    <span>Street View 360°</span>
+                    <span className="text-xs text-blue-400 font-normal">({streetViewVehicle.name})</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    Câmera panorâmica da via e arredores
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openNativeMaps(streetViewVehicle.lat, streetViewVehicle.lng)}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                  title="Abrir no Google Maps"
+                >
+                  <span>Google Maps</span>
+                  <span>↗</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStreetViewVehicle(null)}
+                  className="p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded Interactive 360 View */}
+            <div className="flex-1 w-full bg-black relative min-h-[300px]">
+              <iframe
+                title="Google Maps Street View 360"
+                src={`https://maps.google.com/maps?q=&layer=c&cbll=${streetViewVehicle.lat},${streetViewVehicle.lng}&cbp=11,0,0,0,0&output=svembed`}
+                className="w-full h-full border-0 absolute inset-0"
+                allowFullScreen
+                loading="lazy"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-slate-800/95 border-t border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-300 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-bold text-white shrink-0">📍 Local:</span>
+                <span className="truncate text-[11px] text-slate-300">
+                  <AddressDisplay lat={streetViewVehicle.lat} lng={streetViewVehicle.lng} />
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-mono text-[10px] text-slate-400">
+                  {streetViewVehicle.lat.toFixed(5)}, {streetViewVehicle.lng.toFixed(5)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStreetViewVehicle(null)}
+                  className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

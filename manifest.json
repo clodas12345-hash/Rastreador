@@ -12,7 +12,20 @@
   "lang": "pt-BR",
   "dir": "ltr",
   "prefer_related_applications": false,
+  "related_applications": [],
   "categories": ["navigation", "utilities", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Ver Mapa",
+      "url": "/?module=rastreamento",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard",
+      "url": "/?module=dashboard",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

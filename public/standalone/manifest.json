@@ -1,15 +1,25 @@
 {
-  "name": "Rastreador",
+  "name": "Rastreador GPS Mobile",
   "short_name": "Rastreador",
+  "description": "Aplicativo web de rastreamento GPS em tempo real e gravação de rotas offline",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#2563eb",
   "icons": [
     {
       "src": "icon.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

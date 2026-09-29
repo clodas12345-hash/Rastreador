@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
+import { safeSetDoc, safeGetDoc } from '../utils/firestoreWrapper';
 import { db } from '../lib/firebase';
 import { 
   MapPin, Sliders, Lock, Target, Settings, Route, FileText, MoreHorizontal, X, Save, 
@@ -105,7 +106,7 @@ export default function TerminalTools({
     const fetchConfig = async () => {
       try {
         const docRef = doc(db, 'terminal_configs', 'global');
-        const docSnap = await getDoc(docRef);
+        const docSnap = await safeGetDoc(docRef);
         if (isSubscribed && docSnap.exists()) {
           setConfig(docSnap.data() as any);
         }
@@ -121,7 +122,7 @@ export default function TerminalTools({
     setSaving(true);
     try {
       const docRef = doc(db, 'terminal_configs', 'global');
-      await setDoc(docRef, config);
+      await safeSetDoc(docRef, config);
       setStatusMessage({type: 'success', text: 'Configuração salva com sucesso!'}); setTimeout(() => setStatusMessage(null), 3000);
       setActiveTopic(null);
     } catch (error) {

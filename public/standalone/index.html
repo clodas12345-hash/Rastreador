@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Rastreador</title>
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Rastreador GPS Mobile</title>
+  <link rel="icon" type="image/png" href="./icon.png">
+  <link rel="apple-touch-icon" href="./icon.png">
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" href="./style.css">
   <!-- Leaflet CSS -->
@@ -11,7 +16,7 @@
 </head>
 <body>
   <header>
-    <h1>📍 Rastreador</h1>
+    <h1>📍 Rastreador GPS</h1>
     <div id="statusBadge" class="status-badge offline">
       <span class="status-dot"></span> Parado
     </div>
@@ -34,13 +39,13 @@
           <div id="timeEl" class="metric-value">00:00</div>
         </div>
         <div class="metric-box">
-          <div class="metric-label">Latitude</div>
-          <div id="latEl" class="metric-value" style="font-size: 0.9rem; margin-top: 8px;">0.00000</div>
+          <div class="metric-label">Coordenadas</div>
+          <div id="coordsEl" class="metric-value" style="font-size: 0.85rem; margin-top: 6px; font-family: monospace;">-- , --</div>
         </div>
       </div>
 
       <div id="map"></div>
-      <div style="display: none;"><span id="lngEl">0.00000</span></div>
+      <div style="display: none;"><span id="latEl">0.00000</span><span id="lngEl">0.00000</span></div>
 
       <button id="btnStart" class="btn btn-primary">▶ Iniciar Rastreamento</button>
       <button id="btnStop" class="btn btn-danger hidden">⏹ Parar e Salvar Trajeto</button>
@@ -48,7 +53,10 @@
 
     <!-- History View -->
     <div id="viewHistory" class="card hidden">
-      <h3 style="margin-bottom: 12px; font-size: 1rem; color: var(--text-main);">Histórico de Trajetos</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="font-size: 1rem; color: var(--text-main); font-weight: 700;">Histórico de Trajetos</h3>
+        <button id="btnClearHistory" class="btn-text-danger" style="font-size: 0.75rem; background: none; border: none; color: var(--danger); cursor: pointer; font-weight: 600;">Limpar Tudo</button>
+      </div>
       <div id="historyList" class="history-list">
         <!-- History items inserted dynamically -->
       </div>
