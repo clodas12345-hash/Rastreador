@@ -88,7 +88,7 @@ function DashboardRoadSpeed({ vehicle }: { vehicle: Vehicle }) {
   );
 }
 
-export default function Dashboard({ vehicles, onBackToMap }: { vehicles: Vehicle[]; onBackToMap?: () => void }) {
+export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { vehicles: Vehicle[]; onBackToMap?: () => void; onShareVehicle?: (v: Vehicle) => void }) {
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'moving' | 'stopped' | 'maintenance'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showDevices, setShowDevices] = useState(true);
@@ -413,9 +413,24 @@ export default function Dashboard({ vehicles, onBackToMap }: { vehicles: Vehicle
                             <DashboardRoadSpeed vehicle={vehicle} />
                           </div>
 
-                          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                            <span className="text-[10px] text-gray-500 font-medium block mb-1">Endereço Preciso (Localização Real)</span>
-                            <DashboardAddress lat={vehicle.lat} lng={vehicle.lng} />
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                            <div className="flex-1">
+                              <span className="text-[10px] text-gray-500 font-medium block mb-1">Endereço Preciso (Localização Real)</span>
+                              <DashboardAddress lat={vehicle.lat} lng={vehicle.lng} />
+                            </div>
+                            {onShareVehicle && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onShareVehicle(vehicle);
+                                }}
+                                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow flex items-center justify-center gap-1.5 transition-all shrink-0 cursor-pointer"
+                              >
+                                <span>🔗</span>
+                                <span>Compartilhar (WhatsApp/SMS)</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}

@@ -488,6 +488,7 @@ interface FleetTrackerProps {
   geofences?: Geofence[];
   isCreatingGeofence?: boolean;
   onGeofenceCreateClick?: (lat: number, lng: number) => void;
+  onShareVehicle?: (v: Vehicle) => void;
 }
 
 export default function FleetTracker({
@@ -513,7 +514,8 @@ export default function FleetTracker({
   onChangePlaybackSpeed,
   geofences = [],
   isCreatingGeofence = false,
-  onGeofenceCreateClick
+  onGeofenceCreateClick,
+  onShareVehicle
 }: FleetTrackerProps) {
   const [mapZoom, setMapZoom] = useState(13);
   const [isShowingAll, setIsShowingAll] = useState(true);
@@ -1105,6 +1107,26 @@ export default function FleetTracker({
                 <span className="text-red-100 text-[10px]">Cabo da bateria principal (12V) desconectado ou cortado. O aparelho está funcionando com a bateria interna de emergência.</span>
               </div>
             </div>
+          )}
+
+          {/* Compartilhar Rastreio via WhatsApp ou SMS */}
+          {onShareVehicle && (
+            <button
+              type="button"
+              onClick={() => onShareVehicle(currentSelected)}
+              className="w-full mb-2.5 py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-98 text-white text-xs font-extrabold rounded-xl shadow-md flex items-center justify-between transition-all cursor-pointer border border-emerald-400/40"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">🔗</span>
+                <div className="text-left">
+                  <span className="block font-bold">Compartilhar Rastreio ao Vivo</span>
+                  <span className="text-[10px] text-emerald-100 block">Enviar link com mapa por WhatsApp ou SMS</span>
+                </div>
+              </div>
+              <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] uppercase font-black">
+                ENVIAR
+              </span>
+            </button>
           )}
 
           {/* Modo Âncora (Anti-Furto Virtual) Button - Sugestão 5 */}

@@ -22,6 +22,7 @@ import CaixaPretaModule from './components/CaixaPretaModule';
 import RelatoriosConsumoModule from './components/RelatoriosConsumoModule';
 import FloatingAI from './components/FloatingAI';
 import RouteManagerModal from './components/RouteManagerModal';
+import ShareTrackingModal from './components/ShareTrackingModal';
 
 
 import {collection, onSnapshot, doc} from 'firebase/firestore';
@@ -722,21 +723,6 @@ export default function App() {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [selectedVehicleForMessage, setSelectedVehicleForMessage] = useState<Vehicle | null>(null);
 
-  const [showFloatingAI, setShowFloatingAI] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('gkd_enable_floating_ai') === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
-
-  const toggleFloatingAI = (enable: boolean) => {
-    setShowFloatingAI(enable);
-    try {
-      localStorage.setItem('gkd_enable_floating_ai', enable ? 'true' : 'false');
-    } catch (e) {}
-  };
-
   // Load cached vehicles initially
   useEffect(() => {
     try {
@@ -943,6 +929,22 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [geofences, setGeofences] = useState<Geofence[]>([]);
   const [isCreatingGeofence, setIsCreatingGeofence] = useState(false);
   const [newGeofenceCenter, setNewGeofenceCenter] = useState<{lat: number, lng: number} | null>(null);
+  const [sharingVehicle, setSharingVehicle] = useState<Vehicle | null>(null);
+
+  const [showFloatingAI, setShowFloatingAI] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gkd_enable_floating_ai') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const toggleFloatingAI = (enable: boolean) => {
+    setShowFloatingAI(enable);
+    try {
+      localStorage.setItem('gkd_enable_floating_ai', enable ? 'true' : 'false');
+    } catch (e) {}
+  };
 
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -2758,9 +2760,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   setNewGeofenceCenter({ lat, lng });
                   setIsCreatingGeofence(false);
                 }}
+                onShareVehicle={(v) => setSharingVehicle(v)}
               />
             )}
-            {activeModule === 'dashboard' && <Dashboard vehicles={vehicles} onBackToMap={() => setActiveModule('rastreamento')} />}
+            {activeModule === 'dashboard' && <Dashboard vehicles={vehicles} onBackToMap={() => setActiveModule('rastreamento')} onShareVehicle={(v) => setSharingVehicle(v)} />}
             {activeModule === 'historico' && <HistoricoModule vehicles={vehicles} fetchFlespiHistory={fetchFlespiHistory} setActiveRoute={setActiveRoute} setActiveModule={setActiveModule} setSidebarOpen={setSidebarOpen} showToast={showToast} />}
             {activeModule === 'ferramentas' && (
               <TerminalTools setActiveModule={setActiveModule} 
@@ -4421,6 +4424,15 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               </div>
             </div>
           </div>
+        )}
+
+        {/* Modal de Compartilhamento de Rastreio ao Vivo (WhatsApp / SMS) */}
+        {sharingVehicle && (
+          <ShareTrackingModal
+            vehicle={sharingVehicle}
+            onClose={() => setSharingVehicle(null)}
+            showToast={showToast}
+          />
         )}
 
         {/* Floating AI Assistant Copilot - Exibida apenas quando ativada nas Configurações */}
