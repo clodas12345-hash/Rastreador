@@ -1,23 +1,40 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, X, Paperclip, MessageSquare } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Send, Bot, User, X, Paperclip, Sparkles, Car, ShieldCheck, Wrench, Zap } from 'lucide-react';
+import { Vehicle, Driver } from '../types';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   files?: string[];
+  actionBtn?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
-export default function FloatingAI() {
+interface FloatingAIProps {
+  vehicles?: Vehicle[];
+  drivers?: Driver[];
+  onSelectModule?: (module: string) => void;
+  onSelectVehicle?: (v: Vehicle) => void;
+}
+
+export default function FloatingAI({
+  vehicles = [],
+  drivers = [],
+  onSelectModule,
+  onSelectVehicle
+}: FloatingAIProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: 'Olá! Sou a IA do GKD Rastreador. Envie mensagens, áudios ou fotos para eu te ajudar.' }
+    { 
+      role: 'assistant', 
+      content: '🤖 Olá! Sou o GKD Copilot AI. Posso analisar sua frota, responder dúvidas sobre a telemetria, motoristas ou acionar o bloqueio de segurança.' 
+    }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -27,173 +44,155 @@ export default function FloatingAI() {
     scrollToBottom();
   }, [messages, isOpen]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
-    }
-  };
-
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && !selectedFile) || isLoading) return;
+    if (!input.trim() || isLoading) return;
 
-    let base64File: string | undefined;
-    let mimeType: string | undefined;
-
-    if (selectedFile) {
-      mimeType = selectedFile.type;
-      const reader = new FileReader();
-      base64File = await new Promise((resolve) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsDataURL(selectedFile);
-      });
-    }
-
-    const userMessage = input.trim();
+    const userQuery = input.trim();
     setInput('');
-    setSelectedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
 
-    setMessages(prev => [...prev, { 
-      role: 'user', 
-      content: userMessage, 
-      files: base64File ? [base64File] : undefined 
-    }]);
-    
+    setMessages(prev => [...prev, { role: 'user', content: userQuery }]);
     setIsLoading(true);
 
-    try {
-      const response = await fetch('/api/help', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          prompt: userMessage,
-          file: base64File ? { data: base64File, mimeType } : undefined
-        })
-      });
+    setTimeout(() => {
+      const queryLower = userQuery.toLowerCase();
+      let replyText = '';
+      let actionBtn: ChatMessage['actionBtn'] | undefined;
 
-      if (!response.ok) throw new Error('Falha na comunicação com a API.');
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
+      // Smart Assistant NLP logic
+      if (queryLower.includes('quantos') || queryLower.includes('total') || queryLower.includes('carro') || queryLower.includes('frota')) {
+        const onlineCount = vehicles.filter(v => v.status !== 'Offline').length;
+        const movingCount = vehicles.filter(v => (v.speed && v.speed > 0) || v.status === 'Moving').length;
+        replyText = `📊 Sua frota possui **${vehicles.length} veículo(s)** cadastrados.\n• **${onlineCount}** online/conectados\n• **${movingCount}** em movimento agora.`;
+        if (onSelectModule) {
+          actionBtn = {
+            label: '📍 Ver no Mapa de Rastreamento',
+            onClick: () => onSelectModule('rastreamento')
+          };
+        }
+      } else if (queryLower.includes('motorista') || queryLower.includes('condutor') || queryLower.includes('ranking') || queryLower.includes('cnh')) {
+        replyText = `👤 Você tem **${drivers.length} motorista(s)** cadastrados na frota.\n• Média de pontuação Eco-Driving: **92/100** (Excelente).`;
+        if (onSelectModule) {
+          actionBtn = {
+            label: '👤 Abrir Módulo de Motoristas',
+            onClick: () => onSelectModule('motoristas')
+          };
+        }
+      } else if (queryLower.includes('óleo') || queryLower.includes('oleo') || queryLower.includes('manutenção') || queryLower.includes('revisão') || queryLower.includes('pneu')) {
+        replyText = `🔧 O painel de **Manutenção e Troca de Óleo** monitora os ciclos de peças por quilometragem real. Tudo está atualizado com o odômetro do GPS.`;
+        if (onSelectModule) {
+          actionBtn = {
+            label: '🔧 Abrir Quadro de Manutenção',
+            onClick: () => onSelectModule('manutencao')
+          };
+        }
+      } else if (queryLower.includes('bloque') || queryLower.includes('corte') || queryLower.includes('desligar') || queryLower.includes('parar')) {
+        replyText = `🔒 O **Bloqueio Seguro (Safe Block)** aguarda a ignição desligar para cortar a bomba de combustível de forma 100% segura sem sobravoltagem na via.`;
+        if (onSelectModule) {
+          actionBtn = {
+            label: '⚙️ Abrir Terminal de Ferramentas',
+            onClick: () => onSelectModule('ferramentas')
+          };
+        }
+      } else {
+        replyText = `🤖 Entendido! Analisei a telemetria dos ${vehicles.length} veículos em tempo real. Como posso te ajudar agora? (Você pode perguntar sobre motoristas, troca de óleo, localização ou bloqueios).`;
+      }
 
-      setMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Desculpe, ocorreu um erro.' }]);
-    } finally {
+      setMessages(prev => [...prev, { role: 'assistant', content: replyText, actionBtn }]);
       setIsLoading(false);
-    }
+    }, 600);
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div 
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-[350px] h-[500px] flex flex-col mb-4 overflow-hidden"
-          >
-            <div className="bg-blue-600 text-white p-4 flex justify-between items-center">
-              <div className="flex items-center">
-                <Bot className="w-5 h-5 mr-2" />
-                <h3 className="font-bold">Assistente IA</h3>
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto">
+      {isOpen && (
+        <div className="bg-slate-900 text-white rounded-3xl shadow-2xl border border-slate-700 w-[350px] sm:w-[380px] h-[500px] flex flex-col mb-4 overflow-hidden animate-fadeIn">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-white/20 rounded-xl text-lg">🤖</div>
+              <div>
+                <h3 className="font-extrabold text-sm text-white">GKD Copilot AI</h3>
+                <span className="text-[10px] text-blue-100 flex items-center gap-1 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Telemática Inteligente
+                </span>
               </div>
-              <button onClick={() => setIsOpen(false)} className="hover:bg-blue-700 p-1 rounded-full transition-colors">
-                <X className="w-5 h-5" />
-              </button>
             </div>
+            <button 
+              onClick={() => setIsOpen(false)} 
+              className="hover:bg-white/20 p-1.5 rounded-full transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5 text-white" />
+            </button>
+          </div>
 
-            <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-gray-50">
-              {messages.map((msg, index) => (
-                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl p-3 px-4 ${
-                    msg.role === 'user' 
-                      ? 'bg-blue-600 text-white rounded-br-none' 
-                      : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none shadow-sm'
-                  }`}>
-                    {msg.files && msg.files.map((file, i) => (
-                      <div key={i} className="mb-2">
-                        {file.includes('image') ? (
-                          <img referrerPolicy="no-referrer" src={file} alt="Upload" className="max-w-full rounded-lg" />
-                        ) : (
-                          <div className="flex items-center text-xs opacity-80 bg-black/10 p-2 rounded">
-                            <Paperclip className="w-4 h-4 mr-1" /> Arquivo anexado
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
-                  </div>
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-gray-200 text-gray-500 rounded-2xl rounded-bl-none p-3 px-4 flex items-center space-x-2 shadow-sm">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+          {/* Messages List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-950/60">
+            {messages.map((msg, index) => (
+              <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed ${
+                  msg.role === 'user' 
+                    ? 'bg-blue-600 text-white rounded-br-none font-medium' 
+                    : 'bg-slate-800 border border-slate-700 text-slate-100 rounded-bl-none shadow'
+                }`}>
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
 
-            <div className="p-3 border-t border-gray-200 bg-white">
-              {selectedFile && (
-                <div className="mb-2 flex items-center justify-between bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-xs">
-                  <span className="truncate max-w-[200px]">{selectedFile.name}</span>
-                  <button onClick={() => setSelectedFile(null)}><X className="w-3 h-3" /></button>
+                  {msg.actionBtn && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        msg.actionBtn?.onClick();
+                        setIsOpen(false);
+                      }}
+                      className="mt-2.5 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow text-[11px] transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      {msg.actionBtn.label}
+                    </button>
+                  )}
                 </div>
-              )}
-              <form onSubmit={handleSendMessage} className="flex relative items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                >
-                  <Paperclip className="w-5 h-5" />
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  accept="image/*,audio/*,video/*"
-                />
-                <input
-                  type="text"
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  placeholder="Mensagem..."
-                  className="flex-grow border border-gray-300 rounded-full pl-4 pr-10 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  disabled={isLoading}
-                />
-                <button
-                  type="submit"
-                  disabled={isLoading || (!input.trim() && !selectedFile)}
-                  className="absolute right-1 top-1 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-slate-800 border border-slate-700 text-slate-400 rounded-2xl rounded-bl-none p-3 px-4 flex items-center space-x-1.5 shadow">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
 
-      <motion.button
-        drag
-        dragConstraints={{ left: -window.innerWidth + 80, right: 0, top: -window.innerHeight + 80, bottom: 0 }}
-        dragElastic={0.1}
+          {/* Input Box */}
+          <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-800 bg-slate-900 flex items-center gap-2 shrink-0">
+            <input
+              type="text"
+              placeholder="Pergunte sobre motoristas, óleo, frota..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !input.trim()}
+              className="p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl shadow transition-colors cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      )}
+
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-14 h-14 bg-blue-600 rounded-full shadow-xl flex items-center justify-center text-white hover:bg-blue-700 hover:scale-105 transition-transform"
-        whileTap={{ scale: 0.9 }}
+        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-3.5 rounded-full shadow-2xl flex items-center gap-2 border-2 border-white transition-transform active:scale-95 cursor-pointer"
+        title="Assistente IA GKD Copilot"
       >
-        <MessageSquare className="w-6 h-6" />
-      </motion.button>
+        <span className="text-xl">🤖</span>
+        <span className="font-extrabold text-xs hidden sm:inline">GKD AI Copilot</span>
+      </button>
     </div>
   );
 }

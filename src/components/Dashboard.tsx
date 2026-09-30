@@ -238,17 +238,9 @@ export default function Dashboard({ vehicles, onBackToMap }: { vehicles: Vehicle
         </div>
 
         {/* Telemetry Secondary Stats Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 text-center">
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <span className="text-[10px] uppercase font-bold text-gray-500 block">Km Total Acumulado</span>
-            <span className="text-base font-extrabold text-gray-900">{totalMileage} km</span>
-          </div>
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <span className="text-[10px] uppercase font-bold text-gray-500 block">Km Rodado Hoje</span>
-            <span className="text-base font-extrabold text-blue-600">{totalDailyMileage} km</span>
-          </div>
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <span className="text-[10px] uppercase font-bold text-gray-500 block">Velocidade Média</span>
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 text-center">
+          <div className="p-3 bg-gray-50 rounded-xl inline-block w-full">
+            <span className="text-[10px] uppercase font-bold text-gray-500 block">Velocidade Média da Frota</span>
             <span className="text-base font-extrabold text-emerald-600">{avgSpeed} km/h</span>
           </div>
         </div>
@@ -282,21 +274,8 @@ export default function Dashboard({ vehicles, onBackToMap }: { vehicles: Vehicle
               </ResponsiveContainer>
             </div>
           </div>
+        </div>
 
-          {/* Mileage Bar Chart */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Quilometragem da Frota</h3>
-            <p className="text-xs text-gray-500 mb-4">Distância percorrida por veículo cadastrado</p>
-            <div className="h-72 w-full flex-grow">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={vehicleMileageData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={40} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="km" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer></div></div></div>
         {/* Aditional Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* Behavior Bar Chart */}
@@ -427,10 +406,6 @@ export default function Dashboard({ vehicles, onBackToMap }: { vehicles: Vehicle
                             <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
                               <span className="text-gray-500 block mb-0.5">Combustível / Bateria</span>
                               <strong className="text-gray-900 text-sm font-bold">{vehicle.batteryLevel != null ? Math.round(vehicle.batteryLevel) + '%' : (vehicle.fuel || 100) + '%'}</strong>
-                            </div>
-                            <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                              <span className="text-gray-500 block mb-0.5">Quilometragem Total</span>
-                              <strong className="text-gray-900 text-sm font-bold">{Math.round(vehicle.totalMileage || 0).toLocaleString('pt-BR')} km</strong>
                             </div>
                           </div>
 

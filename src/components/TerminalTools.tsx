@@ -20,6 +20,8 @@ interface TerminalToolsProps {
   addNotification?: (notif: any) => void;
   triggerDualDispatch?: (commandName: string, smsCommand: string, phoneNumber: string, vehicleName: string) => void;
   onBackToMap?: () => void;
+  showFloatingAI?: boolean;
+  onToggleFloatingAI?: (enable: boolean) => void;
   messageController?: {
     selectedVehicleForMessage?: Vehicle | null;
     setSelectedVehicleForMessage?: (v: Vehicle | null) => void;
@@ -37,6 +39,8 @@ export default function TerminalTools({
   addNotification,
   triggerDualDispatch,
   onBackToMap,
+  showFloatingAI = false,
+  onToggleFloatingAI,
   messageController
 }: TerminalToolsProps) {
   const {
@@ -155,6 +159,7 @@ export default function TerminalTools({
 
   const topics = [
     { id: 'basic', title: 'Configurações Básicas', icon: <Settings className="w-8 h-8 text-blue-500" />, desc: 'Fuso horário, Senhas SMS e Números de Autorização.' },
+    { id: 'ai_assistant', title: 'Assistente IA Flutuante', icon: <Sparkles className="w-8 h-8 text-indigo-500" />, desc: 'Ativar ou esconder o botão flutuante de Inteligência Artificial.' },
     { id: 'calibration', title: 'Calibração e Hodômetro', icon: <Gauge className="w-8 h-8 text-green-500" />, desc: 'Volume de tanque, calibração de óleo e controle de quilometragem.' },
     { id: 'alarms', title: 'Alarmes e Sensores', icon: <Bell className="w-8 h-8 text-red-500" />, desc: 'Configurações de alerta, sensibilidade, comportamento e ângulos de giro.' },
     { id: 'advanced', title: 'Recursos Avançados', icon: <Cpu className="w-8 h-8 text-purple-500" />, desc: 'Controle de ACC, Alto-falante e Bluetooth.' }
@@ -574,6 +579,45 @@ export default function TerminalTools({
           </button>
         </div>
 
+        {/* Assistente IA Flutuante Config Banner */}
+        <div className="mb-6 bg-gradient-to-r from-indigo-900 via-slate-900 to-purple-950 text-white rounded-2xl p-5 shadow-lg border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-indigo-600/80 text-white rounded-xl shadow-inner shrink-0">
+              <Sparkles className="w-6 h-6 text-amber-300" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-extrabold tracking-tight">IA Flutuante Instalada</h3>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${showFloatingAI ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                  {showFloatingAI ? 'Ativada 🟢' : 'Escondida 🔴'}
+                </span>
+              </div>
+              <p className="text-xs text-indigo-200 mt-0.5">
+                {showFloatingAI 
+                  ? 'O botão flutuante da IA está ativo no canto da tela do aplicativo.' 
+                  : 'A IA está instalada, mas permanece escondida até ser acionada aqui nas configurações.'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !showFloatingAI;
+              if (onToggleFloatingAI) onToggleFloatingAI(next);
+              if (showToast) showToast(next ? '🤖 Assistente de IA ativado e exibido na tela!' : '🙈 Assistente de IA escondido com sucesso.');
+            }}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 shrink-0 cursor-pointer ${
+              showFloatingAI 
+                ? 'bg-red-600 hover:bg-red-500 text-white' 
+                : 'bg-indigo-500 hover:bg-indigo-400 text-white'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>{showFloatingAI ? 'Esconder Botão Flutuante' : 'Acionar e Mostrar IA'}</span>
+          </button>
+        </div>
+
         {/* Informações de Intervalos e Atualizações Recentes */}
         <div className="mb-8 bg-blue-50/80 border border-blue-200 rounded-2xl p-5 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wide flex items-center gap-2">
@@ -689,6 +733,50 @@ export default function TerminalTools({
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Nº Autorização</label>
                     <input type="text" value={config.authorizationNumber} onChange={e => setConfig({...config, authorizationNumber: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
                     <p className="text-xs text-gray-500 mt-1">Número de telefone autorizado a receber alertas e fazer ligações.</p>
+                  </div>
+                </div>
+              )}
+
+              {activeTopic === 'ai_assistant' && (
+                <div className="p-6 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl space-y-5">
+                  <div className="flex items-center justify-between border-b border-indigo-100 pb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-3 bg-indigo-600 text-white rounded-xl shadow-md">
+                        <Sparkles className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-indigo-950 text-base">Assistente IA Copilot Flutuante</h4>
+                        <p className="text-xs text-indigo-700">Controle de exibição do assistente inteligente na tela</p>
+                      </div>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${showFloatingAI ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-800 border border-red-200'}`}>
+                      {showFloatingAI ? 'ATIVADO 🟢' : 'ESCONDIDO 🔴'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-700 leading-relaxed font-medium">
+                    {showFloatingAI 
+                      ? 'O assistente de Inteligência Artificial está ATIVADO. O botão flutuante roxo permanece disponível no canto da tela para comandos e resumos.'
+                      : 'O assistente de Inteligência Artificial está ESCONDIDO. Por padrão ele não é exibido na tela até que você o acione aqui nas Configurações.'}
+                  </p>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !showFloatingAI;
+                        if (onToggleFloatingAI) onToggleFloatingAI(next);
+                        if (showToast) showToast(next ? '🤖 Assistente de IA ativado e exibido como botão flutuante!' : '🙈 Assistente de IA escondido com sucesso.');
+                      }}
+                      className={`w-full py-3.5 px-4 rounded-xl font-black text-sm flex items-center justify-center space-x-2 shadow-lg transition-all active:scale-98 cursor-pointer ${
+                        showFloatingAI 
+                          ? 'bg-red-600 hover:bg-red-700 text-white' 
+                          : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      }`}
+                    >
+                      <Sparkles className="w-5 h-5" />
+                      <span>{showFloatingAI ? 'Desativar / Esconder Botão Flutuante de IA' : 'Acionar e Exibir Botão Flutuante de IA na Tela'}</span>
+                    </button>
                   </div>
                 </div>
               )}

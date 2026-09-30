@@ -149,3 +149,22 @@ export interface RouteStats {
   microStopsCount?: number;
   gpsSignalFidelity?: number;
 }
+
+export interface Driver {
+  id: string;
+  name: string;
+  cpf: string;
+  cnhNumber: string;
+  cnhCategory: 'A' | 'B' | 'AB' | 'C' | 'D' | 'E';
+  cnhDueDate: string;
+  phoneNumber: string;
+  assignedVehicleId?: string;
+  photoUrl?: string;
+  safetyScore: number; // 0 a 100
+  harshBrakingCount: number;
+  sharpTurnsCount: number;
+  overspeedCount: number;
+  idleTimeMinutes: number;
+  totalTripsCount: number;
+  totalKmDriven: number;
+}

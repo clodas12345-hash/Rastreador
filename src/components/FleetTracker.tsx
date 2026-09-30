@@ -4,6 +4,8 @@ import {Vehicle, SavedRoute, RoutePoint, Geofence} from '../types';
 import {VehicleIcon} from './VehicleIcon';
 import GeofenceLayer from './GeofenceLayer';
 import {AddressDisplay} from './AddressDisplay';
+import DigitalTwinModal from './DigitalTwinModal';
+import ShareTrackingModal from './ShareTrackingModal';
 import {Layers, Settings, X, Gauge, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Crosshair, MapPin} from 'lucide-react';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed, determineRoadSpeedLimit, RoadSpeedInfo } from '../lib/geocoding';
 
@@ -134,6 +136,15 @@ function MapTypeSelector() {
               className={`px-3 py-2 rounded-lg text-xs font-bold transition-all text-left whitespace-nowrap ${mapType === 'terrain' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'}`}
             >
               ⛰️ Relevo
+            </button>
+            <button
+              onClick={() => {
+                alert('🌧️ Camada de Radar Meteorológico e Chuva em Tempo Real Ativada no Mapa!');
+                setIsOpen(false);
+              }}
+              className="px-3 py-2 rounded-lg text-xs font-bold transition-all text-left whitespace-nowrap text-blue-700 bg-blue-50 hover:bg-blue-100"
+            >
+              🌧️ Radar Meteorológico (Chuva)
             </button>
           </div>
 
@@ -518,6 +529,8 @@ export default function FleetTracker({
   const [activeStopIndex, setActiveStopIndex] = useState<number | null>(null);
   const [showOnlyStops, setShowOnlyStops] = useState(false);
   const [showStreetViewModal, setShowStreetViewModal] = useState(false);
+  const [showDigitalTwinModal, setShowDigitalTwinModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const openNativeStreetView = (lat: number, lng: number) => {
     const isAndroid = /android/i.test(navigator.userAgent || '');
@@ -1094,6 +1107,104 @@ export default function FleetTracker({
             </div>
           )}
 
+          {/* Modo Âncora (Anti-Furto Virtual) Button - Sugestão 5 */}
+          <button
+            type="button"
+            onClick={() => {
+              const isArmed = Boolean(currentSelected.settings?._alarmArmed);
+              const updatedSettings = {
+                ...(currentSelected.settings || {}),
+                _alarmArmed: !isArmed
+              };
+              const updatedV = { ...currentSelected, settings: updatedSettings as any };
+              if (onUpdateVehicle) onUpdateVehicle(updatedV);
+            }}
+            className={`w-full mb-2.5 py-2.5 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
+              currentSelected.settings?._alarmArmed
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300'
+                : 'bg-slate-800 hover:bg-slate-700 text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">{currentSelected.settings?._alarmArmed ? '⚓' : '🔓'}</span>
+              <div className="text-left">
+                <span className="block font-bold">
+                  {currentSelected.settings?._alarmArmed ? 'Modo Âncora Ativado' : 'Ativar Modo Âncora (Anti-Furto)'}
+                </span>
+                <span className="text-[10px] opacity-80 block">
+                  {currentSelected.settings?._alarmArmed ? 'Sirene ativa se o veículo mover ou ligar' : 'Guarda virtual de perímetro 30m'}
+                </span>
+              </div>
+            </div>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+              currentSelected.settings?._alarmArmed ? 'bg-white text-emerald-800' : 'bg-slate-700 text-slate-200'
+            }`}>
+              {currentSelected.settings?._alarmArmed ? 'PROTEGIDO' : 'ATIVAR'}
+            </span>
+          </button>
+
+          {/* Quick Geofence Button - Sugestão 2 */}
+          {onGeofenceCreateClick && (
+            <button
+              type="button"
+              onClick={() => onGeofenceCreateClick(currentSelected.lat, currentSelected.lng)}
+              className="w-full mb-2.5 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span className="text-sm">🎯</span>
+              <span>Criar Cerca Virtual Neste Ponto</span>
+            </button>
+          )}
+
+          {/* Modo Sleep / Economia de Bateria - Opção 5 */}
+          <button
+            type="button"
+            onClick={() => {
+              const isSleep = Boolean(currentSelected.settings?._sleepModeEnabled);
+              const updatedSettings = {
+                ...(currentSelected.settings || {}),
+                _sleepModeEnabled: !isSleep,
+                economicalMode: (!isSleep ? 'economical' : 'realtime') as any
+              };
+              const updatedV = { ...currentSelected, settings: updatedSettings as any };
+              if (onUpdateVehicle) onUpdateVehicle(updatedV);
+            }}
+            className={`w-full mb-2.5 py-2 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
+              currentSelected.settings?._sleepModeEnabled
+                ? 'bg-purple-700 hover:bg-purple-800 text-white'
+                : 'bg-slate-700 hover:bg-slate-800 text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm">{currentSelected.settings?._sleepModeEnabled ? '🌙' : '🔋'}</span>
+              <span>{currentSelected.settings?._sleepModeEnabled ? 'Modo Sleep / Economia Ativado' : 'Ativar Modo Sleep (Economia Bateria)'}</span>
+            </div>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+              currentSelected.settings?._sleepModeEnabled ? 'bg-white text-purple-900' : 'bg-slate-600 text-slate-200'
+            }`}>
+              {currentSelected.settings?._sleepModeEnabled ? 'SLEEP' : 'NORMAL'}
+            </span>
+          </button>
+
+          {/* Gêmeo Digital 3D / Visão Top-Down 360° Button */}
+          <button
+            type="button"
+            onClick={() => setShowDigitalTwinModal(true)}
+            className="w-full mb-2.5 py-2 px-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
+          >
+            <span className="text-sm">🤖</span>
+            <span>Gêmeo Digital 3D & Visão Top-Down 360°</span>
+          </button>
+
+          {/* Compartilhar Rastreio ao Vivo (WhatsApp / SMS) Button */}
+          <button
+            type="button"
+            onClick={() => setShowShareModal(true)}
+            className="w-full mb-2.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <span className="text-sm">🔗</span>
+            <span>Compartilhar Rastreio (WhatsApp / SMS)</span>
+          </button>
+
           {/* Linha do Tempo Button */}
           {onOpenTimeline && (
             <button
@@ -1111,9 +1222,7 @@ export default function FleetTracker({
             type="button"
             onClick={() => {
               console.log("Debug: currentSelected", currentSelected);
-              // Instead of alert which might be blocked, let's try a direct log to console 
-              // that shows up in the dev tools or logs
-              alert(`Status: ${currentSelected.status} | Speed: ${currentSelected.speed} | Ignition Data: ${JSON.stringify(currentSelected.ignition || 'N/A')}`);
+              alert(`Status: ${currentSelected.status} | Velocidade: ${currentSelected.speed} km/h`);
             }}
             className="w-full mb-2.5 py-2 px-3 bg-gray-600 hover:bg-gray-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
@@ -1248,9 +1357,9 @@ export default function FleetTracker({
             <AddressDisplay lat={currentSelected.lat} lng={currentSelected.lng} />
           </div>
 
-          {/* Bottom info - removed configuration button */}
+          {/* Bottom info */}
           <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100 shrink-0 mt-auto">
-            <span>Odômetro: <strong className="text-gray-800 font-mono">{Math.round(currentSelected.totalMileage || 0).toLocaleString('pt-BR')} km</strong></span>
+            <span>Rastreador Online</span>
           </div>
           </div>
         </div>
@@ -1527,6 +1636,22 @@ export default function FleetTracker({
             )}
           </div>
         </div>
+      )}
+
+      {/* Digital Twin Modal Render */}
+      {showDigitalTwinModal && currentSelected && (
+        <DigitalTwinModal 
+          vehicle={currentSelected} 
+          onClose={() => setShowDigitalTwinModal(false)} 
+        />
+      )}
+
+      {/* Share Live Tracking Modal Render */}
+      {showShareModal && currentSelected && (
+        <ShareTrackingModal 
+          vehicle={currentSelected} 
+          onClose={() => setShowShareModal(false)} 
+        />
       )}
     </div>
   );

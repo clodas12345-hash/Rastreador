@@ -289,23 +289,6 @@ export default function DadosModule({ vehicles, onUpdateVehicle, onBackToMap }: 
                     <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">Fixação Real Alta</span>
                   </div>
 
-                  {/* 4. Odômetro Total */}
-                  <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Odômetro Total</span>
-                    <div className="text-base font-black text-gray-900 font-mono">
-                      {Math.round(vehicle.totalMileage || 0).toLocaleString('pt-BR')} <span className="text-xs font-normal">km</span>
-                    </div>
-                    <span className="text-[9px] text-gray-400 block mt-0.5">Acumulado</span>
-                  </div>
-
-                  {/* 5. Odômetro do Dia */}
-                  <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Km Percorrido Hoje</span>
-                    <div className="text-base font-black text-emerald-800 font-mono">
-                      {typeof vehicle.dailyMileage === 'number' ? vehicle.dailyMileage.toFixed(1) : '0.0'} <span className="text-xs font-normal">km</span>
-                    </div>
-                    <span className="text-[9px] text-emerald-600 block mt-0.5">Diário</span>
-                  </div>
 
                   {/* 6. Ignição / Motor */}
                   <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100">

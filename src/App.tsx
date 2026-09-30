@@ -4,7 +4,7 @@
  */
 import {useState, useEffect, useRef} from 'react';
 import {APIProvider} from '@vis.gl/react-google-maps';
-import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, X} from 'lucide-react';
+import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X} from 'lucide-react';
 import {Vehicle, VehicleSettings, SavedRoute, RoutePoint, AppNotification, Geofence} from './types';
 import FleetTracker from './components/FleetTracker';
 import Dashboard from './components/Dashboard';
@@ -16,6 +16,11 @@ import { VehicleIcon } from './components/VehicleIcon';
 import HelpModule from './components/HelpModule';
 import DadosModule from './components/DadosModule';
 import RegistradorModule from './components/RegistradorModule';
+import ManutencaoModule from './components/ManutencaoModule';
+import MotoristasModule from './components/MotoristasModule';
+import CaixaPretaModule from './components/CaixaPretaModule';
+import RelatoriosConsumoModule from './components/RelatoriosConsumoModule';
+import FloatingAI from './components/FloatingAI';
 import RouteManagerModal from './components/RouteManagerModal';
 
 
@@ -716,6 +721,21 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [selectedVehicleForMessage, setSelectedVehicleForMessage] = useState<Vehicle | null>(null);
+
+  const [showFloatingAI, setShowFloatingAI] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gkd_enable_floating_ai') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const toggleFloatingAI = (enable: boolean) => {
+    setShowFloatingAI(enable);
+    try {
+      localStorage.setItem('gkd_enable_floating_ai', enable ? 'true' : 'false');
+    } catch (e) {}
+  };
 
   // Load cached vehicles initially
   useEffect(() => {
@@ -2100,6 +2120,27 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               }
             }
 
+            // --- ALERTA MODO ÂNCORA / ANTI-FURTO ---
+            if (v.settings?._alarmArmed) {
+              const isAnchorViolated = ignition || realSpeed > 2 || deltaKm > 0.03;
+              if (isAnchorViolated) {
+                newStatus = 'Alarm';
+                startLoopingAlarmSound();
+                if (v.status !== 'Alarm') {
+                  addNotification({
+                    title: '🚨 ALERTA ANTI-FURTO! MODO ÂNCORA VIOLADO',
+                    message: `ATENÇÃO! O veículo ${v.name} detectou movimento ou partida não autorizada enquanto estava ANCORADO!`,
+                    type: 'command',
+                    severity: 'critical',
+                    vehicleId: v.id,
+                    vehicleName: v.name,
+                    lat: realLat,
+                    lng: realLng
+                  });
+                }
+              }
+            }
+
             const flespiDirection = t['position.direction']?.value ?? t['position.course']?.value;
             const realHeading = typeof flespiDirection === 'number' && flespiDirection > 0
               ? flespiDirection
@@ -2429,6 +2470,30 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               <span className="text-lg">🎙️</span> <span>Registrador & Agregações</span>
             </button>
             <button 
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'manutencao' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('manutencao'); setSidebarOpen(false); }}
+            >
+              <Wrench className="w-5 h-5 text-amber-600" /> <span>Manutenção & Óleo</span>
+            </button>
+            <button 
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'motoristas' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('motoristas'); setSidebarOpen(false); }}
+            >
+              <span className="text-lg">👤</span> <span>Motoristas & Eco-Driving</span>
+            </button>
+            <button 
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'caixa_preta' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('caixa_preta'); setSidebarOpen(false); }}
+            >
+              <ShieldAlert className="w-5 h-5 text-red-600" /> <span>Caixa Preta & Perícia</span>
+            </button>
+            <button 
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'relatorios' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('relatorios'); setSidebarOpen(false); }}
+            >
+              <span className="text-lg">📊</span> <span>Consumo, Relatórios & SOS</span>
+            </button>
+            <button 
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'ajuda' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('ajuda'); setSidebarOpen(false); }}
             >
@@ -2599,7 +2664,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               )}
 
               <h2 className="text-sm sm:text-base md:text-lg font-bold text-gray-800 capitalize truncate">
-                {activeModule === 'dashboard' ? 'Painel Geral' : activeModule === 'rastreamento' ? 'Rastreamento' : activeModule === 'historico' ? 'Histórico' : activeModule === 'ferramentas' ? 'Ferramentas' : activeModule === 'dados' ? 'Dados & Telemetria' : activeModule === 'cercas' ? 'Cercas Virtuais' : activeModule === 'registros' ? 'Registrador & Agregações' : 'Ajuda'}
+                {activeModule === 'dashboard' ? 'Painel Geral' : activeModule === 'rastreamento' ? 'Rastreamento' : activeModule === 'historico' ? 'Histórico' : activeModule === 'ferramentas' ? 'Ferramentas' : activeModule === 'dados' ? 'Dados & Telemetria' : activeModule === 'cercas' ? 'Cercas Virtuais' : activeModule === 'registros' ? 'Registrador & Agregações' : activeModule === 'manutencao' ? 'Manutenção & Óleo' : activeModule === 'motoristas' ? 'Motoristas & Eco-Driving' : activeModule === 'caixa_preta' ? 'Caixa Preta & Perícia' : activeModule === 'relatorios' ? 'Consumo, Relatórios & SOS' : 'Ajuda'}
               </h2>
 
               {activeModule === 'rastreamento' && (
@@ -2705,6 +2770,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 showToast={showToast} 
                 addNotification={addNotification}
                 onBackToMap={() => setActiveModule('rastreamento')}
+                showFloatingAI={showFloatingAI}
+                onToggleFloatingAI={toggleFloatingAI}
                 triggerDualDispatch={(commandName, smsCommand, phoneNumber, vehicleName) => {
                   setDualDispatchData({
                     isOpen: true,
@@ -2749,6 +2816,39 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 }}
                 showToast={showToast}
                 onBackToMap={() => setActiveModule('rastreamento')}
+              />
+            )}
+
+            {activeModule === 'manutencao' && (
+              <ManutencaoModule
+                vehicles={vehicles}
+                onUpdateVehicle={handleUpdateVehicle}
+                onBackToMap={() => setActiveModule('rastreamento')}
+                showToast={showToast}
+              />
+            )}
+
+            {activeModule === 'motoristas' && (
+              <MotoristasModule
+                vehicles={vehicles}
+                onUpdateVehicle={handleUpdateVehicle}
+                onBackToMap={() => setActiveModule('rastreamento')}
+                showToast={showToast}
+              />
+            )}
+
+            {activeModule === 'caixa_preta' && (
+              <CaixaPretaModule
+                vehicles={vehicles}
+                onBackToMap={() => setActiveModule('rastreamento')}
+                showToast={showToast}
+              />
+            )}
+
+            {activeModule === 'relatorios' && (
+              <RelatoriosConsumoModule
+                vehicles={vehicles}
+                savedRoutes={savedRoutes}
               />
             )}
           </main>
@@ -3574,41 +3674,6 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                             className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
                           />
                         </div>
-
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-1">Odômetro Total (km)</label>
-                          <input 
-                            type="number" 
-                            step="1"
-                            value={Math.round(editingVehicle.totalMileage ?? 0)} 
-                            onChange={e => setEditingVehicle({...editingVehicle, totalMileage: Math.round(parseFloat(e.target.value) || 0)})} 
-                            placeholder="0"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Quilometragem geral acumulada do veículo em número inteiro (sincronize com o painel físico).</p>
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="block text-sm font-semibold text-gray-700">Km Rodados Hoje (km)</label>
-                            <button
-                              type="button"
-                              onClick={() => setEditingVehicle({...editingVehicle, dailyMileage: 0})}
-                              className="text-xs text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline"
-                            >
-                              Zerar Hoje (0 km)
-                            </button>
-                          </div>
-                          <input 
-                            type="number" 
-                            step="1"
-                            value={Math.round(editingVehicle.dailyMileage ?? 0)} 
-                            onChange={e => setEditingVehicle({...editingVehicle, dailyMileage: Math.round(parseFloat(e.target.value) || 0)})} 
-                            placeholder="0"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Distância percorrida hoje em km inteiros (reseta automaticamente à meia-noite).</p>
-                        </div>
                       </div>
                     </div>
 
@@ -4358,6 +4423,14 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           </div>
         )}
 
-        </div>
+        {/* Floating AI Assistant Copilot - Exibida apenas quando ativada nas Configurações */}
+        {showFloatingAI && (
+          <FloatingAI 
+            vehicles={vehicles} 
+            onSelectModule={(mod) => setActiveModule(mod)} 
+            onSelectVehicle={(v) => setSelectedVehicle(v)} 
+          />
+        )}
+      </div>
   );
 }
