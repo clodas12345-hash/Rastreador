@@ -1380,8 +1380,13 @@ export default function FleetTracker({
           </div>
 
           {/* Bottom info */}
-          <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100 shrink-0 mt-auto">
-            <span>Rastreador Online</span>
+          <div className="flex items-center justify-between text-[11px] text-gray-500 pt-2 border-t border-gray-100 shrink-0 mt-auto font-medium">
+            <span>Última atualização do sinal:</span>
+            <span className="font-mono font-bold text-gray-700">
+              {currentSelected.lastTelemetryTime 
+                ? new Date(currentSelected.lastTelemetryTime * 1000).toLocaleString('pt-BR') 
+                : 'Sem registros'}
+            </span>
           </div>
           </div>
         </div>

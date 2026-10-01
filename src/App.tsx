@@ -4,7 +4,7 @@
  */
 import {useState, useEffect, useRef} from 'react';
 import {APIProvider} from '@vis.gl/react-google-maps';
-import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X} from 'lucide-react';
+import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X, Smartphone} from 'lucide-react';
 import {Vehicle, VehicleSettings, SavedRoute, RoutePoint, AppNotification, Geofence} from './types';
 import FleetTracker from './components/FleetTracker';
 import Dashboard from './components/Dashboard';
@@ -23,6 +23,7 @@ import RelatoriosConsumoModule from './components/RelatoriosConsumoModule';
 import FloatingAI from './components/FloatingAI';
 import RouteManagerModal from './components/RouteManagerModal';
 import ShareTrackingModal from './components/ShareTrackingModal';
+import PermissoesModule from './components/PermissoesModule';
 
 
 import {collection, onSnapshot, doc} from 'firebase/firestore';
@@ -72,7 +73,7 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   const direction = posMsg ? Number(posMsg['position.direction'] || 0) : 0;
   const satellites = posMsg ? Number(posMsg['position.satellites'] || posMsg['gnss.satellites'] || (lat !== 0 ? 12 : 0)) : (previousVehicle?.satellites ?? 12);
   const hdop = posMsg ? Number(posMsg['position.hdop'] || posMsg['gnss.hdop'] || 0.9) : 0.9;
-  const timestamp = Number(latestMsg.timestamp || latestMsg['server.timestamp'] || (Date.now() / 1000));
+  const timestamp = Number(latestMsg.timestamp || latestMsg['server.timestamp'] || (previousVehicle?.lastTelemetryTime || 0));
   
   let batteryLevel = latestMsg['battery.level'] !== undefined ? Number(latestMsg['battery.level']) : previousVehicle?.batteryLevel;
   const internalVoltage = latestMsg['battery.voltage'];
@@ -706,14 +707,14 @@ export default function App() {
   };
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
-  const [activeModule, setActiveModuleState] = useState<'rastreamento' | 'dashboard' | 'historico' | 'ajuda' | 'ferramentas' | 'dados' | 'registros' | 'cercas'>(() => {
+  const [activeModule, setActiveModuleState] = useState<'rastreamento' | 'dashboard' | 'historico' | 'ajuda' | 'ferramentas' | 'dados' | 'registros' | 'cercas' | 'permissoes'>(() => {
     try {
       localStorage.removeItem('gkd_active_module');
     } catch (e) {}
     return 'rastreamento';
   });
 
-  const setActiveModule = (mod: 'rastreamento' | 'dashboard' | 'historico' | 'ajuda' | 'ferramentas' | 'dados' | 'registros' | 'cercas') => {
+  const setActiveModule = (mod: 'rastreamento' | 'dashboard' | 'historico' | 'ajuda' | 'ferramentas' | 'dados' | 'registros' | 'cercas' | 'permissoes') => {
     setActiveModuleState(mod);
     try {
       localStorage.setItem('gkd_active_module', mod);
@@ -1954,10 +1955,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               t['ignition.status']?.ts,
               t['external.powersource.voltage']?.ts
             ].filter(Boolean) as number[];
-            const latestTs = timestamps.length > 0 ? Math.max(...timestamps) : (Date.now() / 1000);
+            const latestTs = timestamps.length > 0 ? Math.max(...timestamps) : (v.lastTelemetryTime || 0);
             
             // If ignition is OFF, tracker sleeps and pings periodically. Allow 24 hours or if device is connected.
-            const isOnline = Boolean(device.connected) || (((Date.now() / 1000) - latestTs) < (ignition ? 3600 : 86400));
+            const isOnline = latestTs > 0 && (Boolean(device.connected) || (((Date.now() / 1000) - latestTs) < (ignition ? 3600 : 86400)));
             
             let newStatus: Vehicle['status'] = v.status || 'IgnitionOff';
             if (v.settings?.isBlocked) {
@@ -2496,6 +2497,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               <span className="text-lg">📊</span> <span>Consumo, Relatórios & SOS</span>
             </button>
             <button 
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'permissoes' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('permissoes'); setSidebarOpen(false); }}
+            >
+              <Smartphone className="w-5 h-5 text-indigo-600" /> <span>Permissões do App</span>
+            </button>
+            <button 
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'ajuda' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('ajuda'); setSidebarOpen(false); }}
             >
@@ -2666,7 +2673,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               )}
 
               <h2 className="text-sm sm:text-base md:text-lg font-bold text-gray-800 capitalize truncate">
-                {activeModule === 'dashboard' ? 'Painel Geral' : activeModule === 'rastreamento' ? 'Rastreamento' : activeModule === 'historico' ? 'Histórico' : activeModule === 'ferramentas' ? 'Ferramentas' : activeModule === 'dados' ? 'Dados & Telemetria' : activeModule === 'cercas' ? 'Cercas Virtuais' : activeModule === 'registros' ? 'Registrador & Agregações' : activeModule === 'manutencao' ? 'Manutenção & Óleo' : activeModule === 'motoristas' ? 'Motoristas & Eco-Driving' : activeModule === 'caixa_preta' ? 'Caixa Preta & Perícia' : activeModule === 'relatorios' ? 'Consumo, Relatórios & SOS' : 'Ajuda'}
+                {activeModule === 'dashboard' ? 'Painel Geral' : activeModule === 'rastreamento' ? 'Rastreamento' : activeModule === 'historico' ? 'Histórico' : activeModule === 'ferramentas' ? 'Ferramentas' : activeModule === 'dados' ? 'Dados & Telemetria' : activeModule === 'cercas' ? 'Cercas Virtuais' : activeModule === 'registros' ? 'Registrador & Agregações' : activeModule === 'manutencao' ? 'Manutenção & Óleo' : activeModule === 'motoristas' ? 'Motoristas & Eco-Driving' : activeModule === 'caixa_preta' ? 'Caixa Preta & Perícia' : activeModule === 'relatorios' ? 'Consumo, Relatórios & SOS' : activeModule === 'permissoes' ? 'Permissões do App' : 'Ajuda'}
               </h2>
 
               {activeModule === 'rastreamento' && (
@@ -2851,7 +2858,14 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             {activeModule === 'relatorios' && (
               <RelatoriosConsumoModule
                 vehicles={vehicles}
-                savedRoutes={savedRoutes}
+              />
+            )}
+
+            {activeModule === 'permissoes' && (
+              <PermissoesModule
+                vehicles={vehicles}
+                onBackToMap={() => setActiveModule('rastreamento')}
+                showToast={showToast}
               />
             )}
           </main>
@@ -3004,7 +3018,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           Posicionamento e Telemetria
                         </span>
                         <span className="text-[10px] text-gray-500 font-mono">
-                          Última leitura: {new Date().toLocaleTimeString('pt-BR')}
+                          Última leitura: {editingVehicle.lastTelemetryTime ? new Date(editingVehicle.lastTelemetryTime * 1000).toLocaleString('pt-BR') : 'Sem registros'}
                         </span>
                       </div>
 
