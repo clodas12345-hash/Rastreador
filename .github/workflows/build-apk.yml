@@ -42,11 +42,20 @@ jobs:
           GOOGLE_MAPS_PLATFORM_KEY: ${{ secrets.GOOGLE_MAPS_PLATFORM_KEY }}
 
       - name: Adicionar a plataforma Android
-        run: npx cap add android
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          else
+            echo "Plataforma Android já existe no repositório, pulando etapa de adição."
+          fi
 
       - name: Adicionar permissões de câmera e biometria
         run: |
-          sed -i '/<application/i\    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />' android/app/src/main/AndroidManifest.xml
+          if ! grep -q "android.permission.CAMERA" android/app/src/main/AndroidManifest.xml; then
+            sed -i '/<application/i\    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />' android/app/src/main/AndroidManifest.xml
+          else
+            echo "Permissões já configuradas no AndroidManifest.xml"
+          fi
 
       - name: Aplicar Ícones Avançados e Notificações (GKD Custom)
         run: npm run generate-android-icons
