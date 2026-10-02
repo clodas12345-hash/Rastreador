@@ -903,11 +903,26 @@ export default function App() {
   return (
     <>
       {toastMessage && (
-        <div className="fixed top-4 right-4 z-[9999] bg-gray-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fadeIn">
-          <div className="bg-blue-500 rounded-full p-1">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] w-[90vw] max-w-md bg-white/90 backdrop-blur-2xl px-4 py-3 rounded-[26px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/40 flex items-center gap-3 animate-fadeIn">
+          {/* Native Style App Icon */}
+          <div className="w-10 h-10 bg-white rounded-[14px] shadow-sm border border-gray-100 flex items-center justify-center shrink-0">
+            <img src="/1786699612187.png" alt="GKD" className="w-6 h-6 object-contain" />
           </div>
-          <span className="text-sm font-medium">{toastMessage}</span>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-black text-gray-900 tracking-tight">GKD Mobility</span>
+              <span className="text-[10px] font-medium text-gray-400">agora</span>
+            </div>
+            <p className="text-[12px] text-gray-600 leading-tight truncate mt-0.5">{toastMessage}</p>
+          </div>
+          
+          {/* Subtle expand handle for native feel */}
+          <div className="shrink-0 ml-1">
+            <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
         </div>
       )}
       <APIProvider apiKey={API_KEY || ''} version="weekly">
@@ -1622,7 +1637,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     } catch (e) {}
 
     // In-app visual toast
-    showToast(`${notif.severity === 'critical' ? '🚨' : notif.severity === 'warning' ? '⚠️' : '🔔'} ${notif.title}: ${notif.message}`);
+    showToast(notif.message);
 
     // Native browser notification
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
@@ -3853,72 +3868,91 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           <div className="fixed inset-0 bg-black/60 flex justify-end z-[1000] backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
             <div className="bg-white w-full max-w-md h-full sm:h-[90vh] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden my-auto border border-gray-100">
               
-              {/* Header */}
-              <div className="bg-slate-900 text-white p-4 flex items-center justify-between shadow-md shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-blue-600 rounded-xl text-white">
+              {/* Header - One UI Style */}
+              <div className="bg-white/90 backdrop-blur-md p-4 flex items-center justify-between border-b border-gray-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-600 rounded-2xl text-white shadow-blue-200 shadow-lg">
                     <Bell className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-base flex items-center gap-2">
-                      Central de Notificações
+                    <h3 className="font-black text-lg text-gray-900 tracking-tight flex items-center gap-2">
+                      Notificações
                       {notifications.filter(n => !n.read).length > 0 && (
-                        <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-extrabold">
-                          {notifications.filter(n => !n.read).length}
-                        </span>
+                        <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
                       )}
                     </h3>
-                    <p className="text-xs text-slate-300">Alertas de segurança e eventos da frota</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">GKD Mobility • Sistema</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowNotificationDrawer(false)}
-                  className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                  className="p-2 text-gray-400 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-all"
                 >
-                  ✕
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
 
               {/* Notification Permission Request Banner */}
               {notificationPermissionStatus !== 'granted' && (
-                <div className="p-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-2 text-xs text-amber-900 shrink-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="shrink-0">🔔</span>
-                    <span className="truncate">Permitir notificações do navegador</span>
+                <div className="mx-4 mt-4 p-3 bg-blue-50/50 rounded-2xl border border-blue-100 flex items-center justify-between gap-2 text-[11px] text-blue-900 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-lg">🔔</span>
+                    <span className="font-bold truncate">Deseja receber avisos push?</span>
                   </div>
                   <button
                     onClick={requestNotificationPermission}
-                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-2.5 py-1 rounded-lg text-xs transition-colors shrink-0 shadow-sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded-xl text-[10px] transition-all shrink-0 shadow-sm"
                   >
                     Ativar
                   </button>
                 </div>
               )}
 
-              {/* Filter Tabs & Top Actions */}
-              <div className="p-3 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <div className="flex bg-gray-200/80 p-1 rounded-lg text-xs font-semibold">
-                  <button
-                    onClick={() => setNotificationFilter('all')}
-                    className={`px-2.5 py-1 rounded-md transition-all ${notificationFilter === 'all' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                  >
-                    Todas ({notifications.length})
-                  </button>
-                  <button
-                    onClick={() => setNotificationFilter('unread')}
-                    className={`px-2.5 py-1 rounded-md transition-all ${notificationFilter === 'unread' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                  >
-                    Não lidas ({notifications.filter(n => !n.read).length})
-                  </button>
-                  <button
-                    onClick={() => setNotificationFilter('critical')}
-                    className={`px-2.5 py-1 rounded-md transition-all ${notificationFilter === 'critical' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                  >
-                    Alertas Críticos
-                  </button>
+              {/* Filter Tabs & Top Actions - One UI Style Pills */}
+              <div className="p-4 space-y-3 shrink-0">
+                <div className="flex items-center justify-between">
+                   <div className="flex bg-gray-100 p-1 rounded-[16px] text-[11px] font-black">
+                     <button
+                       onClick={() => setNotificationFilter('all')}
+                       className={`px-4 py-1.5 rounded-[12px] transition-all ${notificationFilter === 'all' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                     >
+                       Todas
+                     </button>
+                     <button
+                       onClick={() => setNotificationFilter('unread')}
+                       className={`px-4 py-1.5 rounded-[12px] transition-all ${notificationFilter === 'unread' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                     >
+                       Não lidas
+                     </button>
+                     <button
+                       onClick={() => setNotificationFilter('critical')}
+                       className={`px-4 py-1.5 rounded-[12px] transition-all ${notificationFilter === 'critical' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                     >
+                       Críticos
+                     </button>
+                   </div>
+                   
+                   <div className="flex items-center gap-1.5">
+                     <button
+                       onClick={clearNotifications}
+                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all"
+                       title="Limpar tudo"
+                     >
+                       <Trash2 className="w-4 h-4" />
+                     </button>
+                     <button
+                       onClick={markAllNotificationsAsRead}
+                       className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all"
+                       title="Marcar lidas"
+                     >
+                       <CheckCircle2 className="w-4 h-4" />
+                     </button>
+                   </div>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => {
                       addNotification({
@@ -3929,10 +3963,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         vehicleName: 'GKD Mobility'
                       });
                     }}
-                    className="text-[11px] font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-1 rounded transition-colors cursor-pointer flex items-center gap-1"
-                    title="Enviar notificação de teste para verificar som, toast e alerta"
+                    className="flex items-center justify-center gap-1.5 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black hover:bg-emerald-100 transition-all border border-emerald-100"
                   >
-                    🧪 Testar
+                    <span>🧪</span> Testar Push
                   </button>
                   <button
                     onClick={() => {
@@ -3945,26 +3978,14 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         setIsAlarmTesting(true);
                       }
                     }}
-                    className={`text-[11px] font-bold px-2 py-1 rounded transition-colors flex items-center gap-1 cursor-pointer ${
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] font-black transition-all border ${
                       isAlarmTesting || isAlarmPlaying()
-                        ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse shadow-sm'
-                        : 'text-red-700 bg-red-100 hover:bg-red-200'
+                        ? 'bg-red-600 border-red-700 text-white animate-pulse'
+                        : 'bg-red-50 border-red-100 text-red-700 hover:bg-red-100'
                     }`}
-                    title={isAlarmTesting || isAlarmPlaying() ? "Clique para parar o som do alarme" : "Clique para testar o alarme sonoro"}
                   >
-                    {isAlarmTesting || isAlarmPlaying() ? '🔇 Parar' : '🔊 Som'}
-                  </button>
-                  <button
-                    onClick={markAllNotificationsAsRead}
-                    className="text-[11px] font-medium text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
-                  >
-                    ✓ Lidas
-                  </button>
-                  <button
-                    onClick={clearNotifications}
-                    className="text-[11px] font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors"
-                  >
-                    🗑️ Limpar
+                    <span>{isAlarmTesting || isAlarmPlaying() ? '🔇' : '🔊'}</span>
+                    {isAlarmTesting || isAlarmPlaying() ? 'Parar Alarme' : 'Testar Sirene'}
                   </button>
                 </div>
               </div>
@@ -3980,80 +4001,87 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   .map(n => (
                     <div
                       key={n.id}
-                      className={`p-3.5 rounded-xl border transition-all relative ${
-                        !n.read ? 'bg-blue-50/50 border-blue-200 shadow-sm' : 'bg-white border-gray-100 hover:border-gray-200'
+                      onClick={() => {
+                        if (!n.read) {
+                          setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+                        }
+                      }}
+                      className={`group relative overflow-hidden transition-all active:scale-[0.98] cursor-pointer ${
+                        !n.read ? 'ring-1 ring-blue-400/30' : ''
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                            n.severity === 'critical' ? 'bg-red-100 text-red-700 border border-red-200' :
-                            n.severity === 'warning' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                            'bg-blue-100 text-blue-800 border border-blue-200'
-                          }`}>
-                            {n.type === 'speed' ? '⚡ Velocidade' :
-                             n.type === 'command' ? '⚙️ Comando' :
-                             n.type === 'battery' ? '🔋 Bateria' :
-                             n.type === 'geofence' ? '📍 Cerca' : 'ℹ️ Sistema'}
-                          </span>
-                          {!n.read && (
-                            <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                          )}
+                      {/* One UI 6.0 Style Notification Card */}
+                      <div className={`flex items-center gap-3.5 p-3.5 rounded-[22px] backdrop-blur-xl border shadow-sm ${
+                        !n.read ? 'bg-white/95 border-blue-100' : 'bg-gray-50/80 border-gray-100'
+                      }`}>
+                        
+                        {/* App/Category Icon (Rounded Square) */}
+                        <div className={`w-12 h-12 shrink-0 rounded-[14px] flex items-center justify-center shadow-sm border ${
+                          n.severity === 'critical' ? 'bg-red-50 border-red-100 text-red-600' :
+                          n.severity === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600' :
+                          'bg-white border-gray-100 text-blue-600'
+                        }`}>
+                          {n.type === 'speed' ? <span className="text-xl">⚡</span> :
+                           n.type === 'command' ? <span className="text-xl">⚙️</span> :
+                           n.type === 'battery' ? <span className="text-xl">🔋</span> :
+                           n.type === 'geofence' ? <span className="text-xl">🎯</span> :
+                           <img src="/1786699612187.png" alt="GKD" className="w-8 h-8 object-contain" />}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-mono text-gray-400">{n.timestamp}</span>
+
+                        {/* Content Area */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <h4 className="font-bold text-[13px] text-gray-900 truncate">
+                              {n.type === 'speed' ? 'Velocidade' :
+                               n.type === 'command' ? 'Controle Diário' :
+                               n.type === 'battery' ? 'Energia' :
+                               n.type === 'geofence' ? 'Cerca Virtual' : 'GKD Mobility'}
+                            </h4>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[10px] font-medium text-gray-500">{n.timestamp}</span>
+                              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </div>
+                          </div>
+                          
+                          <p className="text-[12px] text-gray-600 leading-[1.3] line-clamp-2">
+                            {n.vehicleName && <span className="font-bold text-gray-700">🚗 {n.vehicleName}: </span>}
+                            {n.message}
+                          </p>
+                        </div>
+
+                        {/* Status/Actions (Subtle Overlay on Hover or expansion) */}
+                        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                           <button
+                             onClick={(e) => { e.stopPropagation(); handleDeleteNotification(n.id); }}
+                             className="p-1.5 bg-gray-200/50 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded-full transition-colors"
+                           >
+                             <Trash2 className="w-3 h-3" />
+                           </button>
+                        </div>
+                      </div>
+
+                      {/* Map Quick Action - Now a subtle pill below if expanded or just visible */}
+                      {n.vehicleName && (
+                        <div className="flex justify-end px-4 mt-[-10px] pb-1 relative z-10">
                           <button
-                            onClick={() => handleDeleteNotification(n.id)}
-                            className="text-gray-400 hover:text-red-600 p-1 rounded transition-colors"
-                            title="Apagar notificação"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const matched = vehicles.find((v: any) => v.name === n.vehicleName || v.id === n.vehicleId);
+                              if (matched) {
+                                setSelectedVehicle(matched);
+                                setActiveModule('rastreamento');
+                                setShowNotificationDrawer(false);
+                                showToast(`📍 Centrando no mapa: ${matched.name}`);
+                              }
+                            }}
+                            className="bg-white/90 backdrop-blur shadow-sm border border-gray-100 px-3 py-1 rounded-full text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            📍 Ver no Mapa
                           </button>
                         </div>
-                      </div>
-
-                      <h4 className="font-bold text-gray-800 text-sm mb-1">{n.title}</h4>
-                      <p className="text-xs text-gray-600 leading-relaxed mb-2.5">{n.message}</p>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-100/80">
-                        {n.vehicleName && (
-                          <span className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
-                            🚙 {n.vehicleName}
-                          </span>
-                        )}
-                        <div className="flex items-center gap-2 ml-auto">
-                          {n.vehicleName && (
-                            <button
-                              onClick={() => {
-                                const matched = vehicles.find((v: any) => v.name === n.vehicleName || v.id === n.vehicleId);
-                                if (matched) {
-                                  setSelectedVehicle(matched);
-                                  setActiveModule('rastreamento');
-                                  setShowNotificationDrawer(false);
-                                  showToast(`📍 Centrando no mapa: ${matched.name}`);
-                                } else {
-                                  setActiveModule('rastreamento');
-                                  setShowNotificationDrawer(false);
-                                }
-                              }}
-                              className="text-xs font-bold text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
-                            >
-                              📍 Ver no Mapa
-                            </button>
-                          )}
-                          {!n.read && (
-                            <button
-                              onClick={() => {
-                                setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
-                              }}
-                              className="text-xs text-gray-400 hover:text-gray-600 px-1.5 py-1 rounded"
-                              title="Marcar como lida"
-                            >
-                              ✓
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                      )}
                     </div>
                   ))}
 
@@ -4085,12 +4113,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 )}
               </div>
 
-              <div className="p-3 bg-gray-50 border-t border-gray-200 text-center shrink-0">
+              <div className="p-4 bg-white border-t border-gray-100 shrink-0">
                 <button
                   onClick={() => setShowNotificationDrawer(false)}
-                  className="w-full py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-xl text-xs font-bold transition-colors"
+                  className="w-full py-3 bg-blue-600 text-white hover:bg-blue-700 rounded-[20px] text-[13px] font-black transition-all shadow-lg shadow-blue-100 active:scale-[0.98]"
                 >
-                  Fechar Painel
+                  Fechar Central de Alertas
                 </button>
               </div>
 
