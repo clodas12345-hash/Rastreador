@@ -3,42 +3,108 @@ name: Build Android APK
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Baixar o código
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Instalar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: 20
 
-      - name: Install dependencies
+      - name: Usar a mesma assinatura de teste em todas as compilações
+        run: |
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > ~/.android/debug.keystore
+          echo "Tamanho do arquivo decodificado:"
+          ls -la ~/.android/debug.keystore
+
+      - name: Instalar Java (necessário pro Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Instalar dependências do projeto
         run: npm install
 
-      - name: Build web project
-        run: npm run build
+      - name: Instalar o Capacitor
+        run: npm install @capacitor/core @capacitor/cli @capacitor/android
 
-      - name: Add Android Platform
+      - name: Gerar a versão web do app
+        run: npm run build
+        env:
+          GOOGLE_MAPS_PLATFORM_KEY: ${{ secrets.GOOGLE_MAPS_PLATFORM_KEY }}
+
+      - name: Adicionar a plataforma Android
         run: npx cap add android
 
-      - name: Apply Android Icons & Design
+      - name: Adicionar permissões de câmera e biometria
+        run: |
+          sed -i '/<application/i\    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />' android/app/src/main/AndroidManifest.xml
+
+      - name: Aplicar Ícones Avançados e Notificações (GKD Custom)
         run: npm run generate-android-icons
 
-      - name: Sync Capacitor
+      - name: Organizar o ícone na pasta correta
+        run: mkdir -p assets && [ -f icon.png ] && mv icon.png assets/icon.png || true
+
+      - name: Gerar o ícone do app em todos os tamanhos
+        run: npx @capacitor/assets generate --android --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff'
+
+      - name: Sincronizar o app com o Android
         run: npx cap sync android
 
-      - name: Build APK with Gradle
+      - name: Corrigir conflito de versões do Kotlin
         run: |
-          cd android
-          ./gradlew assembleDebug
+          cat >> android/app/build.gradle << 'EOF'
 
-      - name: Upload APK
+          configurations.all {
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+          }
+          EOF
+
+      - name: Forçar signingConfig do App para Usar o Keystore Fixo
+        run: |
+          if grep -q "android.signingConfigs.debug.storeFile" android/app/build.gradle; then
+            echo "signingConfig já estava forçado — nada a fazer"
+            exit 0
+          fi
+          cat >> android/app/build.gradle << 'EOF'
+
+          android.signingConfigs.debug.storeFile = new File(System.getProperty("user.home") + "/.android/debug.keystore")
+          android.signingConfigs.debug.storePassword = "android"
+          android.signingConfigs.debug.keyAlias = "androiddebugkey"
+          android.signingConfigs.debug.keyPassword = "android"
+          android.buildTypes.debug.signingConfig = android.signingConfigs.debug
+          EOF
+          echo "signingConfig do buildType debug forçado a usar ~/.android/debug.keystore"
+
+      - name: Compilar o APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Verificar Fingerprint da Assinatura do APK
+        continue-on-error: true
+        run: |
+          SDK=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          APKSIGNER=$(ls $SDK/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          echo "=== Fingerprint da assinatura deste APK (compare entre builds) ==="
+          if [ -z "$APKSIGNER" ]; then
+            echo "apksigner nao encontrado - pulando verificacao"
+            exit 0
+          fi
+          "$APKSIGNER" verify --print-certs "$APK" | grep -i "SHA-256\|SHA-1"
+
+      - name: Disponibilizar o APK pra download
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: gkd-rastreador-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
