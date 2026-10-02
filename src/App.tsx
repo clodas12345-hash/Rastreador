@@ -4,7 +4,7 @@
  */
 import {useState, useEffect, useRef} from 'react';
 import {APIProvider} from '@vis.gl/react-google-maps';
-import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X, Smartphone} from 'lucide-react';
+import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X, Smartphone, CheckCircle2} from 'lucide-react';
 import {Vehicle, VehicleSettings, SavedRoute, RoutePoint, AppNotification, Geofence} from './types';
 import FleetTracker from './components/FleetTracker';
 import Dashboard from './components/Dashboard';
