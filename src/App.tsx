@@ -24,6 +24,8 @@ import FloatingAI from './components/FloatingAI';
 import RouteManagerModal from './components/RouteManagerModal';
 import ShareTrackingModal from './components/ShareTrackingModal';
 import PermissoesModule from './components/PermissoesModule';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 
 import {collection, onSnapshot, doc} from 'firebase/firestore';
@@ -1076,6 +1078,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   };
 
   const [notificationPermissionStatus, setNotificationPermissionStatus] = useState<string>(() => {
+    if (Capacitor.isNativePlatform()) return 'prompt';
     return typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
   });
   const [emergencySelector, setEmergencySelector] = useState<{
@@ -1470,23 +1473,50 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   //   }
   // }, [vehicles, selectedVehicle]);
 
-  // Request browser notification permissions on load
+  // Request browser/native notification permissions on load
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().then(permission => {
-          setNotificationPermissionStatus(permission);
-          if (permission === 'granted') {
-            showToast('🔔 Permissão de notificações concedida com sucesso!');
-          }
-        });
-      } else {
-        setNotificationPermissionStatus(Notification.permission);
+    const checkNotificationPermission = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const status = await LocalNotifications.checkPermissions();
+          setNotificationPermissionStatus(status.display);
+        } catch (e) {
+          console.warn('Error checking native notifications:', e);
+        }
+      } else if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          Notification.requestPermission().then(permission => {
+            setNotificationPermissionStatus(permission);
+            if (permission === 'granted') {
+              showToast('🔔 Permissão de notificações concedida com sucesso!');
+            }
+          });
+        } else {
+          setNotificationPermissionStatus(Notification.permission);
+        }
       }
-    }
+    };
+    
+    checkNotificationPermission();
   }, []);
 
   const requestNotificationPermission = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await LocalNotifications.requestPermissions();
+        setNotificationPermissionStatus(result.display);
+        if (result.display === 'granted') {
+          showToast('🔔 Notificações nativas ativadas com sucesso!');
+        } else {
+          showToast('⚠️ Permissão de notificações negada pelo sistema.');
+        }
+      } catch (e) {
+        console.warn('Native notification request error:', e);
+        showToast('❌ Erro ao solicitar notificações nativas.');
+      }
+      return;
+    }
+
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
         const permission = await Notification.requestPermission();

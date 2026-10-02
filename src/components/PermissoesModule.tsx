@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Camera, Users, Radio, Image as ImageIcon, MapPin, Mic, 
+  Camera as CameraIcon, Users, Radio, Image as ImageIcon, MapPin, Mic, 
   Volume2, Bell, Shield, ChevronRight, CheckCircle2, 
   AlertTriangle, ArrowLeft, RefreshCw, Smartphone, Eye
 } from 'lucide-react';
 import { Vehicle } from '../types';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { Camera, CameraResultType } from '@capacitor/camera';
+import { Geolocation } from '@capacitor/geolocation';
 
 interface PermissoesModuleProps {
   vehicles: Vehicle[];
@@ -38,39 +42,66 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
 
   // Sync state initially on load
   useEffect(() => {
-    // 1. Geolocation permission check
-    if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'geolocation' }).then((status) => {
-        setPermissions(prev => ({ ...prev, location: status.state }));
-        status.onchange = () => {
+    const checkAllPermissions = async () => {
+      const isNative = Capacitor.isNativePlatform();
+
+      // 1. Geolocation permission check
+      if (isNative) {
+        try {
+          const status = await Geolocation.checkPermissions();
+          setPermissions(prev => ({ ...prev, location: status.location }));
+        } catch (e) {}
+      } else if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'geolocation' }).then((status) => {
           setPermissions(prev => ({ ...prev, location: status.state }));
-        };
-      }).catch(() => {});
+          status.onchange = () => {
+            setPermissions(prev => ({ ...prev, location: status.state }));
+          };
+        }).catch(() => {});
+      }
 
       // 2. Camera permission check
-      navigator.permissions.query({ name: 'camera' as any }).then((status) => {
-        setPermissions(prev => ({ ...prev, camera: status.state }));
-        status.onchange = () => {
+      if (isNative) {
+        try {
+          const status = await Camera.checkPermissions();
+          setPermissions(prev => ({ ...prev, camera: status.camera }));
+        } catch (e) {}
+      } else if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'camera' as any }).then((status) => {
           setPermissions(prev => ({ ...prev, camera: status.state }));
-        };
-      }).catch(() => {});
+          status.onchange = () => {
+            setPermissions(prev => ({ ...prev, camera: status.state }));
+          };
+        }).catch(() => {});
+      }
 
       // 3. Microphone permission check
-      navigator.permissions.query({ name: 'microphone' as any }).then((status) => {
-        setPermissions(prev => ({ ...prev, microphone: status.state }));
-        status.onchange = () => {
+      if (!isNative && navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'microphone' as any }).then((status) => {
           setPermissions(prev => ({ ...prev, microphone: status.state }));
-        };
-      }).catch(() => {});
+          status.onchange = () => {
+            setPermissions(prev => ({ ...prev, microphone: status.state }));
+          };
+        }).catch(() => {});
+      }
 
       // 4. Notifications permission check
-      navigator.permissions.query({ name: 'notifications' as any }).then((status) => {
-        setPermissions(prev => ({ ...prev, notifications: status.state }));
-        status.onchange = () => {
+      if (isNative) {
+        try {
+          const status = await LocalNotifications.checkPermissions();
+          setPermissions(prev => ({ ...prev, notifications: status.display }));
+        } catch (e) {}
+      } else if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'notifications' as any }).then((status) => {
           setPermissions(prev => ({ ...prev, notifications: status.state }));
-        };
-      }).catch(() => {});
-    }
+          status.onchange = () => {
+            setPermissions(prev => ({ ...prev, notifications: status.state }));
+          };
+        }).catch(() => {});
+      }
+    };
+
+    checkAllPermissions();
 
     // Unlocked audio check
     try {
@@ -117,45 +148,80 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
   // Trigger actual native web requests
   const requestPermissionNative = async (id: string) => {
     setIsRequesting(true);
-    showToast(`Solicitando permissão nativa de ${getPermissionTitle(id)}...`);
+    const isNative = Capacitor.isNativePlatform();
+    showToast(`Solicitando permissão ${isNative ? 'nativa' : ''} de ${getPermissionTitle(id)}...`);
 
     try {
       if (id === 'location') {
-        if ('geolocation' in navigator) {
+        if (isNative) {
+          const result = await Geolocation.requestPermissions();
+          const updated = { ...permissions, location: result.location };
+          saveSimulatedPermissions(updated);
+          if (result.location === 'granted') showToast('✅ Localização GPS concedida!');
+        } else if ('geolocation' in navigator) {
           navigator.geolocation.getCurrentPosition(
             () => {
               const updated = { ...permissions, location: 'granted' };
               saveSimulatedPermissions(updated);
-              showToast('✅ Permissão de localização concedida com sucesso!');
+              showToast('✅ Permissão de localização concedida!');
               setIsRequesting(false);
             },
             (error) => {
               console.error(error);
               const updated = { ...permissions, location: 'denied' };
               saveSimulatedPermissions(updated);
-              showToast('❌ Permissão de localização negada pelo navegador.');
+              showToast('❌ Permissão de localização negada.');
               setIsRequesting(false);
             },
             { enableHighAccuracy: true, timeout: 6000 }
           );
         } else {
-          showToast('⚠️ Geolocalização não é suportada neste navegador.');
+          showToast('⚠️ Geolocalização não suportada.');
           setIsRequesting(false);
         }
       } 
       else if (id === 'camera') {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          // Stop track immediately after testing success
-          stream.getTracks().forEach(track => track.stop());
-          const updated = { ...permissions, camera: 'granted' };
+        if (isNative) {
+          const result = await Camera.requestPermissions();
+          const updated = { ...permissions, camera: result.camera };
           saveSimulatedPermissions(updated);
-          showToast('✅ Acesso à câmera concedido e verificado com sucesso!');
-        } catch (err) {
-          console.error(err);
-          const updated = { ...permissions, camera: 'denied' };
+          if (result.camera === 'granted') showToast('✅ Câmera ativada!');
+        } else {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            stream.getTracks().forEach(track => track.stop());
+            const updated = { ...permissions, camera: 'granted' };
+            saveSimulatedPermissions(updated);
+            showToast('✅ Acesso à câmera concedido!');
+          } catch (err) {
+            console.error(err);
+            const updated = { ...permissions, camera: 'denied' };
+            saveSimulatedPermissions(updated);
+            showToast('❌ Acesso à câmera negado.');
+          }
+        }
+        setIsRequesting(false);
+      } 
+      else if (id === 'notifications') {
+        if (isNative) {
+          const result = await LocalNotifications.requestPermissions();
+          const updated = { ...permissions, notifications: result.display };
           saveSimulatedPermissions(updated);
-          showToast('❌ Acesso à câmera negado ou indisponível.');
+          if (result.display === 'granted') {
+            showToast('✅ Notificações nativas ativadas!');
+          }
+        } else if ('Notification' in window) {
+          const permission = await Notification.requestPermission();
+          const state = permission === 'default' ? 'prompt' : permission;
+          const updated = { ...permissions, notifications: state };
+          saveSimulatedPermissions(updated);
+          if (permission === 'granted') {
+            showToast('✅ Notificações do navegador ativadas!');
+          } else {
+            showToast('❌ Notificações negadas.');
+          }
+        } else {
+          showToast('⚠️ Notificações não suportadas neste navegador.');
         }
         setIsRequesting(false);
       } 
@@ -165,51 +231,26 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
           stream.getTracks().forEach(track => track.stop());
           const updated = { ...permissions, microphone: 'granted' };
           saveSimulatedPermissions(updated);
-          showToast('✅ Acesso ao microfone concedido e verificado!');
+          showToast('✅ Acesso ao microfone concedido!');
         } catch (err) {
           console.error(err);
           const updated = { ...permissions, microphone: 'denied' };
           saveSimulatedPermissions(updated);
-          showToast('❌ Acesso ao microfone negado ou indisponível.');
-        }
-        setIsRequesting(false);
-      } 
-      else if (id === 'notifications') {
-        if ('Notification' in window) {
-          const permission = await Notification.requestPermission();
-          const state = permission === 'default' ? 'prompt' : permission;
-          const updated = { ...permissions, notifications: state };
-          saveSimulatedPermissions(updated);
-          if (permission === 'granted') {
-            showToast('✅ Permissão de notificações concedida com sucesso!');
-            try {
-              new Notification('GKD Mobility', {
-                body: 'As notificações e alertas de telemetria foram ativados com sucesso!',
-                icon: '/1786699612187.png'
-              });
-            } catch (e) {}
-          } else {
-            showToast('❌ Notificações nativas negadas ou bloqueadas.');
-          }
-        } else {
-          showToast('⚠️ Notificações não são suportadas neste navegador.');
+          showToast('❌ Acesso ao microfone negado.');
         }
         setIsRequesting(false);
       } 
       else if (id === 'audio') {
-        // Unlock audio context
         try {
           const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
           if (AudioCtx) {
             const ctx = new AudioCtx();
-            if (ctx.state === 'suspended') {
-              await ctx.resume();
-            }
+            if (ctx.state === 'suspended') await ctx.resume();
             ctx.close();
           }
           const updated = { ...permissions, audio: 'granted' };
           saveSimulatedPermissions(updated);
-          showToast('✅ Permissão de reprodução de áudio/sirenes liberada!');
+          showToast('✅ Áudio e alertas liberados!');
         } catch (err) {
           const updated = { ...permissions, audio: 'denied' };
           saveSimulatedPermissions(updated);
@@ -218,7 +259,6 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
         setIsRequesting(false);
       } 
       else {
-        // Simulated toggling for contacts, nearby, photos (since browsers do not have unified APIs)
         setTimeout(() => {
           const current = (permissions as any)[id] || 'prompt';
           const next = current === 'granted' ? 'denied' : 'granted';
@@ -233,6 +273,7 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
       setIsRequesting(false);
     }
   };
+
 
   const forceGrantAllPermissions = () => {
     const grantedAll = {
