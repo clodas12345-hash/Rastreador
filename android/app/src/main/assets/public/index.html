@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>GKD Mobility - Rastreador GPS</title>
+    <meta name="description" content="Sistema de Rastreamento Veicular e Telemetria em Tempo Real" />
+    
+    <!-- PWA Settings -->
+    <link rel="manifest" href="./manifest-Bbp8Bf23.json" />
+    <meta name="theme-color" content="#020617" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GKD Mobility" />
+    <link rel="apple-touch-icon" href="./icon-192-P5NhL-Ki.png" />
+    <link rel="icon" type="image/png" href="./icon-192-P5NhL-Ki.png" />
+    
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(console.error);
+        });
+      }
+    </script>
+    <script type="module" crossorigin src="./index-CBDac3C-.js"></script>
+    <link rel="stylesheet" crossorigin href="./index-BjwWTlGh.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
