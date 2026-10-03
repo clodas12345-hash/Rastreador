@@ -208,7 +208,10 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
           const updated = { ...permissions, notifications: result.display };
           saveSimulatedPermissions(updated);
           if (result.display === 'granted') {
-            showToast('✅ Notificações nativas ativadas!');
+            showToast('✅ Notificações nativas e alarmes exatos ativados!');
+            try {
+              window.open('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', '_system');
+            } catch (e) {}
           }
         } else if ('Notification' in window) {
           const permission = await Notification.requestPermission();
