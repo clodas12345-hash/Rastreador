@@ -5,9 +5,9 @@ import {
   Plus, Trash2, Edit3, ArrowLeft, Star, Zap, Gauge, Search,
   CheckCircle2, Car, Sparkles, Sliders, BatteryCharging
 } from 'lucide-react';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
-import { safeSetDoc, safeDeleteDoc } from '../utils/firestoreWrapper';
-import { db, cleanFirestoreData } from '../lib/firebase';
+import { collection, doc } from 'firebase/firestore';
+import { safeSetDoc, safeDeleteDoc, safeOnSnapshot } from '../utils/firestoreWrapper';
+import { db, cleanFirestoreData, isFirestoreEnabled } from '../lib/firebase';
 
 interface MotoristasModuleProps {
   vehicles: Vehicle[];
@@ -59,7 +59,7 @@ export default function MotoristasModule({
   onBackToMap,
   showToast
 }: MotoristasModuleProps) {
-  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>(!isFirestoreEnabled ? DEFAULT_INITIAL_DRIVERS : []);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
@@ -76,16 +76,15 @@ export default function MotoristasModule({
     photoUrl: ''
   });
 
-  // Carregar motoristas do Firestore
+  // Carregar motoristas do Firestore (apenas no APK)
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'drivers'), (snapshot) => {
-      const list: Driver[] = snapshot.docs.map(docSnap => ({
+    const unsubscribe = safeOnSnapshot(collection(db, 'drivers'), (snapshot) => {
+      const list: Driver[] = snapshot.docs.map((docSnap: any) => ({
         id: docSnap.id,
         ...docSnap.data()
       } as Driver));
 
       if (list.length === 0) {
-        // Inicializa com motoristas modelo se não houver no banco
         DEFAULT_INITIAL_DRIVERS.forEach(d => {
           safeSetDoc(doc(db, 'drivers', d.id), cleanFirestoreData(d)).catch(() => {});
         });

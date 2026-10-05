@@ -306,7 +306,11 @@ export default function HelpModule({
 
       // Cache Local
       if (selectedItems.cache) {
-        localStorage.removeItem('app_vehicles_cache');
+        if (selectedItems.carros) {
+          localStorage.setItem('app_vehicles_cache', JSON.stringify([]));
+        } else {
+          localStorage.removeItem('app_vehicles_cache');
+        }
       }
 
       if (showToast) {
@@ -327,9 +331,15 @@ export default function HelpModule({
     setIsProcessing(true);
     try {
       // Excluir TODOS os veículos
-      if (vehicles && vehicles.length > 0 && handleDeleteVehicle) {
+      const deletedIds: string[] = ['veh-onix-plus', 'veh-peugeot-208'];
+      if (vehicles && vehicles.length > 0) {
         for (const v of vehicles) {
-          await handleDeleteVehicle(v.id);
+          if (v.id && !deletedIds.includes(v.id)) {
+            deletedIds.push(v.id);
+          }
+          if (handleDeleteVehicle) {
+            await handleDeleteVehicle(v.id);
+          }
         }
       }
       if (setVehicles) {
@@ -339,11 +349,11 @@ export default function HelpModule({
       // Limpar todas as notificações
       if (clearNotifications) clearNotifications();
 
-      // Limpar todos os registros locais
-      localStorage.removeItem('app_notifications');
-      localStorage.removeItem('gkd_registrador_records');
-      localStorage.removeItem('app_vehicles_cache');
+      // Limpar todos os registros locais mantendo a lista de veículos vazia
       localStorage.clear();
+      localStorage.setItem('app_vehicles_cache', JSON.stringify([]));
+      localStorage.setItem('gkd_deleted_vehicle_ids', JSON.stringify(deletedIds));
+      localStorage.setItem('app_notifications_cleared', 'true');
 
       if (showToast) {
         showToast('🚨 EXCLUSÃO TOTAL CONCLUÍDA! O sistema foi completamente zerado de fábrica.');

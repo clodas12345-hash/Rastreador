@@ -28,8 +28,8 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 
-import {collection, onSnapshot, doc} from 'firebase/firestore';
-import {safeUpdateDoc, safeAddDoc, safeDeleteDoc, safeSetDoc} from './utils/firestoreWrapper';
+import {collection, doc} from 'firebase/firestore';
+import {safeUpdateDoc, safeAddDoc, safeDeleteDoc, safeSetDoc, safeOnSnapshot} from './utils/firestoreWrapper';
 import {db, handleFirestoreError, OperationType, cleanFirestoreData} from './lib/firebase';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed } from './lib/geocoding';
 
@@ -726,32 +726,67 @@ export default function App() {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [selectedVehicleForMessage, setSelectedVehicleForMessage] = useState<Vehicle | null>(null);
 
+  const getDeletedVehicleIds = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem('gkd_deleted_vehicle_ids');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch (e) {}
+    return new Set();
+  };
+
+  const addDeletedVehicleId = (id: string) => {
+    try {
+      const current = getDeletedVehicleIds();
+      current.add(id);
+      localStorage.setItem('gkd_deleted_vehicle_ids', JSON.stringify(Array.from(current)));
+    } catch (e) {}
+  };
+
+  const removeDeletedVehicleId = (id: string) => {
+    try {
+      const current = getDeletedVehicleIds();
+      if (current.has(id)) {
+        current.delete(id);
+        localStorage.setItem('gkd_deleted_vehicle_ids', JSON.stringify(Array.from(current)));
+      }
+    } catch (e) {}
+  };
+
   // Load cached vehicles initially
   useEffect(() => {
     try {
+      const deletedIds = getDeletedVehicleIds();
       const cached = localStorage.getItem('app_vehicles_cache');
-      if (cached) {
+      if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned = parsed.filter((v: any) => v.type !== 'pessoa');
-          // If cached contains obsolete mock vehicles, replace with real vehicles
-          const hasRealTrackers = cleaned.some((v: any) => v.trackerNumber === '868166052523461' || v.trackerNumber === '868166057692857' || v.name === 'Onix Plus' || v.name === 'Peugeot 208');
-          setVehicles(hasRealTrackers ? cleaned : DEFAULT_INITIAL_VEHICLES);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((v: any) => v.type !== 'pessoa' && !deletedIds.has(v.id));
+          setVehicles(cleaned);
         } else {
-          setVehicles(DEFAULT_INITIAL_VEHICLES);
+          setVehicles(DEFAULT_INITIAL_VEHICLES.filter(v => !deletedIds.has(v.id)));
         }
       } else {
-        setVehicles(DEFAULT_INITIAL_VEHICLES);
+        setVehicles(DEFAULT_INITIAL_VEHICLES.filter(v => !deletedIds.has(v.id)));
       }
     } catch (e) {
-      setVehicles(DEFAULT_INITIAL_VEHICLES);
+      const deletedIds = getDeletedVehicleIds();
+      setVehicles(DEFAULT_INITIAL_VEHICLES.filter(v => !deletedIds.has(v.id)));
     }
 
-    const unsubscribe = onSnapshot(collection(db, 'cars'), (snapshot) => {
+    const unsubscribe = safeOnSnapshot(collection(db, 'cars'), (snapshot) => {
       if (!snapshot.docs) return;
+      const deletedIds = getDeletedVehicleIds();
       if (snapshot.docs.length === 0) {
-        // If Firestore is empty, keep our real default vehicles
-        setVehicles(prev => prev.length > 0 ? prev : DEFAULT_INITIAL_VEHICLES);
+        setVehicles(prev => {
+          const filteredPrev = prev.filter(v => !deletedIds.has(v.id));
+          if (filteredPrev.length > 0) return filteredPrev;
+          const cached = localStorage.getItem('app_vehicles_cache');
+          if (cached !== null) return [];
+          return DEFAULT_INITIAL_VEHICLES.filter(v => !deletedIds.has(v.id));
+        });
         return;
       }
       
@@ -777,7 +812,7 @@ export default function App() {
             ...(data.settings || {})
           }
         } as Vehicle;
-      }).filter((v: any) => v.type !== 'pessoa');
+      }).filter((v: any) => v.type !== 'pessoa' && !deletedIds.has(v.id));
 
       // Smart merge: Preserve active locally accumulated mileage and live telemetry
       setVehicles(prev => {
@@ -816,13 +851,20 @@ export default function App() {
     const validName = updatedVehicle.name && updatedVehicle.name.trim() ? updatedVehicle.name.trim() : 'Veículo Cadastrado';
     const vehicleToSave = { ...updatedVehicle, name: validName };
 
+    if (vehicleToSave.id && vehicleToSave.id !== 'new') {
+      removeDeletedVehicleId(vehicleToSave.id);
+    }
+
     // Optimistic UI updates - Instant response
     setVehicles(prev => {
       const exists = prev.some(v => v.id === vehicleToSave.id);
-      if (exists) {
-        return prev.map(v => v.id === vehicleToSave.id ? vehicleToSave : v);
-      }
-      return [vehicleToSave, ...prev];
+      const next = exists
+        ? prev.map(v => v.id === vehicleToSave.id ? vehicleToSave : v)
+        : [vehicleToSave, ...prev];
+      try {
+        localStorage.setItem('app_vehicles_cache', JSON.stringify(next));
+      } catch (e) {}
+      return next;
     });
 
     if (onSuccess) onSuccess(vehicleToSave);
@@ -855,7 +897,13 @@ export default function App() {
         const docRef = await safeAddDoc(collection(db, 'cars'), newVehiclePayload);
         console.log('Added successfully with ID:', docRef.id);
         const saved = { ...vehicleToSave, id: docRef.id };
-        setVehicles(prev => prev.map(v => v.id === 'new' ? saved : v));
+        setVehicles(prev => {
+          const next = prev.map(v => v.id === 'new' ? saved : v);
+          try {
+            localStorage.setItem('app_vehicles_cache', JSON.stringify(next));
+          } catch (e) {}
+          return next;
+        });
       } else {
         console.log('Updating existing vehicle in Firestore...');
         const vehicleRef = doc(db, 'cars', vehicleToSave.id);
@@ -886,17 +934,29 @@ export default function App() {
 
   const handleDeleteVehicle = async (vehicleId: string) => {
     console.log('Attempting to delete vehicle with ID:', vehicleId);
+    if (!vehicleId) {
+      console.error('No vehicle ID provided for deletion');
+      return;
+    }
+
+    // 1. Mark as deleted and remove from UI & cache immediately (optimistic update)
+    addDeletedVehicleId(vehicleId);
+    setVehicles(prev => {
+      const next = prev.filter(v => v.id !== vehicleId);
+      try {
+        localStorage.setItem('app_vehicles_cache', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+    setEditingVehicle(null);
+    showToast('🗑️ Veículo excluído com sucesso!');
+
+    // 2. Delete from Firestore asynchronously if enabled
     try {
-      if (!vehicleId) {
-        console.error('No vehicle ID provided for deletion');
-        return;
-      }
       await safeDeleteDoc(doc(db, 'cars', vehicleId));
-      console.log('Vehicle deleted successfully');
-      setEditingVehicle(null);
+      console.log('Vehicle deleted from Firestore successfully');
     } catch (error) {
-      console.error('Error deleting vehicle:', error);
-      handleFirestoreError(error, OperationType.DELETE, 'cars');
+      console.warn('Warning deleting vehicle from Firestore (already removed locally):', error);
     }
   };
 
@@ -943,7 +1003,70 @@ export default function App() {
   );
 }
 
-function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setActiveModule, vehicles, setVehicles, setEditingVehicle, editingVehicle, handleUpdateVehicle, handleDeleteVehicle}: any) {
+function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setActiveModule, vehicles: allVehicles, setVehicles, setEditingVehicle, editingVehicle, handleUpdateVehicle, handleDeleteVehicle}: any) {
+  const [sharedTrackingParams] = useState<{
+    token: string;
+    vehicleId: string;
+    imei: string;
+    name: string;
+    plate: string;
+    color: string;
+    iconType: string;
+    lat: number;
+    lng: number;
+    expH: string;
+  } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const trackToken = params.get('trackToken');
+    const vehicleId = params.get('vehicleId');
+    if (!trackToken && !vehicleId) return null;
+    return {
+      token: trackToken || '',
+      vehicleId: vehicleId || '',
+      imei: params.get('imei') || '',
+      name: params.get('vName') || 'Veículo Rastreado',
+      plate: params.get('vPlate') || '',
+      color: params.get('vColor') || '#2563eb',
+      iconType: params.get('vIcon') || 'car',
+      lat: Number(params.get('vLat')) || -23.514971,
+      lng: Number(params.get('vLng')) || -46.548199,
+      expH: params.get('expH') || '2'
+    };
+  });
+
+  const isPublicSingleView = Boolean(sharedTrackingParams);
+
+  // Filter vehicles strictly to the single shared vehicle when opened via a tracking link
+  const vehicles: Vehicle[] = (() => {
+    if (!sharedTrackingParams) return allVehicles;
+    const matched = (allVehicles as Vehicle[]).filter(v =>
+      (sharedTrackingParams.vehicleId && v.id === sharedTrackingParams.vehicleId) ||
+      (sharedTrackingParams.imei && v.trackerNumber && String(v.trackerNumber) === String(sharedTrackingParams.imei))
+    );
+    if (matched.length > 0) {
+      return [matched[0]];
+    }
+    return [{
+      id: sharedTrackingParams.vehicleId || 'shared-vehicle',
+      name: sharedTrackingParams.name,
+      licensePlate: sharedTrackingParams.plate,
+      trackerNumber: sharedTrackingParams.imei,
+      color: sharedTrackingParams.color,
+      iconType: sharedTrackingParams.iconType as any,
+      status: 'IgnitionOff',
+      lat: sharedTrackingParams.lat,
+      lng: sharedTrackingParams.lng,
+      speed: 0,
+      fuel: 100,
+      sharpTurns: 0,
+      harshBraking: 0,
+      totalMileage: 0,
+      dailyMileage: 0,
+      settings: { ...DEFAULT_VEHICLE_SETTINGS }
+    }];
+  })();
+
   const [geofences, setGeofences] = useState<Geofence[]>([]);
   const [isCreatingGeofence, setIsCreatingGeofence] = useState(false);
   const [newGeofenceCenter, setNewGeofenceCenter] = useState<{lat: number, lng: number} | null>(null);
@@ -967,7 +1090,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeEntityTab, setActiveEntityTab] = useState<'pessoas' | 'carros'>('pessoas');
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(() => {
+    return isPublicSingleView && vehicles.length === 1 ? vehicles[0] : null;
+  });
   const [modalMode, setModalMode] = useState<'details' | 'position' | 'settings' | 'data' | 'emergency' | null>(null);
   const [photoViewerUrl, setPhotoViewerUrl] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -1593,8 +1718,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'critical'>('all');
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'notifications'), (snapshot) => {
-      const list: AppNotification[] = snapshot.docs.map(docSnap => ({
+    const unsubscribe = safeOnSnapshot(collection(db, 'notifications'), (snapshot) => {
+      const list: AppNotification[] = snapshot.docs.map((docSnap: any) => ({
         id: docSnap.id,
         ...docSnap.data()
       } as AppNotification));
@@ -1612,8 +1737,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       console.warn('Notifications snapshot warning:', error);
     });
     
-    const unsubscribeGeofences = onSnapshot(collection(db, 'geofences'), (snapshot) => {
-      const list: Geofence[] = snapshot.docs.map(docSnap => ({
+    const unsubscribeGeofences = safeOnSnapshot(collection(db, 'geofences'), (snapshot) => {
+      const list: Geofence[] = snapshot.docs.map((docSnap: any) => ({
         id: docSnap.id,
         ...docSnap.data()
       } as Geofence));
@@ -1877,6 +2002,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       const current = vehicles.find(v => v.id === selectedVehicle.id);
       if (current) {
         setSelectedVehicle(current);
+      } else {
+        setSelectedVehicle(null);
       }
     }
   }, [vehicles]);
@@ -2317,10 +2444,14 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           });
 
           if (anyChanged) {
-            setVehicles(nextVehicles);
-            try {
-              localStorage.setItem('app_vehicles_cache', JSON.stringify(nextVehicles));
-            } catch (e) {}
+            const updatedById = new Map(nextVehicles.map(v => [v.id, v]));
+            setVehicles((prev: Vehicle[]) => {
+              const merged = prev.map(v => updatedById.get(v.id) || v);
+              try {
+                localStorage.setItem('app_vehicles_cache', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
         }
       } catch (err) {
@@ -2729,6 +2860,17 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         className="p-1 text-gray-400 hover:text-blue-600 hover:bg-white rounded transition-colors"
                       >
                         <Settings className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingVehicle(v);
+                          setShowDeleteConfirm(true);
+                        }}
+                        title="Excluir Veículo"
+                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                       <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${
                       v.speed > (v.settings?.smartSpeedMode ? (v.settings?.detectedRoadSpeed || 60) : (v.settings?.speedLimit || 60))

@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Mic, MicOff, Volume2, VolumeX, Disc, Play, Pause, Download, Plus, Trash2, Search, Filter, FileText, Calendar, CheckCircle2, ShieldCheck, Car, PhoneCall, Phone, PhoneOff, RefreshCw, AlertCircle, Clock, Save, FileSpreadsheet, ArrowLeft } from 'lucide-react';
 import { Vehicle } from '../types';
 import { playDtmfTone, playRingbackTone, startRingbackLoop, stopRingbackLoop, playAmbientNoise, unlockAudio } from '../lib/audioService';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
-import { safeSetDoc, safeDeleteDoc } from '../utils/firestoreWrapper';
-import { db, cleanFirestoreData } from '../lib/firebase';
+import { collection, doc } from 'firebase/firestore';
+import { safeSetDoc, safeDeleteDoc, safeOnSnapshot } from '../utils/firestoreWrapper';
+import { db, cleanFirestoreData, isFirestoreEnabled } from '../lib/firebase';
 
 export interface AudioRecordEntry {
 
@@ -153,59 +153,65 @@ export default function RegistradorModule({ vehicles = [], onOpenListenModal, sh
   };
 
 
-  // Firestore cloud real-time sync for records
+  // Firestore cloud real-time sync for records (active only in APK)
   const [records, setRecords] = useState<AudioRecordEntry[]>([]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'registrador_records'), (snapshot) => {
-      const list: AudioRecordEntry[] = snapshot.docs.map(docSnap => ({
+    const defaultRecords: AudioRecordEntry[] = [
+      {
+        id: 'rec_01',
+        vehicleId: vehicles[0]?.id || 'v1',
+        vehicleName: vehicles[0]?.name || 'Peugeot 208 GT',
+        licensePlate: vehicles[0]?.licensePlate || 'ABC-1234',
+        timestamp: new Date(Date.now() - 1000 * 60 * 35).toLocaleString('pt-BR'),
+        durationSeconds: 142,
+        notes: 'Verificação de ruído no painel frontal e escuta da conversa na cabine durante deslocamento.',
+        category: 'rotina',
+        status: 'concluido',
+        operatorName: 'Central de Operações GKD'
+      },
+      {
+        id: 'rec_02',
+        vehicleId: vehicles[1]?.id || 'v2',
+        vehicleName: vehicles[1]?.name || 'Toyota Hilux 4x4',
+        licensePlate: vehicles[1]?.licensePlate || 'XYZ-9876',
+        timestamp: new Date(Date.now() - 1000 * 60 * 180).toLocaleString('pt-BR'),
+        durationSeconds: 310,
+        notes: 'Gravação de segurança em parada não agendada na rodovia. Sem anomalias identificadas.',
+        category: 'seguranca',
+        status: 'concluido',
+        operatorName: 'Monitoramento 24h'
+      },
+      {
+        id: 'rec_03',
+        vehicleId: vehicles[2]?.id || 'v3',
+        vehicleName: vehicles[2]?.name || 'Honda HR-V',
+        licensePlate: vehicles[2]?.licensePlate || 'DEF-5678',
+        timestamp: new Date(Date.now() - 1000 * 60 * 600).toLocaleString('pt-BR'),
+        durationSeconds: 85,
+        notes: 'Agregação direta via comando de escuta em tempo real. Teste do microfone ambiente OK.',
+        category: 'manutencao',
+        status: 'concluido',
+        operatorName: 'Supervisor Técnico'
+      }
+    ];
+
+    if (!isFirestoreEnabled) {
+      setRecords(defaultRecords);
+      return;
+    }
+
+    const unsubscribe = safeOnSnapshot(collection(db, 'registrador_records'), (snapshot) => {
+      const list: AudioRecordEntry[] = snapshot.docs.map((docSnap: any) => ({
         id: docSnap.id,
         ...docSnap.data()
       } as AudioRecordEntry));
       if (list.length > 0) {
         setRecords(list.sort((a, b) => b.id.localeCompare(a.id)));
       } else {
-        // Seed default records if empty in cloud
-        const defaultRecords: AudioRecordEntry[] = [
-          {
-            id: 'rec_01',
-            vehicleId: vehicles[0]?.id || 'v1',
-            vehicleName: vehicles[0]?.name || 'Peugeot 208 GT',
-            licensePlate: vehicles[0]?.licensePlate || 'ABC-1234',
-            timestamp: new Date(Date.now() - 1000 * 60 * 35).toLocaleString('pt-BR'),
-            durationSeconds: 142,
-            notes: 'Verificação de ruído no painel frontal e escuta da conversa na cabine durante deslocamento.',
-            category: 'rotina',
-            status: 'concluido',
-            operatorName: 'Central de Operações GKD'
-          },
-          {
-            id: 'rec_02',
-            vehicleId: vehicles[1]?.id || 'v2',
-            vehicleName: vehicles[1]?.name || 'Toyota Hilux 4x4',
-            licensePlate: vehicles[1]?.licensePlate || 'XYZ-9876',
-            timestamp: new Date(Date.now() - 1000 * 60 * 180).toLocaleString('pt-BR'),
-            durationSeconds: 310,
-            notes: 'Gravação de segurança em parada não agendada na rodovia. Sem anomalias identificadas.',
-            category: 'seguranca',
-            status: 'concluido',
-            operatorName: 'Monitoramento 24h'
-          },
-          {
-            id: 'rec_03',
-            vehicleId: vehicles[2]?.id || 'v3',
-            vehicleName: vehicles[2]?.name || 'Honda HR-V',
-            licensePlate: vehicles[2]?.licensePlate || 'DEF-5678',
-            timestamp: new Date(Date.now() - 1000 * 60 * 600).toLocaleString('pt-BR'),
-            durationSeconds: 85,
-            notes: 'Agregação direta via comando de escuta em tempo real. Teste do microfone ambiente OK.',
-            category: 'manutencao',
-            status: 'concluido',
-            operatorName: 'Supervisor Técnico'
-          }
-        ];
+        setRecords(defaultRecords);
         defaultRecords.forEach(r => {
-          safeSetDoc(doc(db, 'registrador_records', r.id), cleanFirestoreData(r)).catch(err => {});
+          safeSetDoc(doc(db, 'registrador_records', r.id), cleanFirestoreData(r)).catch(() => {});
         });
       }
     }, (error) => {

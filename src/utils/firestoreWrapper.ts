@@ -1,6 +1,7 @@
 
-import { addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, CollectionReference, DocumentReference } from 'firebase/firestore';
+import { addDoc, setDoc, updateDoc, deleteDoc, getDoc, onSnapshot, CollectionReference, DocumentReference } from 'firebase/firestore';
 import { isQuotaExceeded, setQuotaExceeded } from './firestoreQuota';
+import { isFirestoreEnabled } from '../lib/firebase';
 
 // Operation types for handleFirestoreError
 export enum OperationType {
@@ -18,8 +19,22 @@ const checkQuota = () => {
     }
 }
 
-// Wrapper for operations
+export const safeOnSnapshot = (
+    reference: any,
+    onNext: (snapshot: any) => void,
+    onError?: (error: any) => void
+) => {
+    if (!isFirestoreEnabled) {
+        return () => {};
+    }
+    return onSnapshot(reference, onNext, onError);
+}
+
+// Wrapper for operations (Active only in APK; no-op in Web Preview)
 export const safeAddDoc = async (reference: CollectionReference, data: any) => {
+    if (!isFirestoreEnabled) {
+        return { id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}` } as any;
+    }
     checkQuota();
     try {
         return await addDoc(reference, data);
@@ -30,6 +45,9 @@ export const safeAddDoc = async (reference: CollectionReference, data: any) => {
 }
 
 export const safeSetDoc = async (reference: DocumentReference, data: any, options?: any) => {
+    if (!isFirestoreEnabled) {
+        return;
+    }
     checkQuota();
     try {
         return await setDoc(reference, data, options);
@@ -40,6 +58,9 @@ export const safeSetDoc = async (reference: DocumentReference, data: any, option
 }
 
 export const safeUpdateDoc = async (reference: DocumentReference, data: any) => {
+    if (!isFirestoreEnabled) {
+        return;
+    }
     checkQuota();
     try {
         return await updateDoc(reference, data);
@@ -50,6 +71,9 @@ export const safeUpdateDoc = async (reference: DocumentReference, data: any) => 
 }
 
 export const safeDeleteDoc = async (reference: DocumentReference) => {
+    if (!isFirestoreEnabled) {
+        return;
+    }
     checkQuota();
     try {
         return await deleteDoc(reference);
@@ -60,6 +84,9 @@ export const safeDeleteDoc = async (reference: DocumentReference) => {
 }
 
 export const safeGetDoc = async (reference: DocumentReference) => {
+    if (!isFirestoreEnabled) {
+        return { exists: () => false, data: () => undefined } as any;
+    }
     checkQuota();
     try {
         return await getDoc(reference);
@@ -68,5 +95,3 @@ export const safeGetDoc = async (reference: DocumentReference) => {
         throw error;
     }
 }
-
-// ... Additional wrappers can be added as needed

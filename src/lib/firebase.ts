@@ -1,8 +1,11 @@
 import { initializeApp, FirebaseApp } from "firebase/app";
-import { getFirestore, Firestore } from "firebase/firestore";
+import { getFirestore, Firestore, disableNetwork } from "firebase/firestore";
 import { getAuth, Auth } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 import { setQuotaExceeded } from "../utils/firestoreQuota";
 import firebaseAppletConfig from "../../firebase-applet-config.json";
+
+export const isFirestoreEnabled = Capacitor.isNativePlatform();
 
 let app: FirebaseApp | null = null;
 
@@ -27,6 +30,11 @@ function getFirebase() {
 
 export const db = getFirestore(getFirebase(), firebaseAppletConfig.firestoreDatabaseId || "(default)");
 export const auth = getAuth(getFirebase());
+
+// Disconnect Web Preview from Firestore database; keep only the native APK connected
+if (!isFirestoreEnabled) {
+  disableNetwork(db).catch(() => {});
+}
 
 export enum OperationType {
   CREATE = 'create',

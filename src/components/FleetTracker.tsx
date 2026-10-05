@@ -518,7 +518,7 @@ export default function FleetTracker({
   onShareVehicle
 }: FleetTrackerProps) {
   const [mapZoom, setMapZoom] = useState(13);
-  const [isShowingAll, setIsShowingAll] = useState(true);
+  const [isShowingAll, setIsShowingAll] = useState(() => vehicles.length > 1);
   const [startPoint, setStartPoint] = useState<RoutePoint | null>(null);
   const [endPoint, setEndPoint] = useState<RoutePoint | null>(null);
   const [showTimelineDrawer, setShowTimelineDrawer] = useState(false);

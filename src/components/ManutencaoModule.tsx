@@ -5,8 +5,8 @@ import {
   Clock, Plus, Trash2, DollarSign, ShieldCheck, Car, RefreshCw, 
   Sparkles, FileText, ChevronRight
 } from 'lucide-react';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
-import { safeSetDoc, safeDeleteDoc } from '../utils/firestoreWrapper';
+import { collection, doc } from 'firebase/firestore';
+import { safeSetDoc, safeDeleteDoc, safeOnSnapshot } from '../utils/firestoreWrapper';
 import { db, cleanFirestoreData } from '../lib/firebase';
 
 export interface MaintenanceRecord {
@@ -48,10 +48,10 @@ export default function ManutencaoModule({
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0];
 
-  // Carregar histórico do Firestore
+  // Carregar histórico do Firestore (apenas no APK)
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'maintenance_records'), (snapshot) => {
-      const list: MaintenanceRecord[] = snapshot.docs.map(docSnap => ({
+    const unsubscribe = safeOnSnapshot(collection(db, 'maintenance_records'), (snapshot) => {
+      const list: MaintenanceRecord[] = snapshot.docs.map((docSnap: any) => ({
         id: docSnap.id,
         ...docSnap.data()
       } as MaintenanceRecord));

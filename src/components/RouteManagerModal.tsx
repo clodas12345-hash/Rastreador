@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
-import { safeAddDoc, safeDeleteDoc } from '../utils/firestoreWrapper';
-import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
+import { collection, doc } from 'firebase/firestore';
+import { safeAddDoc, safeDeleteDoc, safeOnSnapshot } from '../utils/firestoreWrapper';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData, isFirestoreEnabled } from '../lib/firebase';
 import { SavedRoute, Vehicle, RoutePoint } from '../types';
 import { Route, Play, Pause, Trash2, Eye, Plus, X, Save, Navigation, Clock, Check, RefreshCw } from 'lucide-react';
 
@@ -35,7 +35,7 @@ export default function RouteManagerModal({
   activeRoute
 }: RouteManagerModalProps) {
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(isFirestoreEnabled);
   const [activeTab, setActiveTab] = useState<'lista' | 'novo'>('lista');
 
   // Form state for saving a new route
@@ -49,8 +49,12 @@ export default function RouteManagerModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    const unsubscribe = onSnapshot(collection(db, 'trajetos'), (snapshot) => {
-      const list: SavedRoute[] = snapshot.docs.map(docSnap => ({
+    if (!isFirestoreEnabled) {
+      setLoading(false);
+      return;
+    }
+    const unsubscribe = safeOnSnapshot(collection(db, 'trajetos'), (snapshot) => {
+      const list: SavedRoute[] = snapshot.docs.map((docSnap: any) => ({
         id: docSnap.id,
         ...docSnap.data()
       } as SavedRoute));

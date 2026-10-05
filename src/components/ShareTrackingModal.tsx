@@ -21,21 +21,33 @@ export default function ShareTrackingModal({
   const [copied, setCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Generates a unique tracking token and public URL
+  // Generates a unique tracking token and individual URL for this specific vehicle
   const token = `tr_${vehicle.id}_${Date.now().toString(36)}`;
   const baseUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : 'https://aistudio.google.com';
-  const publicTrackingUrl = `${baseUrl}?trackToken=${token}&vehicleId=${vehicle.id}`;
+  const queryParams = new URLSearchParams({
+    trackToken: token,
+    vehicleId: String(vehicle.id || ''),
+    imei: String(vehicle.trackerNumber || ''),
+    vName: String(vehicle.name || 'Veículo'),
+    vPlate: String(vehicle.licensePlate || ''),
+    vColor: String(vehicle.color || '#2563eb'),
+    vIcon: String(vehicle.iconType || 'car'),
+    vLat: String(vehicle.lat || -23.514971),
+    vLng: String(vehicle.lng || -46.548199),
+    expH: String(expirationHours)
+  });
+  const publicTrackingUrl = `${baseUrl}?${queryParams.toString()}`;
 
   const formatCleanPhone = (raw: string) => {
     return raw.replace(/[^0-9]/g, '');
   };
 
   const getFormattedMessage = () => {
-    return `🚗 *Acompanhe meu veículo em tempo real no mapa*\n\n` +
+    return `🚗 *Acompanhe o veículo ${vehicle.name} em tempo real no mapa*\n\n` +
       `*Veículo:* ${vehicle.name} (${vehicle.licensePlate || 'GRA-2026'})\n` +
       `*Status:* ${vehicle.speed > 0 ? `Em Movimento (${Math.round(vehicle.speed)} km/h)` : 'Parado / Conectado'}\n` +
-      `*Link de Rastreio Vivo:* ${publicTrackingUrl}\n\n` +
-      `⏳ _Link válido pelas próximas ${expirationHours} hora(s)._`;
+      `*Link Individual de Rastreio Vivo:* ${publicTrackingUrl}\n\n` +
+      `⏳ _Link exclusivo deste veículo, válido pelas próximas ${expirationHours} hora(s)._`;
   };
 
   const handleSaveTokenToCloud = async () => {
@@ -44,8 +56,13 @@ export default function ShareTrackingModal({
     const trackingSession = {
       token,
       vehicleId: vehicle.id,
+      trackerNumber: vehicle.trackerNumber || '',
       vehicleName: vehicle.name,
       licensePlate: vehicle.licensePlate || '',
+      color: vehicle.color || '#2563eb',
+      iconType: vehicle.iconType || 'car',
+      lat: vehicle.lat || -23.514971,
+      lng: vehicle.lng || -46.548199,
       createdAt: new Date().toISOString(),
       expiresAt: new Date(expMs).toISOString(),
       expiresTimestamp: expMs,
