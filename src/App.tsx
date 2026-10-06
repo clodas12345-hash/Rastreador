@@ -1743,6 +1743,88 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [showNotificationDrawer, setShowNotificationDrawer] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'critical'>('all');
 
+  // Gerenciamento permanente do botão voltar nativo do Android (@capacitor/app)
+  // Nunca fecha o app: se estiver em qualquer tela ou modal que não seja a inicial, volta para a tela inicial ('rastreamento').
+  // Se já estiver na tela inicial, não faz nada.
+  useEffect(() => {
+    let isCancelled = false;
+    let backListenerHandle: any = null;
+
+    CapApp.addListener('backButton', () => {
+      // 1. Se houver gavetas ou modais abertos, fecha-os para retornar à visualização inicial
+      if (sidebarOpen) {
+        setSidebarOpen(false);
+        return;
+      }
+      if (showNotificationDrawer) {
+        setShowNotificationDrawer(false);
+        return;
+      }
+      if (editingVehicle || modalMode) {
+        setEditingVehicle(null);
+        setModalMode(null);
+        return;
+      }
+      if (showVersionModal) {
+        setShowVersionModal(false);
+        return;
+      }
+      if (showBatteryOptimizationModal) {
+        setShowBatteryOptimizationModal(false);
+        return;
+      }
+      if (photoViewerUrl) {
+        setPhotoViewerUrl(null);
+        return;
+      }
+      if (isRouteManagerOpen) {
+        setIsRouteManagerOpen(false);
+        return;
+      }
+      if (activeRoute) {
+        setActiveRoute(null);
+        return;
+      }
+
+      // 2. Se estiver em qualquer tela/módulo diferente do inicial ('rastreamento'), volta para a tela inicial
+      if (activeModule !== 'rastreamento') {
+        setActiveModule('rastreamento');
+        return;
+      }
+
+      // 3. Se já estiver na tela inicial ('rastreamento'), não faz nada (nunca fecha o app)
+    }).then(handle => {
+      if (isCancelled) {
+        handle.remove();
+      } else {
+        backListenerHandle = handle;
+      }
+    }).catch(err => {
+      console.warn('Erro ao configurar listener do botão voltar do CapApp:', err);
+    });
+
+    return () => {
+      isCancelled = true;
+      if (backListenerHandle && typeof backListenerHandle.remove === 'function') {
+        backListenerHandle.remove();
+      }
+    };
+  }, [
+    sidebarOpen,
+    showNotificationDrawer,
+    editingVehicle,
+    modalMode,
+    showVersionModal,
+    showBatteryOptimizationModal,
+    photoViewerUrl,
+    isRouteManagerOpen,
+    activeRoute,
+    activeModule,
+    setActiveModule,
+    setSidebarOpen,
+    setEditingVehicle
+  ]);
+
   useEffect(() => {
     const unsubscribe = safeOnSnapshot(collection(db, 'notifications'), (snapshot) => {
       const list: AppNotification[] = snapshot.docs.map((docSnap: any) => ({
