@@ -256,57 +256,71 @@ function MapController({
   isShowingAll: boolean;
 }) {
   const map = useMap();
-  const initialFitDone = useRef(false);
   const prevSelectedId = useRef<string | null>(null);
   const prevRouteId = useRef<string | null>(null);
+  const lastFittedCount = useRef<number>(0);
 
   useEffect(() => {
     if (!map) return;
     
-    // Se o usuário está no modo "Ver Todos", mantém a visão geral de todos os carros
-    if (isShowingAll) {
+    // Se nenhum veículo está focado individualmente OU se isShowingAll está ativo,
+    // enquadra TODOS os veículos da frota juntos na tela de primeira
+    if (!selectedVehicle || isShowingAll) {
       const validVehicles = vehicles.filter(v => {
         const lat = Number(v.lat);
         const lng = Number(v.lng);
         return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
       });
-      if (validVehicles.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        validVehicles.forEach(v => {
-          bounds.extend({lat: Number(v.lat), lng: Number(v.lng)});
-        });
-        map.fitBounds(bounds, {top: 60, bottom: 60, left: 60, right: 60});
-      }
-      return;
+
+      const fitAllVehicles = () => {
+        if (!map) return;
+        if (validVehicles.length > 1) {
+          const bounds = new google.maps.LatLngBounds();
+          validVehicles.forEach(v => {
+            bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) });
+          });
+          map.fitBounds(bounds, { top: 90, bottom: 90, left: 70, right: 70 });
+        } else if (validVehicles.length === 1) {
+          const singleV = validVehicles[0];
+          map.setCenter({ lat: Number(singleV.lat), lng: Number(singleV.lng) });
+          map.setZoom(15);
+        }
+      };
+
+      // Fit immediately and also schedule short deferred passes to guarantee execution once Map DOM is ready
+      fitAllVehicles();
+      const t1 = setTimeout(fitAllVehicles, 150);
+      const t2 = setTimeout(fitAllVehicles, 600);
+
+      lastFittedCount.current = validVehicles.length;
+      prevSelectedId.current = null;
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     }
 
     if (activeRoute && activeRoute.points && activeRoute.points.length > 0) {
       if (prevRouteId.current !== activeRoute.id) {
         const bounds = new google.maps.LatLngBounds();
-        activeRoute.points.forEach(pt => bounds.extend({lat: pt.lat, lng: pt.lng}));
-        map.fitBounds(bounds, {top: 120, bottom: 250, left: 80, right: 80});
+        activeRoute.points.forEach(pt => bounds.extend({ lat: pt.lat, lng: pt.lng }));
+        map.fitBounds(bounds, { top: 120, bottom: 250, left: 80, right: 80 });
         prevRouteId.current = activeRoute.id;
         prevSelectedId.current = null;
       }
-    } else {
-      const target = selectedVehicle 
-        ? (vehicles.find(v => v.id === selectedVehicle.id) || selectedVehicle)
-        : vehicles.find(v => {
-            const lat = Number(v.lat);
-            const lng = Number(v.lng);
-            return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
-          });
+    } else if (selectedVehicle) {
+      // Foco individual no veículo clicado pelo usuário
+      const target = vehicles.find(v => v.id === selectedVehicle.id) || selectedVehicle;
 
       if (target && Number(target.lat) && Number(target.lng)) {
         const isNewTarget = prevSelectedId.current !== target.id;
-        if (!initialFitDone.current || isNewTarget) {
-          map.setCenter({lat: Number(target.lat), lng: Number(target.lng)});
+        if (isNewTarget) {
+          map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
           map.setZoom(17);
-          initialFitDone.current = true;
           prevSelectedId.current = target.id;
           prevRouteId.current = null;
         } else {
-          map.panTo({lat: Number(target.lat), lng: Number(target.lng)});
+          map.panTo({ lat: Number(target.lat), lng: Number(target.lng) });
         }
       }
     }
@@ -397,57 +411,80 @@ function MapCenterControls({
   onSelectVehicle: (v: Vehicle) => void;
 }) {
   const map = useMap();
+  const lastFocusedIndexRef = useRef<number>(-1);
+
+  const validVehicles = vehicles.filter(v => {
+    const lat = Number(v.lat);
+    const lng = Number(v.lng);
+    return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+  });
 
   const handleToggle = () => {
     if (!map) return;
 
     if (!isShowingAll) {
-      // Enquadra todos os veículos da frota juntos na tela com margem compacta
-      const validVehicles = vehicles.filter(v => {
-        const lat = Number(v.lat);
-        const lng = Number(v.lng);
-        return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
-      });
-
-      if (validVehicles.length > 0) {
+      // 1. "Ver todos": Enquadra todos os veículos juntos no mapa
+      if (validVehicles.length > 1) {
         const bounds = new google.maps.LatLngBounds();
         validVehicles.forEach(v => {
           bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) });
         });
-        map.fitBounds(bounds, { top: 60, bottom: 60, left: 60, right: 60 });
+        map.fitBounds(bounds, { top: 90, bottom: 90, left: 70, right: 70 });
+      } else if (validVehicles.length === 1) {
+        map.setCenter({ lat: Number(validVehicles[0].lat), lng: Number(validVehicles[0].lng) });
+        map.setZoom(15);
       }
       setIsShowingAll(true);
+      onSelectVehicle(null as any);
     } else {
-      // Centraliza e aproxima no veículo selecionado com zoom de rua 17
-      const currentTarget = selectedVehicle
-        ? (vehicles.find(v => v.id === selectedVehicle.id) || selectedVehicle)
-        : vehicles.find(v => {
-            const lat = Number(v.lat);
-            const lng = Number(v.lng);
-            return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
-          }) || vehicles[0] || null;
+      // 2. "Centralizar": Alterna para o próximo veículo da frota de forma cíclica
+      if (validVehicles.length === 0) return;
 
-      if (currentTarget && Number(currentTarget.lat) && Number(currentTarget.lng)) {
-        map.setCenter({ lat: Number(currentTarget.lat), lng: Number(currentTarget.lng) });
+      let nextIndex = 0;
+      if (selectedVehicle) {
+        const currentIdx = validVehicles.findIndex(v => v.id === selectedVehicle.id);
+        nextIndex = currentIdx >= 0 ? (currentIdx + 1) % validVehicles.length : 0;
+      } else {
+        nextIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
+      }
+
+      lastFocusedIndexRef.current = nextIndex;
+      const target = validVehicles[nextIndex];
+
+      if (target && Number(target.lat) && Number(target.lng)) {
+        map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
         map.setZoom(17);
+        onSelectVehicle(target);
       }
       setIsShowingAll(false);
     }
   };
+
+  const nextTargetName = (() => {
+    if (validVehicles.length <= 1) return '';
+    let previewIndex = 0;
+    if (selectedVehicle) {
+      const currentIdx = validVehicles.findIndex(v => v.id === selectedVehicle.id);
+      previewIndex = currentIdx >= 0 ? (currentIdx + 1) % validVehicles.length : 0;
+    } else {
+      previewIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
+    }
+    return validVehicles[previewIndex]?.name || '';
+  })();
 
   return (
     <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-6 z-20 pointer-events-auto flex items-center">
       <button
         onClick={handleToggle}
         className="bg-white/95 hover:bg-blue-50 text-gray-800 hover:text-blue-600 font-bold px-4 py-2.5 rounded-2xl shadow-xl border border-blue-200 backdrop-blur-md flex items-center gap-2 text-xs transition-all hover:scale-105 active:scale-95 group cursor-pointer"
-        title={isShowingAll ? "Centralizar e aproximar no veículo" : "Ver todos os veículos na tela cheia"}
+        title={isShowingAll ? (nextTargetName ? `Centralizar em ${nextTargetName}` : "Centralizar e aproximar no veículo") : "Ver todos os veículos na tela cheia"}
         aria-label={isShowingAll ? "Centralizar" : `Ver Todos (${vehicles.length})`}
       >
         <span className="p-1 bg-blue-100 group-hover:bg-blue-200 text-blue-700 rounded-lg transition-colors text-sm">
           {isShowingAll ? '🎯' : '🗺️'}
         </span>
         <span className="whitespace-nowrap font-bold">
-          {isShowingAll ? 'Centralizar' : `Ver Todos (${vehicles.length})`}
+          {isShowingAll ? (nextTargetName ? `Centralizar (${nextTargetName})` : 'Centralizar') : `Ver Todos (${vehicles.length})`}
         </span>
       </button>
     </div>
@@ -489,6 +526,7 @@ interface FleetTrackerProps {
   isCreatingGeofence?: boolean;
   onGeofenceCreateClick?: (lat: number, lng: number) => void;
   onShareVehicle?: (v: Vehicle) => void;
+  isPublicView?: boolean;
 }
 
 export default function FleetTracker({
@@ -515,10 +553,11 @@ export default function FleetTracker({
   geofences = [],
   isCreatingGeofence = false,
   onGeofenceCreateClick,
-  onShareVehicle
+  onShareVehicle,
+  isPublicView = false
 }: FleetTrackerProps) {
   const [mapZoom, setMapZoom] = useState(13);
-  const [isShowingAll, setIsShowingAll] = useState(() => vehicles.length > 1);
+  const [isShowingAll, setIsShowingAll] = useState(() => !selectedVehicle);
   const [startPoint, setStartPoint] = useState<RoutePoint | null>(null);
   const [endPoint, setEndPoint] = useState<RoutePoint | null>(null);
   const [showTimelineDrawer, setShowTimelineDrawer] = useState(false);
@@ -674,7 +713,18 @@ export default function FleetTracker({
     : (currentSelected?.settings?.speedLimit || 60);
 
   const currentSpeed = currentSelected?.speed || 0;
-  const isOverSpeed = currentSelected && currentSpeed > effectiveLimit;
+  const isOverSpeed = Boolean(currentSelected && currentSpeed > effectiveLimit);
+  const fleetCenter = React.useMemo(() => {
+    const valid = vehicles.filter(v => {
+      const lat = Number(v.lat);
+      const lng = Number(v.lng);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+    if (valid.length === 0) return { lat: -23.5505, lng: -46.6333 };
+    const sumLat = valid.reduce((acc, v) => acc + Number(v.lat), 0);
+    const sumLng = valid.reduce((acc, v) => acc + Number(v.lng), 0);
+    return { lat: sumLat / valid.length, lng: sumLng / valid.length };
+  }, [vehicles]);
 
   return (
     <div className="flex-grow flex relative w-full h-full overflow-hidden">
@@ -801,12 +851,8 @@ export default function FleetTracker({
 
       <div className="absolute inset-0">
         <Map
-          defaultCenter={
-            vehicles.find(v => v.lat && v.lng && (v.lat !== 0 || v.lng !== 0))
-              ? { lat: Number(vehicles.find(v => v.lat && v.lng && (v.lat !== 0 || v.lng !== 0))!.lat), lng: Number(vehicles.find(v => v.lat && v.lng && (v.lat !== 0 || v.lng !== 0))!.lng) }
-              : {lat: -23.5505, lng: -46.6333}
-          }
-          defaultZoom={17}
+          defaultCenter={fleetCenter}
+          defaultZoom={13}
           mapId="DEMO_MAP_ID"
           internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
           style={{width: '100%', height: '100%'}}
@@ -1110,7 +1156,7 @@ export default function FleetTracker({
           )}
 
           {/* Compartilhar Rastreio via WhatsApp ou SMS */}
-          {onShareVehicle && (
+          {!isPublicView && onShareVehicle && (
             <button
               type="button"
               onClick={() => onShareVehicle(currentSelected)}
@@ -1130,43 +1176,45 @@ export default function FleetTracker({
           )}
 
           {/* Modo Âncora (Anti-Furto Virtual) Button - Sugestão 5 */}
-          <button
-            type="button"
-            onClick={() => {
-              const isArmed = Boolean(currentSelected.settings?._alarmArmed);
-              const updatedSettings = {
-                ...(currentSelected.settings || {}),
-                _alarmArmed: !isArmed
-              };
-              const updatedV = { ...currentSelected, settings: updatedSettings as any };
-              if (onUpdateVehicle) onUpdateVehicle(updatedV);
-            }}
-            className={`w-full mb-2.5 py-2.5 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
-              currentSelected.settings?._alarmArmed
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300'
-                : 'bg-slate-800 hover:bg-slate-700 text-white'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-base">{currentSelected.settings?._alarmArmed ? '⚓' : '🔓'}</span>
-              <div className="text-left">
-                <span className="block font-bold">
-                  {currentSelected.settings?._alarmArmed ? 'Modo Âncora Ativado' : 'Ativar Modo Âncora (Anti-Furto)'}
-                </span>
-                <span className="text-[10px] opacity-80 block">
-                  {currentSelected.settings?._alarmArmed ? 'Sirene ativa se o veículo mover ou ligar' : 'Guarda virtual de perímetro 30m'}
-                </span>
+          {!isPublicView && (
+            <button
+              type="button"
+              onClick={() => {
+                const isArmed = Boolean(currentSelected.settings?._alarmArmed);
+                const updatedSettings = {
+                  ...(currentSelected.settings || {}),
+                  _alarmArmed: !isArmed
+                };
+                const updatedV = { ...currentSelected, settings: updatedSettings as any };
+                if (onUpdateVehicle) onUpdateVehicle(updatedV);
+              }}
+              className={`w-full mb-2.5 py-2.5 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
+                currentSelected.settings?._alarmArmed
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">{currentSelected.settings?._alarmArmed ? '⚓' : '🔓'}</span>
+                <div className="text-left">
+                  <span className="block font-bold">
+                    {currentSelected.settings?._alarmArmed ? 'Modo Âncora Ativado' : 'Ativar Modo Âncora (Anti-Furto)'}
+                  </span>
+                  <span className="text-[10px] opacity-80 block">
+                    {currentSelected.settings?._alarmArmed ? 'Sirene ativa se o veículo mover ou ligar' : 'Guarda virtual de perímetro 30m'}
+                  </span>
+                </div>
               </div>
-            </div>
-            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-              currentSelected.settings?._alarmArmed ? 'bg-white text-emerald-800' : 'bg-slate-700 text-slate-200'
-            }`}>
-              {currentSelected.settings?._alarmArmed ? 'PROTEGIDO' : 'ATIVAR'}
-            </span>
-          </button>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                currentSelected.settings?._alarmArmed ? 'bg-white text-emerald-800' : 'bg-slate-700 text-slate-200'
+              }`}>
+                {currentSelected.settings?._alarmArmed ? 'PROTEGIDO' : 'ATIVAR'}
+              </span>
+            </button>
+          )}
 
           {/* Quick Geofence Button - Sugestão 2 */}
-          {onGeofenceCreateClick && (
+          {!isPublicView && onGeofenceCreateClick && (
             <button
               type="button"
               onClick={() => onGeofenceCreateClick(currentSelected.lat, currentSelected.lng)}
@@ -1178,57 +1226,63 @@ export default function FleetTracker({
           )}
 
           {/* Modo Sleep / Economia de Bateria - Opção 5 */}
-          <button
-            type="button"
-            onClick={() => {
-              const isSleep = Boolean(currentSelected.settings?._sleepModeEnabled);
-              const updatedSettings = {
-                ...(currentSelected.settings || {}),
-                _sleepModeEnabled: !isSleep,
-                economicalMode: (!isSleep ? 'economical' : 'realtime') as any
-              };
-              const updatedV = { ...currentSelected, settings: updatedSettings as any };
-              if (onUpdateVehicle) onUpdateVehicle(updatedV);
-            }}
-            className={`w-full mb-2.5 py-2 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
-              currentSelected.settings?._sleepModeEnabled
-                ? 'bg-purple-700 hover:bg-purple-800 text-white'
-                : 'bg-slate-700 hover:bg-slate-800 text-white'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm">{currentSelected.settings?._sleepModeEnabled ? '🌙' : '🔋'}</span>
-              <span>{currentSelected.settings?._sleepModeEnabled ? 'Modo Sleep / Economia Ativado' : 'Ativar Modo Sleep (Economia Bateria)'}</span>
-            </div>
-            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-              currentSelected.settings?._sleepModeEnabled ? 'bg-white text-purple-900' : 'bg-slate-600 text-slate-200'
-            }`}>
-              {currentSelected.settings?._sleepModeEnabled ? 'SLEEP' : 'NORMAL'}
-            </span>
-          </button>
+          {!isPublicView && (
+            <button
+              type="button"
+              onClick={() => {
+                const isSleep = Boolean(currentSelected.settings?._sleepModeEnabled);
+                const updatedSettings = {
+                  ...(currentSelected.settings || {}),
+                  _sleepModeEnabled: !isSleep,
+                  economicalMode: (!isSleep ? 'economical' : 'realtime') as any
+                };
+                const updatedV = { ...currentSelected, settings: updatedSettings as any };
+                if (onUpdateVehicle) onUpdateVehicle(updatedV);
+              }}
+              className={`w-full mb-2.5 py-2 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
+                currentSelected.settings?._sleepModeEnabled
+                  ? 'bg-purple-700 hover:bg-purple-800 text-white'
+                  : 'bg-slate-700 hover:bg-slate-800 text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm">{currentSelected.settings?._sleepModeEnabled ? '🌙' : '🔋'}</span>
+                <span>{currentSelected.settings?._sleepModeEnabled ? 'Modo Sleep / Economia Ativado' : 'Ativar Modo Sleep (Economia Bateria)'}</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                currentSelected.settings?._sleepModeEnabled ? 'bg-white text-purple-900' : 'bg-slate-600 text-slate-200'
+              }`}>
+                {currentSelected.settings?._sleepModeEnabled ? 'SLEEP' : 'NORMAL'}
+              </span>
+            </button>
+          )}
 
           {/* Gêmeo Digital 3D / Visão Top-Down 360° Button */}
-          <button
-            type="button"
-            onClick={() => setShowDigitalTwinModal(true)}
-            className="w-full mb-2.5 py-2 px-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
-          >
-            <span className="text-sm">🤖</span>
-            <span>Gêmeo Digital 3D & Visão Top-Down 360°</span>
-          </button>
+          {!isPublicView && (
+            <button
+              type="button"
+              onClick={() => setShowDigitalTwinModal(true)}
+              className="w-full mb-2.5 py-2 px-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
+            >
+              <span className="text-sm">🤖</span>
+              <span>Gêmeo Digital 3D & Visão Top-Down 360°</span>
+            </button>
+          )}
 
           {/* Compartilhar Rastreio ao Vivo (WhatsApp / SMS) Button */}
-          <button
-            type="button"
-            onClick={() => setShowShareModal(true)}
-            className="w-full mb-2.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
-          >
-            <span className="text-sm">🔗</span>
-            <span>Compartilhar Rastreio (WhatsApp / SMS)</span>
-          </button>
+          {!isPublicView && (
+            <button
+              type="button"
+              onClick={() => setShowShareModal(true)}
+              className="w-full mb-2.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span className="text-sm">🔗</span>
+              <span>Compartilhar Rastreio (WhatsApp / SMS)</span>
+            </button>
+          )}
 
           {/* Linha do Tempo Button */}
-          {onOpenTimeline && (
+          {!isPublicView && onOpenTimeline && (
             <button
               type="button"
               onClick={() => onOpenTimeline(currentSelected)}
@@ -1240,17 +1294,19 @@ export default function FleetTracker({
           )}
 
           {/* Diagnostic Button */}
-          <button
-            type="button"
-            onClick={() => {
-              console.log("Debug: currentSelected", currentSelected);
-              alert(`Status: ${currentSelected.status} | Velocidade: ${currentSelected.speed} km/h`);
-            }}
-            className="w-full mb-2.5 py-2 px-3 bg-gray-600 hover:bg-gray-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
-          >
-            <span className="text-sm">📊</span>
-            <span>Diagnóstico do Rastreador</span>
-          </button>
+          {!isPublicView && (
+            <button
+              type="button"
+              onClick={() => {
+                console.log("Debug: currentSelected", currentSelected);
+                alert(`Status: ${currentSelected.status} | Velocidade: ${currentSelected.speed} km/h`);
+              }}
+              className="w-full mb-2.5 py-2 px-3 bg-gray-600 hover:bg-gray-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span className="text-sm">📊</span>
+              <span>Diagnóstico do Rastreador</span>
+            </button>
+          )}
 
           {/* Telemetry Status Grid */}
           <div className="grid grid-cols-2 gap-2 mb-2.5 shrink-0">
@@ -1393,7 +1449,7 @@ export default function FleetTracker({
       )}
 
       {/* Floating Stop Details Card */}
-      {activeStop && (
+      {!isPublicView && activeStop && (
         <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-3 right-3 sm:left-auto sm:right-5 sm:w-96 z-30 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-amber-200 animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto flex flex-col overflow-hidden">
           <div className="bg-amber-600 text-white px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1529,7 +1585,7 @@ export default function FleetTracker({
       )}
 
       {/* On-Map Day Timeline Playback Bar */}
-      {activeRoute && activeRoute.points && activeRoute.points.length > 1 && (
+      {!isPublicView && activeRoute && activeRoute.points && activeRoute.points.length > 1 && (
         <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-auto max-w-xl z-30 bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-slate-700 flex flex-col gap-2 pointer-events-auto">
           <div className="flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2">
@@ -1596,7 +1652,7 @@ export default function FleetTracker({
       )}
 
       {/* On-Map Side Drawer for Day's Stops / Timeline */}
-      {showTimelineDrawer && activeRoute && (
+      {!isPublicView && showTimelineDrawer && activeRoute && (
         <div className="absolute top-20 right-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] w-80 sm:w-96 z-30 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in slide-in-from-right-4 duration-200 pointer-events-auto">
           <div className="bg-slate-900 text-white p-3.5 flex items-center justify-between">
             <div className="flex items-center gap-2">

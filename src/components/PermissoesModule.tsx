@@ -323,7 +323,7 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
 
   const getPermissionIcon = (id: string, className = "w-5 h-5") => {
     switch (id) {
-      case 'camera': return <Camera className={className} />;
+      case 'camera': return <CameraIcon className={className} />;
       case 'contacts': return <Users className={className} />;
       case 'nearby': return <Radio className={className} />;
       case 'photos': return <ImageIcon className={className} />;

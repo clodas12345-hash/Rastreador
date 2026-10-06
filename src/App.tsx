@@ -26,6 +26,7 @@ import ShareTrackingModal from './components/ShareTrackingModal';
 import PermissoesModule from './components/PermissoesModule';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { App as CapApp } from '@capacitor/app';
 
 
 import {collection, doc} from 'firebase/firestore';
@@ -1088,6 +1089,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   };
 
   const [showVersionModal, setShowVersionModal] = useState(false);
+  const [showBatteryOptimizationModal, setShowBatteryOptimizationModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeEntityTab, setActiveEntityTab] = useState<'pessoas' | 'carros'>('pessoas');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(() => {
@@ -1098,6 +1100,13 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isCommunicating, setIsCommunicating] = useState(false);
   const [communicationSuccess, setCommunicationSuccess] = useState(false);
+
+  // Force Map view only for shared tracking links
+  useEffect(() => {
+    if (isPublicSingleView && activeModule !== 'rastreamento') {
+      setActiveModule('rastreamento');
+    }
+  }, [isPublicSingleView, activeModule, setActiveModule]);
   const [recordingPoints, setRecordingPoints] = useState<RoutePoint[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [activeRoute, setActiveRoute] = useState<SavedRoute | null>(null);
@@ -1613,11 +1622,28 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   //   }
   // }, [vehicles, selectedVehicle]);
 
-  // Request browser/native notification permissions on load
+  // Request browser/native notification permissions and create high-priority channels on load
   useEffect(() => {
     const checkNotificationPermission = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
+          // Register High-Importance notification channel for Heads-Up / Alarm sounds
+          try {
+            await LocalNotifications.createChannel({
+              id: 'gkd_critical_alerts',
+              name: 'Alertas Críticos e Ignição GKD',
+              description: 'Notificações instantâneas de ignição, velocidade, cercas e emergência',
+              importance: 5,
+              visibility: 1,
+              vibration: true,
+              lights: true,
+              lightColor: '#ef4444',
+              sound: 'alert.wav'
+            });
+          } catch (channelErr) {
+            console.warn('Channel creation warning:', channelErr);
+          }
+
           const status = await LocalNotifications.checkPermissions();
           setNotificationPermissionStatus(status.display);
         } catch (e) {
@@ -1798,7 +1824,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           {
             title: newNotif.title,
             body: newNotif.message,
-            id: Math.floor(Math.random() * 1000000),
+            id: Math.floor(Math.random() * 10000000),
+            channelId: 'gkd_critical_alerts',
             schedule: { 
               at: targetDate, 
               allowWhileIdle: true 
@@ -2475,8 +2502,24 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       fetchRealTimeFlespi();
     }, 3000);
 
+    // Instant refresh when user returns to or unlocks the app
+    let appStateHandle: any = null;
+    if (Capacitor.isNativePlatform()) {
+      try {
+        appStateHandle = CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) {
+            console.log('[App Resume] App brought to foreground, fetching fresh telemetry immediately');
+            fetchRealTimeFlespi();
+          }
+        });
+      } catch (e) {}
+    }
+
     return () => {
       clearInterval(fastInterval);
+      if (appStateHandle && typeof appStateHandle.then === 'function') {
+        appStateHandle.then((h: any) => h.remove?.()).catch(() => {});
+      }
     };
   }, [setVehicles]);
 
@@ -2625,20 +2668,21 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   return (
       <div className="h-[100dvh] font-sans flex overflow-hidden bg-gray-50 relative w-full max-w-[100vw]">
 
-      {/* Overlay Backdrop for Mobile */}
-      {sidebarOpen && (
+      {/* Overlay Backdrop for Mobile - Hidden in public view */}
+      {!isPublicSingleView && sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar Global */}
-      <div className={`
-        fixed md:relative top-0 left-0 h-full z-50 md:z-40
-        ${sidebarOpen ? 'translate-x-0 w-64 md:w-64 border-r border-gray-200' : '-translate-x-full w-64 md:w-0 md:translate-x-0 md:border-r-0'} 
-        bg-white flex-shrink-0 transition-all duration-300 overflow-hidden flex flex-col shadow-xl md:shadow-sm
-      `}>
+      {/* Sidebar Global - Hidden in public view */}
+      {!isPublicSingleView && (
+        <div className={`
+          fixed md:relative top-0 left-0 h-full z-50 md:z-40
+          ${sidebarOpen ? 'translate-x-0 w-64 md:w-64 border-r border-gray-200' : '-translate-x-full w-64 md:w-0 md:translate-x-0 md:border-r-0'} 
+          bg-white flex-shrink-0 transition-all duration-300 overflow-hidden flex flex-col shadow-xl md:shadow-sm
+        `}>
         <div className="p-4 border-b border-gray-800 flex items-center justify-between h-16 shrink-0 bg-slate-950">
           <div 
             className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
@@ -2662,7 +2706,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           </button>
         </div>
           
-          <div className="p-4 space-y-1 flex-grow overflow-y-auto overflow-x-hidden min-w-[16rem]">
+
+            <div className="p-4 space-y-1 flex-grow overflow-y-auto overflow-x-hidden min-w-[16rem]">
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 mt-2">Módulos</h2>
             <button 
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'rastreamento' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
@@ -2897,10 +2942,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             </div>
 
           </div>
-        </div>
+          </div>
+        )}
         {/* Main Content Area */}
         <div className="flex-grow flex flex-col overflow-hidden relative min-w-0">
-          <header className="bg-white border-b px-3 sm:px-4 py-2 sm:py-2.5 flex justify-between items-center z-10 shadow-sm shrink-0">
+          {!isPublicSingleView && (
+            <header className="bg-white border-b px-3 sm:px-4 py-2 sm:py-2.5 flex justify-between items-center z-10 shadow-sm shrink-0">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {/* Menu Hamburger Toggle */}
               <button 
@@ -2976,7 +3023,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 </button>
               </div>
             </div>
-          </header>
+            </header>
+          )}
           
           <main className="flex-grow flex flex-col overflow-hidden relative">
             {flespiError && (
@@ -2993,7 +3041,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 vehicles={vehicles} 
                 selectedVehicle={selectedVehicle} 
                 onMarkerClick={(v) => setSelectedVehicle(v)}
-                onMarkerDoubleClick={(v) => openModal(v, v.settings?.isBlocked ? 'emergency' : 'details')}
+                onMarkerDoubleClick={(v) => !isPublicSingleView && openModal(v, v.settings?.isBlocked ? 'emergency' : 'details')}
                 onSelectVehicle={(v) => setSelectedVehicle(v)}
                 onUpdateVehicle={(updated) => handleUpdateVehicle(updated)}
                 onMapClick={() => { setSidebarOpen(false); setSelectedVehicle(null); }} 
@@ -3023,6 +3071,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   setIsCreatingGeofence(false);
                 }}
                 onShareVehicle={(v) => setSharingVehicle(v)}
+                isPublicView={isPublicSingleView}
               />
             )}
             {activeModule === 'dashboard' && <Dashboard vehicles={vehicles} onBackToMap={() => setActiveModule('rastreamento')} onShareVehicle={(v) => setSharingVehicle(v)} />}
@@ -3128,9 +3177,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
 
 
-        <RouteManagerModal
-          isOpen={isRouteManagerOpen}
-          onClose={() => setIsRouteManagerOpen(false)}
+        {!isPublicSingleView && (
+          <RouteManagerModal
+            isOpen={isRouteManagerOpen}
+            onClose={() => setIsRouteManagerOpen(false)}
           vehicles={vehicles}
           recordingPoints={recordingPoints}
           isRecording={isRecording}
@@ -3149,6 +3199,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           isPlayingPlayback={isPlayingPlayback}
           activeRoute={activeRoute}
         />
+      )}
 
         {/* Modal de Versão e Sobre o App */}
         {showVersionModal && (
@@ -3456,6 +3507,29 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         <input type="text" placeholder="(11) 99999-9999" value={editingVehicle.phoneNumber} onChange={e => setEditingVehicle({...editingVehicle, phoneNumber: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-sm" />
                       </div>
                     </div>
+
+                    {editingVehicle.id !== 'new' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const v = editingVehicle;
+                          const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${v.name} (Rastreador GKD)\nTEL;TYPE=CELL:${v.phoneNumber || v.trackerNumber || ''}\nNOTE:Placa: ${v.licensePlate || 'N/D'} - IMEI: ${v.trackerNumber || 'N/D'}\nEND:VCARD`;
+                          const blob = new Blob([vcard], { type: 'text/vcard;charset=utf-8' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `${v.name.replace(/[^a-zA-Z0-9]/g, '_')}_agenda.vcf`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                          showToast('📇 Contato vCard gerado! Abra o arquivo para buscar e salvar o veículo na agenda do celular.');
+                        }}
+                        className="w-full mt-3 py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      >
+                        <span>📇</span> Salvar Veículo na Agenda do Celular (vCard)
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -4046,7 +4120,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           </div>
         )}
 
-        {showDeleteConfirm && editingVehicle && (
+        {!isPublicSingleView && showDeleteConfirm && editingVehicle && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1010] backdrop-blur-sm p-4">
             <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm text-center">
               <h3 className="text-xl font-bold text-gray-800 mb-2">Confirmar Exclusão</h3>
@@ -4074,7 +4148,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         )}
 
         {/* Notification Drawer Modal */}
-        {showNotificationDrawer && (
+        {!isPublicSingleView && showNotificationDrawer && (
           <div className="fixed inset-0 bg-black/60 flex justify-end z-[1000] backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
             <div className="bg-white w-full max-w-md h-full sm:h-[90vh] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden my-auto border border-gray-100">
               
@@ -4217,13 +4291,22 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   </button>
                 </div>
 
-                <button
-                  onClick={requestBatteryOptimizationExemption}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 bg-amber-50/80 text-amber-900 rounded-xl text-[10px] font-black hover:bg-amber-100 transition-all border border-amber-200"
-                  title="Garante que o Android não cancele notificações agendadas quando o aplicativo for fechado"
-                >
-                  <span>🔋</span> Ignorar Otimização de Bateria (App Fechado)
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={requestBatteryOptimizationExemption}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-amber-50/90 text-amber-900 rounded-xl text-[10px] font-black hover:bg-amber-100 transition-all border border-amber-200"
+                    title="Garante que o Android não congele notificações quando o aplicativo for fechado"
+                  >
+                    <span>🔋</span> Sem Restrições de Bateria
+                  </button>
+                  <button
+                    onClick={() => setShowBatteryOptimizationModal(true)}
+                    className="px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-black hover:bg-blue-100 transition-all border border-blue-200"
+                    title="Ver instruções passo a passo para receber alertas com app fechado"
+                  >
+                    <span>ℹ️</span> Guia
+                  </button>
+                </div>
               </div>
 
               {/* Notification List */}
@@ -4362,7 +4445,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           </div>
         )}
 
-        {photoViewerUrl && (
+        {!isPublicSingleView && photoViewerUrl && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1020] backdrop-blur-md p-4 animate-fade-in" onClick={() => setPhotoViewerUrl(null)}>
             <div className="bg-white p-4 rounded-2xl shadow-2xl max-w-lg w-full relative overflow-hidden" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-3">
@@ -4391,8 +4474,100 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           </div>
         )}
 
+        {!isPublicSingleView && showBatteryOptimizationModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1030] backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowBatteryOptimizationModal(false)}>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full relative overflow-hidden border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold text-xl">
+                    ⚡
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-gray-900">
+                      Notificações com App Fechado
+                    </h3>
+                    <p className="text-xs text-gray-500 font-medium">
+                      Guia para receber alertas sem atrasos no Android
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBatteryOptimizationModal(false)}
+                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center font-bold transition-all"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs text-gray-700">
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-900 text-xs">
+                    <span>1️⃣</span>
+                    <span>Desativar Otimização de Bateria (Essencial)</span>
+                  </div>
+                  <p className="text-amber-800 leading-relaxed text-[11px]">
+                    O Android suspende automaticamente aplicativos fechados para poupar bateria. Marque <strong>"Sem Restrições"</strong> para que os alertas de ignição, cerca e velocidade cheguem instantaneamente.
+                  </p>
+                  <button
+                    onClick={requestBatteryOptimizationExemption}
+                    className="w-full mt-1.5 py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-black text-xs shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>🔓</span> Abrir Configurações de Bateria
+                  </button>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                    <span>2️⃣</span>
+                    <span>Início Automático / Segundo Plano</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
+                    Em aparelhos <strong>Xiaomi, Samsung, Motorola e Realme</strong>, vá em <em>Configurações &gt; Aplicativos &gt; Rastreador</em> e ative a opção <strong>"Início Automático"</strong> e <strong>"Permitir atividade em segundo plano"</strong>.
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                    <span>3️⃣</span>
+                    <span>Bloquear no Menu de Recentes (Cadeado)</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
+                    Abra a lista de aplicativos recentes (multitarefa), mantenha o dedo pressionado sobre o app do Rastreador e toque no <strong>ícone de Cadeado 🔒</strong> para evitar que o Android feche o processo.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const targetTime = new Date(Date.now() + 10000);
+                    addNotification({
+                      title: '⏰ Teste de Alerta Exato (10s)',
+                      message: 'Alarme nativo disparado com sucesso mesmo com o app em segundo plano!',
+                      type: 'command',
+                      severity: 'info',
+                      vehicleName: 'GKD Mobility'
+                    }, targetTime);
+                    showToast('⏰ Notificação agendada para daqui a 10 segundos! Feche o app para testar.');
+                    setShowBatteryOptimizationModal(false);
+                  }}
+                  className="flex-1 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-2xl text-xs font-black transition-all text-center"
+                >
+                  ⏰ Agendar Teste (10s)
+                </button>
+                <button
+                  onClick={() => setShowBatteryOptimizationModal(false)}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black shadow-md shadow-blue-200 transition-all text-center"
+                >
+                  Entendi
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Pre-Alert Reason Selector Modal (Select Roubo, Furto, or Perda first) */}
-        {emergencySelector && emergencySelector.show && (
+        {!isPublicSingleView && emergencySelector && emergencySelector.show && (
           <div
             className="fixed inset-0 bg-slate-950/80 flex items-center justify-center z-[9999] backdrop-blur-md p-4 animate-fade-in select-none"
             onClick={() => setEmergencySelector(null)}
@@ -4493,7 +4668,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         )}
 
         {/* Modal de Envio Duplo Garantido (Rede GPRS + SMS / WhatsApp) */}
-        {dualDispatchData && dualDispatchData.isOpen && (
+        {!isPublicSingleView && dualDispatchData && dualDispatchData.isOpen && (
           <div
             className="fixed inset-0 bg-slate-950/80 flex items-center justify-center z-[9999] backdrop-blur-md p-4 animate-fade-in select-none"
             onClick={() => setDualDispatchData(null)}
@@ -4633,7 +4808,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         )}
 
         {/* Modal Interativo de Confirmação & Descrição de Comando */}
-        {actionConfirm && actionConfirm.isOpen && (
+        {!isPublicSingleView && actionConfirm && actionConfirm.isOpen && (
           <div
             className="fixed inset-0 bg-slate-950/80 flex items-center justify-center z-[10000] backdrop-blur-md p-4 animate-fade-in select-none"
             onClick={() => setActionConfirm(null)}
@@ -4744,7 +4919,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         )}
 
         {/* Floating AI Assistant Copilot - Exibida apenas quando ativada nas Configurações */}
-        {showFloatingAI && (
+        {!isPublicSingleView && showFloatingAI && (
           <FloatingAI 
             vehicles={vehicles} 
             onSelectModule={(mod) => setActiveModule(mod)} 

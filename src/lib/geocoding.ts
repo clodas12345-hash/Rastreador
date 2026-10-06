@@ -172,9 +172,7 @@ export function determineRoadSpeedLimit(roadName: string, roadType?: string, max
     calculatedLimit = 50;
     detectedType = 'Via Coletora / Bairro (50 km/h)';
   } else if (
-    // 7. Ruas Locais / Residenciais (40 a 50 km/h)
-    lowerName.includes('rua') ||
-    lowerName.includes('r.') ||
+    // 7. Ruas Locais / Residenciais Estritas (40 a 50 km/h)
     lowerName.includes('travessa') ||
     lowerName.includes('viela') ||
     lowerName.includes('beco') ||
@@ -183,7 +181,7 @@ export function determineRoadSpeedLimit(roadName: string, roadType?: string, max
     lowerType === 'unclassified'
   ) {
     calculatedLimit = 40;
-    detectedType = 'Rua Residencial / Local (40 km/h)';
+    detectedType = 'Via Residencial / Local (40 km/h)';
   } else if (
     // 8. Vias Internas, Estacionamentos e Condomínios (20 a 30 km/h)
     lowerName.includes('estacionamento') ||
