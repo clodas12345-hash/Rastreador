@@ -2381,9 +2381,17 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               ? flespiDirection
               : (deltaKm > 0.001 ? calculateBearing(v.lat, v.lng, realLat, realLng) : (v.heading || 0));
 
+            const isMoving = realSpeed > 2;
+            const driftThresholdKm = 0.02; // 20 metros de trava para evitar "carro dançando" no mapa
+            const isSignificantMove = deltaKm > driftThresholdKm;
+            
+            // Filtro de Drift: Se a ignição está desligada e o movimento é minúsculo, mantém a posição antiga
+            const isDrift = !ignition && !isMoving && !isSignificantMove && deltaKm > 0;
+
+            const hasCoordinatesChanged = (v.lat !== realLat || v.lng !== realLng) && !isDrift;
+
             if (
-              v.lat !== realLat ||
-              v.lng !== realLng ||
+              hasCoordinatesChanged ||
               v.speed !== realSpeed ||
               v.status !== newStatus ||
               v.satellites !== realSatellites ||
@@ -2391,7 +2399,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               v.externalVoltage !== externalVoltage ||
               v.powerCut !== isPowerCut ||
               v.heading !== realHeading ||
-              deltaKm > 0
+              (deltaKm > 0 && !isDrift)
             ) {
               anyChanged = true;
               
@@ -2421,11 +2429,11 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               
               const updatedV = {
                 ...v,
-                lat: realLat,
-                lng: realLng,
+                lat: isDrift ? v.lat : realLat,
+                lng: isDrift ? v.lng : realLng,
                 speed: realSpeed,
                 status: newStatus,
-                heading: realHeading,
+                heading: isDrift ? v.heading : realHeading,
                 satellites: realSatellites,
                 hdop: realHdop,
                 batteryLevel: batteryLevel ?? v.batteryLevel,
