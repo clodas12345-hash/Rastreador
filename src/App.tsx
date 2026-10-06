@@ -16,7 +16,6 @@ import { VehicleIcon } from './components/VehicleIcon';
 import HelpModule from './components/HelpModule';
 import DadosModule from './components/DadosModule';
 import RegistradorModule from './components/RegistradorModule';
-import ManutencaoModule from './components/ManutencaoModule';
 import MotoristasModule from './components/MotoristasModule';
 import CaixaPretaModule from './components/CaixaPretaModule';
 import RelatoriosConsumoModule from './components/RelatoriosConsumoModule';
@@ -2761,12 +2760,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             >
               <span className="text-lg">🎙️</span> <span>Registrador & Agregações</span>
             </button>
-            <button 
-              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'manutencao' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('manutencao'); setSidebarOpen(false); }}
-            >
-              <Wrench className="w-5 h-5 text-amber-600" /> <span>Manutenção & Óleo</span>
-            </button>
+
             <button 
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'motoristas' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('motoristas'); setSidebarOpen(false); }}
@@ -3133,14 +3127,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               />
             )}
 
-            {activeModule === 'manutencao' && (
-              <ManutencaoModule
-                vehicles={vehicles}
-                onUpdateVehicle={handleUpdateVehicle}
-                onBackToMap={() => setActiveModule('rastreamento')}
-                showToast={showToast}
-              />
-            )}
+
 
             {activeModule === 'motoristas' && (
               <MotoristasModule

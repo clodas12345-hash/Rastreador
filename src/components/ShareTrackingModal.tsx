@@ -61,11 +61,11 @@ export default function ShareTrackingModal({
   };
 
   const getFormattedMessage = () => {
-    return `🚗 *Acompanhe o veículo ${vehicle.name} em tempo real no mapa*\n\n` +
-      `*Veículo:* ${vehicle.name} (${vehicle.licensePlate || 'GRA-2026'})\n` +
-      `*Status:* ${vehicle.speed > 0 ? `Em Movimento (${Math.round(vehicle.speed)} km/h)` : 'Parado / Conectado'}\n` +
-      `*Link de Acompanhamento:* ${publicTrackingUrl}\n\n` +
-      `⏳ _Link exclusivo deste veículo, válido por ${expirationHours} hora(s)._`;
+    return `🚗 Acompanhe o veículo ${vehicle.name} em tempo real no mapa:\n\n` +
+      `Veículo: ${vehicle.name} (${vehicle.licensePlate || 'GRA-2026'})\n` +
+      `Status: ${vehicle.speed > 0 ? `Em Movimento (${Math.round(vehicle.speed)} km/h)` : 'Parado / Conectado'}\n\n` +
+      `Link de Acompanhamento:\n${publicTrackingUrl}\n\n` +
+      `⏳ Válido por ${expirationHours} hora(s).`;
   };
 
   const handleSaveTokenToCloud = async () => {

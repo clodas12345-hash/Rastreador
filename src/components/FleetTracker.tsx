@@ -4,7 +4,6 @@ import {Vehicle, SavedRoute, RoutePoint, Geofence} from '../types';
 import {VehicleIcon} from './VehicleIcon';
 import GeofenceLayer from './GeofenceLayer';
 import {AddressDisplay} from './AddressDisplay';
-import DigitalTwinModal from './DigitalTwinModal';
 import ShareTrackingModal from './ShareTrackingModal';
 import {Layers, Settings, X, Gauge, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Crosshair, MapPin} from 'lucide-react';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed, determineRoadSpeedLimit, RoadSpeedInfo } from '../lib/geocoding';
@@ -570,7 +569,6 @@ export default function FleetTracker({
   const [activeStopIndex, setActiveStopIndex] = useState<number | null>(null);
   const [showOnlyStops, setShowOnlyStops] = useState(false);
   const [showStreetViewModal, setShowStreetViewModal] = useState(false);
-  const [showDigitalTwinModal, setShowDigitalTwinModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
 
   const openNativeStreetView = (lat: number, lng: number) => {
@@ -1144,7 +1142,9 @@ export default function FleetTracker({
             </div>
           )}
 
-          {/* Power Cut Alert Banner if detected */}
+
+
+          {/* Power Cut Alert Banner (Security) */}
           {(currentSelected.powerCut || currentSelected.status === 'NoBattery') && (
             <div className="bg-red-600 text-white p-2.5 rounded-xl border border-red-700 mb-2.5 flex items-start gap-2 shadow-md animate-pulse shrink-0">
               <span className="text-base shrink-0">⚡</span>
@@ -1155,119 +1155,26 @@ export default function FleetTracker({
             </div>
           )}
 
-          {/* Compartilhar Rastreio via WhatsApp ou SMS */}
-          {!isPublicView && onShareVehicle && (
-            <button
-              type="button"
-              onClick={() => onShareVehicle(currentSelected)}
-              className="w-full mb-2.5 py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-98 text-white text-xs font-extrabold rounded-xl shadow-md flex items-center justify-between transition-all cursor-pointer border border-emerald-400/40"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-base">🔗</span>
-                <div className="text-left">
-                  <span className="block font-bold">Compartilhar Rastreio ao Vivo</span>
-                  <span className="text-[10px] text-emerald-100 block">Enviar link com mapa por WhatsApp ou SMS</span>
-                </div>
-              </div>
-              <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] uppercase font-black">
-                ENVIAR
-              </span>
-            </button>
-          )}
-
-          {/* Modo Âncora (Anti-Furto Virtual) Button - Sugestão 5 */}
+          {/* Modo Âncora Button (Single Non-Duplicated Action) */}
           {!isPublicView && (
             <button
               type="button"
               onClick={() => {
                 const isArmed = Boolean(currentSelected.settings?._alarmArmed);
-                const updatedSettings = {
-                  ...(currentSelected.settings || {}),
-                  _alarmArmed: !isArmed
-                };
+                const updatedSettings = { ...(currentSelected.settings || {}), _alarmArmed: !isArmed };
                 const updatedV = { ...currentSelected, settings: updatedSettings as any };
                 if (onUpdateVehicle) onUpdateVehicle(updatedV);
               }}
-              className={`w-full mb-2.5 py-2.5 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
-                currentSelected.settings?._alarmArmed
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300'
-                  : 'bg-slate-800 hover:bg-slate-700 text-white'
+              className={`w-full mb-2.5 py-2 px-3 text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                currentSelected.settings?._alarmArmed ? 'bg-emerald-700 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white border border-slate-700'
               }`}
             >
-              <div className="flex items-center gap-2">
-                <span className="text-base">{currentSelected.settings?._alarmArmed ? '⚓' : '🔓'}</span>
-                <div className="text-left">
-                  <span className="block font-bold">
-                    {currentSelected.settings?._alarmArmed ? 'Modo Âncora Ativado' : 'Ativar Modo Âncora (Anti-Furto)'}
-                  </span>
-                  <span className="text-[10px] opacity-80 block">
-                    {currentSelected.settings?._alarmArmed ? 'Sirene ativa se o veículo mover ou ligar' : 'Guarda virtual de perímetro 30m'}
-                  </span>
-                </div>
-              </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                currentSelected.settings?._alarmArmed ? 'bg-white text-emerald-800' : 'bg-slate-700 text-slate-200'
-              }`}>
-                {currentSelected.settings?._alarmArmed ? 'PROTEGIDO' : 'ATIVAR'}
-              </span>
+              <span className="text-sm">{currentSelected.settings?._alarmArmed ? '⚓' : '🔓'}</span>
+              <span>{currentSelected.settings?._alarmArmed ? 'Modo Âncora Ativo (Alarme)' : 'Ativar Modo Âncora'}</span>
             </button>
           )}
 
-          {/* Quick Geofence Button - Sugestão 2 */}
-          {!isPublicView && onGeofenceCreateClick && (
-            <button
-              type="button"
-              onClick={() => onGeofenceCreateClick(currentSelected.lat, currentSelected.lng)}
-              className="w-full mb-2.5 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <span className="text-sm">🎯</span>
-              <span>Criar Cerca Virtual Neste Ponto</span>
-            </button>
-          )}
 
-          {/* Modo Sleep / Economia de Bateria - Opção 5 */}
-          {!isPublicView && (
-            <button
-              type="button"
-              onClick={() => {
-                const isSleep = Boolean(currentSelected.settings?._sleepModeEnabled);
-                const updatedSettings = {
-                  ...(currentSelected.settings || {}),
-                  _sleepModeEnabled: !isSleep,
-                  economicalMode: (!isSleep ? 'economical' : 'realtime') as any
-                };
-                const updatedV = { ...currentSelected, settings: updatedSettings as any };
-                if (onUpdateVehicle) onUpdateVehicle(updatedV);
-              }}
-              className={`w-full mb-2.5 py-2 px-3 rounded-xl text-xs font-bold shadow-sm flex items-center justify-between transition-all cursor-pointer ${
-                currentSelected.settings?._sleepModeEnabled
-                  ? 'bg-purple-700 hover:bg-purple-800 text-white'
-                  : 'bg-slate-700 hover:bg-slate-800 text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm">{currentSelected.settings?._sleepModeEnabled ? '🌙' : '🔋'}</span>
-                <span>{currentSelected.settings?._sleepModeEnabled ? 'Modo Sleep / Economia Ativado' : 'Ativar Modo Sleep (Economia Bateria)'}</span>
-              </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                currentSelected.settings?._sleepModeEnabled ? 'bg-white text-purple-900' : 'bg-slate-600 text-slate-200'
-              }`}>
-                {currentSelected.settings?._sleepModeEnabled ? 'SLEEP' : 'NORMAL'}
-              </span>
-            </button>
-          )}
-
-          {/* Gêmeo Digital 3D / Visão Top-Down 360° Button */}
-          {!isPublicView && (
-            <button
-              type="button"
-              onClick={() => setShowDigitalTwinModal(true)}
-              className="w-full mb-2.5 py-2 px-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
-            >
-              <span className="text-sm">🤖</span>
-              <span>Gêmeo Digital 3D & Visão Top-Down 360°</span>
-            </button>
-          )}
 
           {/* Compartilhar Rastreio ao Vivo (WhatsApp / SMS) Button */}
           {!isPublicView && (
@@ -1327,22 +1234,7 @@ export default function FleetTracker({
               </span>
             </div>
 
-            <div className="bg-gray-50 p-2 rounded-xl border border-gray-100 flex flex-col justify-center">
-              <span className="text-[10px] text-gray-500 font-semibold block mb-0.5">Bateria / Alimentação</span>
-              <div className="flex items-center gap-1.5">
-                <span className={`font-bold text-xs ${
-                  currentSelected.powerCut || currentSelected.status === 'NoBattery' || (currentSelected.externalVoltage && currentSelected.externalVoltage < 5) ? 'text-red-600 animate-pulse' : 
-                  (currentSelected.batteryLevel && currentSelected.batteryLevel <= 20) ? 'text-orange-500' : 'text-blue-700'
-                }`}>
-                  🔋 {currentSelected.batteryLevel != null ? `${Math.round(currentSelected.batteryLevel)}%` : '100%'}
-                </span>
-                <span className={`text-[10px] font-mono font-bold ${
-                  (currentSelected.externalVoltage && currentSelected.externalVoltage < 11.5) ? 'text-red-600' : 'text-emerald-600'
-                }`}>
-                  ⚡ {currentSelected.externalVoltage != null ? `${currentSelected.externalVoltage.toFixed(1)}V` : (currentSelected.status === 'Moving' ? '14.1V' : '12.6V')}
-                </span>
-              </div>
-            </div>
+
             
             <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
               <span className="text-[10px] text-gray-500 font-semibold block mb-0.5">Velocidade Atual</span>
@@ -1719,14 +1611,6 @@ export default function FleetTracker({
             )}
           </div>
         </div>
-      )}
-
-      {/* Digital Twin Modal Render */}
-      {showDigitalTwinModal && currentSelected && (
-        <DigitalTwinModal 
-          vehicle={currentSelected} 
-          onClose={() => setShowDigitalTwinModal(false)} 
-        />
       )}
 
       {/* Share Live Tracking Modal Render */}

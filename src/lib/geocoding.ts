@@ -136,7 +136,7 @@ export function determineRoadSpeedLimit(roadName: string, roadType?: string, max
     calculatedLimit = 80;
     detectedType = 'Via de Trânsito Rápido / Expressa (80 km/h)';
   } else if (
-    // 4. Avenidas e Vias Arteriais Principais (60 km/h)
+    // 4. Avenidas e Vias Arteriais Principais (60 km/h - Padrão SP CET)
     lowerName.includes('avenida') ||
     lowerName.includes('av.') ||
     lowerName.includes('av ') ||
@@ -154,15 +154,7 @@ export function determineRoadSpeedLimit(roadName: string, roadType?: string, max
     calculatedLimit = 60;
     detectedType = 'Avenida / Via Arterial (60 km/h)';
   } else if (
-    // 5. Estradas Vicinais / Interurbanas (60 a 80 km/h)
-    lowerName.includes('estrada') ||
-    lowerName.includes('estr.') ||
-    lowerName.includes('rodovia municipal')
-  ) {
-    calculatedLimit = 60;
-    detectedType = 'Estrada Vicinal (60 km/h)';
-  } else if (
-    // 6. Ruas Coletoras e Avenidas de Bairro (50 km/h)
+    // 5. Vias Coletoras e Alamedas (50 km/h - Padrão SP CET)
     lowerName.includes('alameda') ||
     lowerName.includes('praça') ||
     lowerName.includes('praca') ||
@@ -170,9 +162,11 @@ export function determineRoadSpeedLimit(roadName: string, roadType?: string, max
     lowerType === 'tertiary_link'
   ) {
     calculatedLimit = 50;
-    detectedType = 'Via Coletora / Bairro (50 km/h)';
+    detectedType = 'Via Coletora / Alameda (50 km/h)';
   } else if (
-    // 7. Ruas Locais / Residenciais Estritas (40 a 50 km/h)
+    // 6. Ruas Locais / Residenciais de Bairro (40 km/h - Padrão SP CET)
+    lowerName.includes('rua') ||
+    lowerName.includes('r.') ||
     lowerName.includes('travessa') ||
     lowerName.includes('viela') ||
     lowerName.includes('beco') ||
@@ -181,9 +175,13 @@ export function determineRoadSpeedLimit(roadName: string, roadType?: string, max
     lowerType === 'unclassified'
   ) {
     calculatedLimit = 40;
-    detectedType = 'Via Residencial / Local (40 km/h)';
+    detectedType = 'Rua Residencial / Local (40 km/h)';
   } else if (
-    // 8. Vias Internas, Estacionamentos e Condomínios (20 a 30 km/h)
+    // 7. Zonas 30, Áreas Escolares e Vias de Trânsito Calmo (30 km/h - Padrão SP CET)
+    lowerName.includes('zona 30') ||
+    lowerName.includes('escola') ||
+    lowerName.includes('colégio') ||
+    lowerName.includes('colegio') ||
     lowerName.includes('estacionamento') ||
     lowerName.includes('condomínio') ||
     lowerName.includes('condominio') ||
@@ -196,7 +194,7 @@ export function determineRoadSpeedLimit(roadName: string, roadType?: string, max
     lowerType === 'parking_aisle'
   ) {
     calculatedLimit = 30;
-    detectedType = 'Via de Serviço / Estacionamento (30 km/h)';
+    detectedType = 'Zona 30 / Escolar / Serviço (30 km/h)';
   }
 
   // Ajuste para veículos pesados (caminhões e ônibus têm teto de 90 km/h pelo CTB)
