@@ -23,6 +23,7 @@ import FloatingAI from './components/FloatingAI';
 import RouteManagerModal from './components/RouteManagerModal';
 import ShareTrackingModal from './components/ShareTrackingModal';
 import PermissoesModule from './components/PermissoesModule';
+import NotificationCenterModule from './components/NotificationCenterModule';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
@@ -2780,6 +2781,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               <span className="text-lg">📊</span> <span>Consumo, Relatórios & SOS</span>
             </button>
             <button 
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'notificacoes' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('notificacoes'); setSidebarOpen(false); }}
+            >
+              <Bell className="w-5 h-5 text-blue-600" /> <span>Central de Notificações</span>
+            </button>
+            <button 
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center space-x-3 transition-colors ${activeModule === 'permissoes' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('permissoes'); setSidebarOpen(false); }}
             >
@@ -2969,7 +2976,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               )}
 
               <h2 className="text-sm sm:text-base md:text-lg font-bold text-gray-800 capitalize truncate">
-                {activeModule === 'dashboard' ? 'Painel Geral' : activeModule === 'rastreamento' ? 'Rastreamento' : activeModule === 'historico' ? 'Histórico' : activeModule === 'ferramentas' ? 'Ferramentas' : activeModule === 'dados' ? 'Dados & Telemetria' : activeModule === 'cercas' ? 'Cercas Virtuais' : activeModule === 'registros' ? 'Registrador & Agregações' : activeModule === 'manutencao' ? 'Manutenção & Óleo' : activeModule === 'motoristas' ? 'Motoristas & Eco-Driving' : activeModule === 'caixa_preta' ? 'Caixa Preta & Perícia' : activeModule === 'relatorios' ? 'Consumo, Relatórios & SOS' : activeModule === 'permissoes' ? 'Permissões do App' : 'Ajuda'}
+                {activeModule === 'dashboard' ? 'Painel Geral' : activeModule === 'rastreamento' ? 'Rastreamento' : activeModule === 'historico' ? 'Histórico' : activeModule === 'ferramentas' ? 'Ferramentas' : activeModule === 'dados' ? 'Dados & Telemetria' : activeModule === 'cercas' ? 'Cercas Virtuais' : activeModule === 'registros' ? 'Registrador & Agregações' : activeModule === 'notificacoes' ? 'Central de Notificações' : activeModule === 'motoristas' ? 'Motoristas & Eco-Driving' : activeModule === 'caixa_preta' ? 'Caixa Preta & Perícia' : activeModule === 'relatorios' ? 'Consumo, Relatórios & SOS' : activeModule === 'permissoes' ? 'Permissões do App' : 'Ajuda'}
               </h2>
 
               {activeModule === 'rastreamento' && (
@@ -3127,7 +3134,21 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               />
             )}
 
-
+            {activeModule === 'notificacoes' && (
+              <NotificationCenterModule
+                notifications={notifications}
+                vehicles={vehicles}
+                onUpdateVehicle={handleUpdateVehicle}
+                clearNotifications={clearNotifications}
+                markAllNotificationsAsRead={markAllNotificationsAsRead}
+                addNotification={addNotification}
+                showToast={showToast}
+                onBackToMap={() => setActiveModule('rastreamento')}
+                requestNotificationPermission={requestNotificationPermission}
+                notificationPermissionStatus={notificationPermissionStatus}
+                requestBatteryOptimizationExemption={requestBatteryOptimizationExemption}
+              />
+            )}
 
             {activeModule === 'motoristas' && (
               <MotoristasModule
@@ -3926,15 +3947,56 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         </div>
 
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-1">Gatilhos de Alarme Ativos</label>
-                          <input 
-                            type="text" 
-                            value={editingVehicle.settings?.alarmSettings || 'velocidade,acc,bateria,choque,cerca'} 
-                            onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, alarmSettings: e.target.value}})} 
-                            placeholder="Ex: velocidade,acc,bateria,choque,cerca"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Eventos monitorados: velocidade, acc, bateria, choque, cerca virtual.</p>
+                          <label className="block text-sm font-bold text-gray-800 mb-2">Notificações e Gatilhos de Alerta Deste Veículo</label>
+                          {(() => {
+                            const raw = editingVehicle.settings?.alarmSettings || 'velocidade,acc,bateria,choque,cerca';
+                            const list = raw.split(',').map(s => s.trim().toLowerCase());
+                            
+                            const toggleAlarmKey = (key: string) => {
+                              let newList = [...list];
+                              if (newList.includes(key)) {
+                                newList = newList.filter(k => k !== key);
+                              } else {
+                                newList.push(key);
+                              }
+                              setEditingVehicle({
+                                ...editingVehicle,
+                                settings: {
+                                  ...(editingVehicle.settings || {}),
+                                  alarmSettings: newList.join(',')
+                                }
+                              });
+                            };
+
+                            const options = [
+                              { id: 'velocidade', label: '⚡ Excesso de Velocidade' },
+                              { id: 'acc', label: '🔑 Ignição / Partida' },
+                              { id: 'bateria', label: '🛡️ Corte de Energia (12V)' },
+                              { id: 'choque', label: '📳 Choque e Movimento' },
+                              { id: 'cerca', label: '📍 Saída de Cerca Virtual' },
+                              { id: 'frenagem', label: '🛑 Frenagem Brusca' },
+                              { id: 'aceleracao', label: '🚀 Aceleração Repentina' },
+                              { id: 'curva', label: '🔄 Curva Acentuada' },
+                              { id: 'ocioso', label: '⏸️ Motor Ligado Parado (>5min)' },
+                              { id: 'horario', label: '🌙 Uso Fora do Horário' },
+                              { id: 'perda_sinal', label: '🌐 Perda de Sinal GPS' },
+                              { id: 'ancora_viog', label: '🔒 Violação do Modo Âncora' },
+                              { id: 'jammer', label: '🛰️ Bloqueador (Jammer)' },
+                              { id: 'combustivel', label: '⛽ Queda de Combustível' },
+                              { id: 'sos', label: '🆘 Botão SOS / Pânico' }
+                            ];
+
+                            return (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200 max-h-60 overflow-y-auto">
+                                {options.map(opt => (
+                                  <label key={opt.id} className="flex items-center gap-2 p-2 bg-white rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
+                                    <input type="checkbox" checked={list.includes(opt.id)} onChange={() => toggleAlarmKey(opt.id)} className="w-4 h-4 text-blue-600 rounded accent-blue-600" />
+                                    <span className="text-xs font-bold text-gray-800">{opt.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -4180,6 +4242,19 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   </button>
                 </div>
               )}
+
+              <div className="px-4 pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNotificationDrawer(false);
+                    setActiveModule('notificacoes');
+                  }}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>⚙️</span> Abrir Central de Notificações Completa & Seleção
+                </button>
+              </div>
 
               {/* Filter Tabs & Top Actions - One UI Style Pills */}
               <div className="p-4 space-y-3 shrink-0">
