@@ -96,23 +96,30 @@ export default function TerminalTools({
     initialMileageMeters: 0,
     mileageDisplayUnit: 'km',
     accNotify: true,
-    turningAngle: 25,
+    turningAngle: 45,
     alarmSendingTimes: '1',
     sensitivity: 'medium',
     alarmSettings: 'velocidade,acc,bateria,choque,cerca',
-    drivingBehaviorSetting: 'Curva: 25° | Frenagem: 0.4g | Aceleração: 0.3g',
+    drivingBehaviorSetting: 'Curva: 45° | Frenagem: 0.4g | Aceleração: 0.3g',
     speakerSwitch: true,
     bluetoothSwitch: false
   });
 
   useEffect(() => {
     let isSubscribed = true;
+    try {
+      const localCfg = localStorage.getItem('gkd_terminal_config');
+      if (localCfg) {
+        setConfig(prev => ({ ...prev, ...JSON.parse(localCfg) }));
+      }
+    } catch (e) {}
+
     const fetchConfig = async () => {
       try {
         const docRef = doc(db, 'terminal_configs', 'global');
         const docSnap = await safeGetDoc(docRef);
         if (isSubscribed && docSnap.exists()) {
-          setConfig(docSnap.data() as any);
+          setConfig(prev => ({ ...prev, ...(docSnap.data() as any) }));
         }
       } catch (error) {
         console.error('Error fetching terminal config:', error);
@@ -125,9 +132,31 @@ export default function TerminalTools({
   const handleSave = async () => {
     setSaving(true);
     try {
+      try {
+        localStorage.setItem('gkd_terminal_config', JSON.stringify(config));
+      } catch (e) {}
+
+      if (handleUpdateVehicle && vehicles && vehicles.length > 0) {
+        vehicles.forEach(v => {
+          handleUpdateVehicle({
+            ...v,
+            settings: {
+              ...(v.settings || {}),
+              smsPassword: config.smsPassword,
+              authorizationNumber: config.authorizationNumber,
+              turningAngle: Number(config.turningAngle) || 45,
+              drivingBehaviorSetting: config.drivingBehaviorSetting,
+              timezone: config.timezone
+            } as any
+          });
+        });
+      }
+
       const docRef = doc(db, 'terminal_configs', 'global');
       await safeSetDoc(docRef, config);
-      setStatusMessage({type: 'success', text: 'Configuração salva com sucesso!'}); setTimeout(() => setStatusMessage(null), 3000);
+      setStatusMessage({type: 'success', text: 'Configuração salva com sucesso!'});
+      if (showToast) showToast('✅ Senha SMS, Nº Autorizado e configurações gravados com sucesso!');
+      setTimeout(() => setStatusMessage(null), 3000);
       setActiveTopic(null);
     } catch (error) {
       console.error('Error saving terminal config:', error);

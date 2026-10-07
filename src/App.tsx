@@ -369,11 +369,11 @@ export const DEFAULT_VEHICLE_SETTINGS: VehicleSettings = {
   timezone: '-3',
   mileageDisplayUnit: 'km',
   accNotify: true,
-  turningAngle: 25, // Ângulo de virada/curva padrão (25°)
+  turningAngle: 45, // Ângulo de virada/curva padrão (45°)
   alarmSendingTimes: '1',
   sensitivity: 'medium',
   alarmSettings: 'velocidade,acc,bateria,choque,cerca',
-  drivingBehaviorSetting: 'Curva: 25° | Frenagem: 0.4g | Aceleração: 0.3g',
+  drivingBehaviorSetting: 'Curva: 45° | Frenagem: 0.4g | Aceleração: 0.3g',
   oilCalibration: '0.85',
   tankVolumeLiters: 55,
   initialMileageMeters: 0,
@@ -408,8 +408,8 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     commandQueue: [],
     settings: {
       ...DEFAULT_VEHICLE_SETTINGS,
-      turningAngle: 25,
-      drivingBehaviorSetting: 'Curva: 25° | Frenagem: 0.4g | Aceleração: 0.3g'
+      turningAngle: 45,
+      drivingBehaviorSetting: 'Curva: 45° | Frenagem: 0.4g | Aceleração: 0.3g'
     }
   },
   {
@@ -432,8 +432,8 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     commandQueue: [],
     settings: {
       ...DEFAULT_VEHICLE_SETTINGS,
-      turningAngle: 25,
-      drivingBehaviorSetting: 'Curva: 25° | Frenagem: 0.4g | Aceleração: 0.3g'
+      turningAngle: 45,
+      drivingBehaviorSetting: 'Curva: 45° | Frenagem: 0.4g | Aceleração: 0.3g'
     }
   }
 ];
@@ -2723,8 +2723,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       oilCalibration: vehicle.settings?.oilCalibration || DEFAULT_VEHICLE_SETTINGS.oilCalibration,
       tankVolumeLiters: vehicle.settings?.tankVolumeLiters || DEFAULT_VEHICLE_SETTINGS.tankVolumeLiters,
       initialMileageMeters: vehicle.settings?.initialMileageMeters !== undefined ? vehicle.settings.initialMileageMeters : DEFAULT_VEHICLE_SETTINGS.initialMileageMeters,
-      smsPassword: vehicle.settings?.smsPassword || DEFAULT_VEHICLE_SETTINGS.smsPassword,
-      authorizationNumber: vehicle.settings?.authorizationNumber || DEFAULT_VEHICLE_SETTINGS.authorizationNumber,
+      smsPassword: vehicle.settings?.smsPassword ?? DEFAULT_VEHICLE_SETTINGS.smsPassword,
+      authorizationNumber: vehicle.settings?.authorizationNumber ?? DEFAULT_VEHICLE_SETTINGS.authorizationNumber,
       speakerSwitch: vehicle.settings?.speakerSwitch !== undefined ? vehicle.settings.speakerSwitch : DEFAULT_VEHICLE_SETTINGS.speakerSwitch,
       bluetoothSwitch: vehicle.settings?.bluetoothSwitch !== undefined ? vehicle.settings.bluetoothSwitch : DEFAULT_VEHICLE_SETTINGS.bluetoothSwitch,
       economicalMode: vehicle.settings?.economicalMode || DEFAULT_VEHICLE_SETTINGS.economicalMode,
@@ -3932,154 +3932,64 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                     <div className="border-t pt-4">
                       <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                         <Bell className="w-4 h-4 text-blue-600" />
-                        Alertas e Notificações
+                        Alertas e Notificações Deste Veículo
                       </h3>
-                                            
-                      <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                        <label className="flex items-center justify-between cursor-pointer group">
-                          <div>
-                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Ignição (ACC)</span>
-                            <span className="block text-[10px] text-gray-500">Alertar quando ligar/desligar</span>
-                          </div>
-                          <input 
-                             type="checkbox" 
-                             checked={editingVehicle.settings?.accNotify ?? true}
-                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, accNotify: e.target.checked}})}
-                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        </label>
 
-                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
-                          <div>
-                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Excesso de Velocidade</span>
-                            <span className="block text-[10px] text-gray-500">Alertar quando ultrapassar o limite</span>
-                          </div>
-                          <input 
-                             type="checkbox" 
-                             checked={editingVehicle.settings?.speedNotify ?? true}
-                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, speedNotify: e.target.checked}})}
-                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        </label>
-
-                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
-                          <div>
-                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Corte de Energia</span>
-                            <span className="block text-[10px] text-gray-500">Bateria do veículo removida</span>
-                          </div>
-                          <input 
-                             type="checkbox" 
-                             checked={editingVehicle.settings?.powerNotify ?? true}
-                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, powerNotify: e.target.checked}})}
-                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        </label>
-
-                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
-                          <div>
-                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Bateria Fraca (Backup)</span>
-                            <span className="block text-[10px] text-gray-500">Bateria do rastreador abaixo de 20%</span>
-                          </div>
-                          <input 
-                             type="checkbox" 
-                             checked={editingVehicle.settings?.batteryNotify ?? true}
-                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, batteryNotify: e.target.checked}})}
-                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        </label>
-
-                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
-                          <div>
-                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Choque / Vibração</span>
-                            <span className="block text-[10px] text-gray-500">Detectar tentativa de furto ou colisão</span>
-                          </div>
-                          <input 
-                             type="checkbox" 
-                             checked={editingVehicle.settings?.shockNotify ?? false}
-                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, shockNotify: e.target.checked}})}
-                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        </label>
-
-                        <label className="flex items-center justify-between cursor-pointer group border-t border-gray-100 pt-3">
-                          <div>
-                            <span className="block text-sm font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Cerca Virtual</span>
-                            <span className="block text-[10px] text-gray-500">Entrada e saída de áreas restritas</span>
-                          </div>
-                          <input 
-                             type="checkbox" 
-                             checked={editingVehicle.settings?.geofenceNotify ?? true}
-                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, geofenceNotify: e.target.checked}})}
-                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        </label>
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-1">Tempos de Envio de Alarme (Repetições)</label>
-                          <input 
-                            type="text" 
-                            value={editingVehicle.settings?.alarmSendingTimes || '1'} 
-                            onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, alarmSendingTimes: e.target.value}})} 
-                            placeholder="Ex: 1 (vez por evento)"
-                            className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Número de vezes que o alerta deve ser disparado por evento.</p>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-bold text-gray-800 mb-2">Notificações e Gatilhos de Alerta Deste Veículo</label>
-                          {(() => {
-                            const raw = editingVehicle.settings?.alarmSettings || 'velocidade,acc,bateria,choque,cerca';
-                            const list = raw.split(',').map(s => s.trim().toLowerCase());
-                            
-                            const toggleAlarmKey = (key: string) => {
-                              let newList = [...list];
-                              if (newList.includes(key)) {
-                                newList = newList.filter(k => k !== key);
-                              } else {
-                                newList.push(key);
+                      <div className="space-y-4">
+                        {(() => {
+                          const raw = editingVehicle.settings?.alarmSettings || 'velocidade,acc,bateria,choque,cerca';
+                          const list = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+                          
+                          const toggleAlarmKey = (key: string) => {
+                            let newList = [...list];
+                            if (newList.includes(key)) {
+                              newList = newList.filter(k => k !== key);
+                            } else {
+                              newList.push(key);
+                            }
+                            setEditingVehicle({
+                              ...editingVehicle,
+                              settings: {
+                                ...(editingVehicle.settings || {}),
+                                alarmSettings: newList.join(','),
+                                accNotify: newList.includes('acc'),
+                                speedNotify: newList.includes('velocidade'),
+                                powerNotify: newList.includes('bateria'),
+                                shockNotify: newList.includes('choque'),
+                                geofenceNotify: newList.includes('cerca')
                               }
-                              setEditingVehicle({
-                                ...editingVehicle,
-                                settings: {
-                                  ...(editingVehicle.settings || {}),
-                                  alarmSettings: newList.join(',')
-                                }
-                              });
-                            };
+                            });
+                          };
 
-                            const options = [
-                              { id: 'velocidade', label: '⚡ Excesso de Velocidade' },
-                              { id: 'acc', label: '🔑 Ignição / Partida' },
-                              { id: 'bateria', label: '🛡️ Corte de Energia (12V)' },
-                              { id: 'choque', label: '📳 Choque e Movimento' },
-                              { id: 'cerca', label: '📍 Saída de Cerca Virtual' },
-                              { id: 'frenagem', label: '🛑 Frenagem Brusca' },
-                              { id: 'aceleracao', label: '🚀 Aceleração Repentina' },
-                              { id: 'curva', label: '🔄 Curva Acentuada' },
-                              { id: 'ocioso', label: '⏸️ Motor Ligado Parado (>5min)' },
-                              { id: 'horario', label: '🌙 Uso Fora do Horário' },
-                              { id: 'perda_sinal', label: '🌐 Perda de Sinal GPS' },
-                              { id: 'ancora_viog', label: '🔒 Violação do Modo Âncora' },
-                              { id: 'jammer', label: '🛰️ Bloqueador (Jammer)' },
-                              { id: 'combustivel', label: '⛽ Queda de Combustível' },
-                              { id: 'sos', label: '🆘 Botão SOS / Pânico' }
-                            ];
+                          const options = [
+                            { id: 'velocidade', label: '⚡ Excesso de Velocidade' },
+                            { id: 'acc', label: '🔑 Ignição / Partida' },
+                            { id: 'bateria', label: '🛡️ Corte de Energia (12V)' },
+                            { id: 'choque', label: '📳 Choque e Movimento' },
+                            { id: 'cerca', label: '📍 Saída de Cerca Virtual' },
+                            { id: 'frenagem', label: '🛑 Frenagem Brusca' },
+                            { id: 'aceleracao', label: '🚀 Aceleração Repentina' },
+                            { id: 'curva', label: '🔄 Curva Acentuada' },
+                            { id: 'ocioso', label: '⏸️ Motor Ligado Parado (>5min)' },
+                            { id: 'horario', label: '🌙 Uso Fora do Horário' },
+                            { id: 'perda_sinal', label: '🌐 Perda de Sinal GPS' },
+                            { id: 'ancora_viog', label: '🔒 Violação do Modo Âncora' },
+                            { id: 'jammer', label: '🛰️ Bloqueador (Jammer)' },
+                            { id: 'combustivel', label: '⛽ Queda de Combustível' },
+                            { id: 'sos', label: '🆘 Botão SOS / Pânico' }
+                          ];
 
-                            return (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200 max-h-60 overflow-y-auto">
-                                {options.map(opt => (
-                                  <label key={opt.id} className="flex items-center gap-2 p-2 bg-white rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
-                                    <input type="checkbox" checked={list.includes(opt.id)} onChange={() => toggleAlarmKey(opt.id)} className="w-4 h-4 text-blue-600 rounded accent-blue-600" />
-                                    <span className="text-xs font-bold text-gray-800">{opt.label}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
+                          return (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200 max-h-64 overflow-y-auto">
+                              {options.map(opt => (
+                                <label key={opt.id} className="flex items-center gap-2 p-2 bg-white rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
+                                  <input type="checkbox" checked={list.includes(opt.id)} onChange={() => toggleAlarmKey(opt.id)} className="w-4 h-4 text-blue-600 rounded accent-blue-600" />
+                                  <span className="text-xs font-bold text-gray-800">{opt.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -4107,23 +4017,23 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                               type="number" 
                               min="5"
                               max="90"
-                              value={editingVehicle.settings?.turningAngle ?? 25} 
-                              onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, turningAngle: Number(e.target.value)}})} 
-                              placeholder="25"
+                              value={editingVehicle.settings?.turningAngle ?? 45} 
+                              onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, turningAngle: e.target.value === '' ? ('' as any) : Number(e.target.value)}})} 
+                              placeholder="45"
                               className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow font-medium" 
                             />
                             <span className="text-gray-500 font-bold px-2 py-2 bg-gray-100 rounded-lg text-sm">graus (°)</span>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">Ângulo mínimo para registrar curvas no mapa (padrão: 25°, editável de 5° a 90°).</p>
+                          <p className="text-xs text-gray-500 mt-1">Ângulo mínimo para registrar curvas no mapa (padrão: 45°, editável de 5° a 90°).</p>
                         </div>
 
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-1">Comportamento do Motorista (Freadas, Curvas e Acelerações)</label>
                           <input 
                             type="text" 
-                            value={editingVehicle.settings?.drivingBehaviorSetting || 'Curva: 25° | Frenagem: 0.4g | Aceleração: 0.3g'} 
+                            value={editingVehicle.settings?.drivingBehaviorSetting ?? 'Curva: 45° | Frenagem: 0.4g | Aceleração: 0.3g'} 
                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, drivingBehaviorSetting: e.target.value}})} 
-                            placeholder="Curva: 25° | Frenagem: 0.4g | Aceleração: 0.3g"
+                            placeholder="Curva: 45° | Frenagem: 0.4g | Aceleração: 0.3g"
                             className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
                           />
                           <p className="text-xs text-gray-500 mt-1">Parâmetros configurados para detecção de curvas rápidas, frenagens bruscas e arrancadas.</p>
@@ -4133,7 +4043,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           <label className="block text-sm font-semibold text-gray-700 mb-1">Calibração de Óleo/Combustível (Fator)</label>
                           <input 
                             type="text" 
-                            value={editingVehicle.settings?.oilCalibration || '0.85'} 
+                            value={editingVehicle.settings?.oilCalibration ?? '0.85'} 
                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, oilCalibration: e.target.value}})} 
                             placeholder="0.85"
                             className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
@@ -4162,9 +4072,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           <label className="block text-sm font-semibold text-gray-700 mb-1">Senha SMS (Rastreador)</label>
                           <input 
                             type="text" 
-                            value={editingVehicle.settings?.smsPassword || 'password'} 
+                            value={editingVehicle.settings?.smsPassword ?? ''} 
                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, smsPassword: e.target.value}})} 
-                            placeholder="password ou 123456"
+                            placeholder="Ex: 123456"
                             className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow font-mono" 
                           />
                           <p className="text-xs text-gray-500 mt-1">Senha enviada nos comandos de bloqueio/desbloqueio SMS.</p>
@@ -4174,9 +4084,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           <label className="block text-sm font-semibold text-gray-700 mb-1">Número de Autorização (Admin)</label>
                           <input 
                             type="text" 
-                            value={editingVehicle.settings?.authorizationNumber || '+5511999999999'} 
+                            value={editingVehicle.settings?.authorizationNumber ?? ''} 
                             onChange={e => setEditingVehicle({...editingVehicle, settings: {...editingVehicle.settings, authorizationNumber: e.target.value}})} 
-                            placeholder="+5511999999999"
+                            placeholder="Ex: +5511999999999"
                             className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow" 
                           />
                           <p className="text-xs text-gray-500 mt-1">Número de telefone autorizado a enviar comandos ao rastreador.</p>

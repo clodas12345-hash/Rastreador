@@ -239,177 +239,99 @@ export default function NotificationCenterModule({
         {filterTab === 'settings' ? (
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-6">
             
-            {/* Sub Tabs: Por Veículo vs Global */}
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-gray-100 pb-4">
               <div>
                 <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
-                  <span>🚗</span> Escolher Alertas Individuais por Veículo (15 Opções)
+                  <span>🚗</span> Escolher Alertas e Notificações por Veículo
                 </h3>
-                <p className="text-xs text-gray-500">Selecione exatamente quais dos 15 tipos de avisos você deseja ativar ou desativar para cada veículo.</p>
-              </div>
-
-              <div className="flex bg-gray-100 p-1 rounded-xl text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => setSettingsSubTab('per_car')}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    settingsSubTab === 'per_car' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Por Veículo (Carro a Carro)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSettingsSubTab('global')}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    settingsSubTab === 'global' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Geral
-                </button>
+                <p className="text-xs text-gray-500">Selecione exatamente quais avisos você deseja ativar ou desativar para cada veículo.</p>
               </div>
             </div>
 
-            {settingsSubTab === 'per_car' ? (
-              <div className="space-y-6">
-                {/* Vehicle Selector Pills */}
-                {vehicles.length > 0 && (
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">
-                      Selecione o Veículo para Configurar:
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {vehicles.map(v => {
-                        const isSelected = (activeVehicle?.id === v.id);
-                        return (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => setSelectedCarId(v.id)}
-                            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 border cursor-pointer ${
-                              isSelected
-                                ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-102'
-                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                            }`}
-                          >
-                            <Car className="w-4 h-4" />
-                            <span>{v.name}</span>
-                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'}`}>
-                              {v.licensePlate || 'Sem placa'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Checkboxes Card for Selected Vehicle */}
-                {activeVehicle ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-2 bg-blue-100 text-blue-700 rounded-xl font-bold">🚘</div>
-                        <div>
-                          <strong className="block text-sm font-black text-gray-900">{activeVehicle.name}</strong>
-                          <span className="text-xs text-gray-500 font-mono font-semibold">{activeVehicle.licensePlate || 'GRA-2026'} • {activeVehicle.trackerNumber || 'IMEI Registrado'}</span>
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">
-                        15 Opções Disponíveis
-                      </span>
-                    </div>
-
-                    {(() => {
-                      const alarms = getVehicleAlarms(activeVehicle);
+            <div className="space-y-6">
+              {/* Vehicle Selector Pills */}
+              {vehicles.length > 0 && (
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">
+                    Selecione o Veículo para Configurar:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {vehicles.map(v => {
+                      const isSelected = (activeVehicle?.id === v.id);
                       return (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {ALL_ALARM_TYPES.map(item => {
-                            const isChecked = Boolean(alarms[item.id]);
-                            return (
-                              <label
-                                key={item.id}
-                                className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer shadow-2xs ${
-                                  isChecked ? 'bg-white border-blue-300 ring-1 ring-blue-200' : 'bg-gray-50/80 border-gray-200 opacity-75'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => toggleVehicleAlarm(activeVehicle, item.id)}
-                                  className="w-5 h-5 text-blue-600 rounded-lg accent-blue-600 mt-0.5 cursor-pointer shrink-0"
-                                />
-                                <div>
-                                  <strong className="block text-xs font-extrabold text-gray-900">{item.title}</strong>
-                                  <span className="text-[11px] text-gray-500 leading-tight block mt-0.5">{item.desc}</span>
-                                </div>
-                              </label>
-                            );
-                          })}
-                        </div>
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => setSelectedCarId(v.id)}
+                          className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 border cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-102'
+                              : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          <Car className="w-4 h-4" />
+                          <span>{v.name}</span>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                            {v.licensePlate || 'Sem placa'}
+                          </span>
+                        </button>
                       );
-                    })()}
+                    })}
                   </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-400 text-xs">Nenhum veículo cadastrado</div>
-                )}
-              </div>
-            ) : (
-              /* Global Settings Subtab */
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className="flex items-start gap-3 p-4 bg-gray-50 hover:bg-blue-50/50 rounded-2xl border border-gray-200 cursor-pointer transition-all">
-                  <input
-                    type="checkbox"
-                    checked={prefs.speedAlerts}
-                    onChange={(e) => setPrefs({...prefs, speedAlerts: e.target.checked})}
-                    className="w-5 h-5 text-blue-600 rounded-lg accent-blue-600 mt-0.5 cursor-pointer"
-                  />
-                  <div>
-                    <strong className="block text-sm font-bold text-gray-900">⚡ Alertas de Velocidade Geral</strong>
-                    <span className="text-xs text-gray-500">Ativa avisos globais de velocidade no app.</span>
-                  </div>
-                </label>
+                </div>
+              )}
 
-                <label className="flex items-start gap-3 p-4 bg-gray-50 hover:bg-blue-50/50 rounded-2xl border border-gray-200 cursor-pointer transition-all">
-                  <input
-                    type="checkbox"
-                    checked={prefs.powerCutAlerts}
-                    onChange={(e) => setPrefs({...prefs, powerCutAlerts: e.target.checked})}
-                    className="w-5 h-5 text-blue-600 rounded-lg accent-blue-600 mt-0.5 cursor-pointer"
-                  />
-                  <div>
-                    <strong className="block text-sm font-bold text-gray-900">🛡️ Alerta de Corte de Energia</strong>
-                    <span className="text-xs text-gray-500">Notificações gerais de segurança e bateria desconectada.</span>
+              {/* Checkboxes Card for Selected Vehicle */}
+              {activeVehicle ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-blue-100 text-blue-700 rounded-xl font-bold">🚘</div>
+                      <div>
+                        <strong className="block text-sm font-black text-gray-900">{activeVehicle.name}</strong>
+                        <span className="text-xs text-gray-500 font-mono font-semibold">{activeVehicle.licensePlate || 'GRA-2026'} • {activeVehicle.trackerNumber || 'IMEI Registrado'}</span>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">
+                      15 Opções Disponíveis
+                    </span>
                   </div>
-                </label>
 
-                <label className="flex items-start gap-3 p-4 bg-gray-50 hover:bg-blue-50/50 rounded-2xl border border-gray-200 cursor-pointer transition-all">
-                  <input
-                    type="checkbox"
-                    checked={prefs.soundEnabled}
-                    onChange={(e) => setPrefs({...prefs, soundEnabled: e.target.checked})}
-                    className="w-5 h-5 text-blue-600 rounded-lg accent-blue-600 mt-0.5 cursor-pointer"
-                  />
-                  <div>
-                    <strong className="block text-sm font-bold text-gray-900">🔊 Alerta Sonoro & Sirene</strong>
-                    <span className="text-xs text-gray-500">Emite som de alarme nos eventos de violação crítica.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-4 bg-gray-50 hover:bg-blue-50/50 rounded-2xl border border-gray-200 cursor-pointer transition-all">
-                  <input
-                    type="checkbox"
-                    checked={prefs.vibrationEnabled}
-                    onChange={(e) => setPrefs({...prefs, vibrationEnabled: e.target.checked})}
-                    className="w-5 h-5 text-blue-600 rounded-lg accent-blue-600 mt-0.5 cursor-pointer"
-                  />
-                  <div>
-                    <strong className="block text-sm font-bold text-gray-900">📳 Vibração de Alerta</strong>
-                    <span className="text-xs text-gray-500">Vibra o celular ao receber notificações push importantes.</span>
-                  </div>
-                </label>
-              </div>
-            )}
+                  {(() => {
+                    const alarms = getVehicleAlarms(activeVehicle);
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {ALL_ALARM_TYPES.map(item => {
+                          const isChecked = Boolean(alarms[item.id]);
+                          return (
+                            <label
+                              key={item.id}
+                              className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer shadow-2xs ${
+                                isChecked ? 'bg-white border-blue-300 ring-1 ring-blue-200' : 'bg-gray-50/80 border-gray-200 opacity-75'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleVehicleAlarm(activeVehicle, item.id)}
+                                className="w-5 h-5 text-blue-600 rounded-lg accent-blue-600 mt-0.5 cursor-pointer shrink-0"
+                              />
+                              <div>
+                                <strong className="block text-xs font-extrabold text-gray-900">{item.title}</strong>
+                                <span className="text-[11px] text-gray-500 leading-tight block mt-0.5">{item.desc}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400 text-xs">Nenhum veículo cadastrado</div>
+              )}
+            </div>
 
             <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>

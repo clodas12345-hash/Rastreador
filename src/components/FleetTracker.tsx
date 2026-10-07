@@ -261,10 +261,22 @@ function MapController({
 
   useEffect(() => {
     if (!map) return;
-    
-    // Se nenhum veículo está focado individualmente OU se isShowingAll está ativo,
-    // enquadra TODOS os veículos da frota juntos na tela de primeira
-    if (!selectedVehicle || isShowingAll) {
+
+    // 1. Se uma rota da Linha do Tempo acabou de ser aberta, enquadra a rota primeiro
+    if (activeRoute && activeRoute.points && activeRoute.points.length > 0 && prevRouteId.current !== activeRoute.id) {
+      const bounds = new google.maps.LatLngBounds();
+      activeRoute.points.forEach(pt => bounds.extend({ lat: pt.lat, lng: pt.lng }));
+      map.fitBounds(bounds, { top: 120, bottom: 250, left: 80, right: 80 });
+      prevRouteId.current = activeRoute.id;
+      prevSelectedId.current = null;
+      return;
+    }
+    if (!activeRoute) {
+      prevRouteId.current = null;
+    }
+
+    // 2. Se isShowingAll está ativo (modo "Ver todos"), enquadra TODOS os veículos juntos na tela
+    if (isShowingAll || !selectedVehicle) {
       const validVehicles = vehicles.filter(v => {
         const lat = Number(v.lat);
         const lng = Number(v.lng);
@@ -286,29 +298,18 @@ function MapController({
         }
       };
 
-      // Fit immediately and also schedule short deferred passes to guarantee execution once Map DOM is ready
       fitAllVehicles();
       const t1 = setTimeout(fitAllVehicles, 150);
-      const t2 = setTimeout(fitAllVehicles, 600);
 
       lastFittedCount.current = validVehicles.length;
       prevSelectedId.current = null;
       return () => {
         clearTimeout(t1);
-        clearTimeout(t2);
       };
     }
 
-    if (activeRoute && activeRoute.points && activeRoute.points.length > 0) {
-      if (prevRouteId.current !== activeRoute.id) {
-        const bounds = new google.maps.LatLngBounds();
-        activeRoute.points.forEach(pt => bounds.extend({ lat: pt.lat, lng: pt.lng }));
-        map.fitBounds(bounds, { top: 120, bottom: 250, left: 80, right: 80 });
-        prevRouteId.current = activeRoute.id;
-        prevSelectedId.current = null;
-      }
-    } else if (selectedVehicle) {
-      // Foco individual no veículo clicado pelo usuário
+    // 3. Foco individual no veículo selecionado ("Centralizar")
+    if (selectedVehicle) {
       const target = vehicles.find(v => v.id === selectedVehicle.id) || selectedVehicle;
 
       if (target && Number(target.lat) && Number(target.lng)) {
@@ -317,7 +318,6 @@ function MapController({
           map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
           map.setZoom(17);
           prevSelectedId.current = target.id;
-          prevRouteId.current = null;
         } else {
           map.panTo({ lat: Number(target.lat), lng: Number(target.lng) });
         }
@@ -407,7 +407,7 @@ function MapCenterControls({
   selectedVehicle: Vehicle | null;
   isShowingAll: boolean;
   setIsShowingAll: (val: boolean) => void;
-  onSelectVehicle: (v: Vehicle) => void;
+  onSelectVehicle: (v: Vehicle | null) => void;
 }) {
   const map = useMap();
   const lastFocusedIndexRef = useRef<number>(-1);
@@ -418,11 +418,21 @@ function MapCenterControls({
     return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
   });
 
+  // Se o usuário clicou direto em um marcador no mapa, sincroniza o índice atual para que o próximo ciclo vá para o outro veículo
+  useEffect(() => {
+    if (selectedVehicle && !isShowingAll) {
+      const idx = validVehicles.findIndex(v => v.id === selectedVehicle.id);
+      if (idx >= 0) {
+        lastFocusedIndexRef.current = idx;
+      }
+    }
+  }, [selectedVehicle, isShowingAll, validVehicles]);
+
   const handleToggle = () => {
     if (!map) return;
 
     if (!isShowingAll) {
-      // 1. "Ver todos": Enquadra todos os veículos juntos no mapa
+      // Passo "Ver todos": Enquadra todos os veículos juntos na tela
       if (validVehicles.length > 1) {
         const bounds = new google.maps.LatLngBounds();
         validVehicles.forEach(v => {
@@ -434,56 +444,43 @@ function MapCenterControls({
         map.setZoom(15);
       }
       setIsShowingAll(true);
-      onSelectVehicle(null as any);
+      onSelectVehicle(null);
     } else {
-      // 2. "Centralizar": Alterna para o próximo veículo da frota de forma cíclica
+      // Passo "Centralizar": Foca no próximo veículo da fila (Carro 1 -> depois Carro 2 -> depois Carro 1...)
       if (validVehicles.length === 0) return;
 
-      let nextIndex = 0;
-      if (selectedVehicle) {
-        const currentIdx = validVehicles.findIndex(v => v.id === selectedVehicle.id);
-        nextIndex = currentIdx >= 0 ? (currentIdx + 1) % validVehicles.length : 0;
-      } else {
-        nextIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
-      }
-
+      const nextIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
       lastFocusedIndexRef.current = nextIndex;
       const target = validVehicles[nextIndex];
 
+      setIsShowingAll(false);
       if (target && Number(target.lat) && Number(target.lng)) {
         map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
         map.setZoom(17);
         onSelectVehicle(target);
       }
-      setIsShowingAll(false);
     }
   };
 
   const nextTargetName = (() => {
-    if (validVehicles.length <= 1) return '';
-    let previewIndex = 0;
-    if (selectedVehicle) {
-      const currentIdx = validVehicles.findIndex(v => v.id === selectedVehicle.id);
-      previewIndex = currentIdx >= 0 ? (currentIdx + 1) % validVehicles.length : 0;
-    } else {
-      previewIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
-    }
+    if (validVehicles.length === 0) return '';
+    const previewIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
     return validVehicles[previewIndex]?.name || '';
   })();
 
   return (
     <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-6 z-20 pointer-events-auto flex items-center">
       <button
+        type="button"
         onClick={handleToggle}
         className="bg-white/95 hover:bg-blue-50 text-gray-800 hover:text-blue-600 font-bold px-4 py-2.5 rounded-2xl shadow-xl border border-blue-200 backdrop-blur-md flex items-center gap-2 text-xs transition-all hover:scale-105 active:scale-95 group cursor-pointer"
-        title={isShowingAll ? (nextTargetName ? `Centralizar em ${nextTargetName}` : "Centralizar e aproximar no veículo") : "Ver todos os veículos na tela cheia"}
-        aria-label={isShowingAll ? "Centralizar" : `Ver Todos (${vehicles.length})`}
+        title={isShowingAll ? (nextTargetName ? `Centralizar em ${nextTargetName}` : "Centralizar no veículo") : "Ver todos os veículos no mapa"}
       >
         <span className="p-1 bg-blue-100 group-hover:bg-blue-200 text-blue-700 rounded-lg transition-colors text-sm">
           {isShowingAll ? '🎯' : '🗺️'}
         </span>
         <span className="whitespace-nowrap font-bold">
-          {isShowingAll ? (nextTargetName ? `Centralizar (${nextTargetName})` : 'Centralizar') : `Ver Todos (${vehicles.length})`}
+          {isShowingAll ? (nextTargetName ? `Centralizar (${nextTargetName})` : 'Centralizar') : `Ver Todos (${validVehicles.length})`}
         </span>
       </button>
     </div>
@@ -883,9 +880,11 @@ export default function FleetTracker({
             isShowingAll={isShowingAll}
             setIsShowingAll={setIsShowingAll}
             onSelectVehicle={(v) => {
-              setIsShowingAll(false);
-              if (onSelectVehicle) onSelectVehicle(v);
-              else onMarkerClick(v);
+              if (v) {
+                setIsShowingAll(false);
+              }
+              if (onSelectVehicle) onSelectVehicle(v as any);
+              else if (v) onMarkerClick(v);
             }}
           />
 
