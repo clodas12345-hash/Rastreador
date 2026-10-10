@@ -36,6 +36,15 @@ import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadS
 
 const FLESPI_TOKEN = 'DYX74VMw3KdUUbFwued9qa2ahQcAZcts9C7MVZ32gw2GEJSfgeCMk1Ww2oc1MofV';
 
+export function isAlarmAllowed(v: Vehicle, key: string, defaultFlag: boolean = true): boolean {
+  if (defaultFlag === false) return false;
+  if (v.settings?.alarmSettings !== undefined && v.settings.alarmSettings !== null && v.settings.alarmSettings !== '') {
+    const list = v.settings.alarmSettings.toLowerCase().split(',').map(s => s.trim());
+    return list.includes(key);
+  }
+  return defaultFlag;
+}
+
 export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
   const R = 6371; // km
@@ -726,6 +735,28 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [selectedVehicleForMessage, setSelectedVehicleForMessage] = useState<Vehicle | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
+
+  useEffect(() => {
+    const initNotifications = async () => {
+      // 1. Request Permission
+      const perm = await LocalNotifications.requestPermissions();
+      setNotificationPermission(perm.display);
+
+      // 2. Create Channel
+      if (Capacitor.isNativePlatform()) {
+        await LocalNotifications.createChannel({
+          id: 'padrao',
+          name: 'Padrao',
+          description: 'Canal de notificacoes padrao',
+          importance: 5,
+          visibility: 1,
+          vibration: true,
+        });
+      }
+    };
+    initNotifications();
+  }, []);
 
   const getDeletedVehicleIds = (): Set<string> => {
     try {
@@ -777,7 +808,8 @@ export default function App() {
       setVehicles(DEFAULT_INITIAL_VEHICLES.filter(v => !deletedIds.has(v.id)));
     }
 
-    const unsubscribe = safeOnSnapshot(collection(db, 'cars'), (snapshot) => {
+
+  const unsubscribe = safeOnSnapshot(collection(db, 'cars'), (snapshot) => {
       if (!snapshot.docs) return;
       const deletedIds = getDeletedVehicleIds();
       if (snapshot.docs.length === 0) {
@@ -2170,11 +2202,11 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           
           entered.forEach(gId => {
             const g = geofences.find(geo => geo.id === gId);
-            if (g) addNotification({ title: 'Entrada de Cerca', message: `${v.name || 'Veículo'} ENTROU na cerca virtual "${g.name}".`, type: 'geofence', severity: 'info', vehicleName: v.name, vehicleId: v.id, lat: v.lat, lng: v.lng });
+            if (g && isAlarmAllowed(v, 'cerca', v.settings?.geofenceNotify !== false)) addNotification({ title: 'Entrada de Cerca', message: `${v.name || 'Veículo'} ENTROU na cerca virtual "${g.name}".`, type: 'geofence', severity: 'info', vehicleName: v.name, vehicleId: v.id, lat: v.lat, lng: v.lng });
           });
           exited.forEach(gId => {
             const g = geofences.find(geo => geo.id === gId);
-            if (g) addNotification({ title: 'Saída de Cerca', message: `${v.name || 'Veículo'} SAIU da cerca virtual "${g.name}".`, type: 'geofence', severity: 'warning', vehicleName: v.name, vehicleId: v.id, lat: v.lat, lng: v.lng });
+            if (g && isAlarmAllowed(v, 'cerca', v.settings?.geofenceNotify !== false)) addNotification({ title: 'Saída de Cerca', message: `${v.name || 'Veículo'} SAIU da cerca virtual "${g.name}".`, type: 'geofence', severity: 'warning', vehicleName: v.name, vehicleId: v.id, lat: v.lat, lng: v.lng });
           });
         }, 0);
       }
@@ -2372,7 +2404,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               newStatus = 'NoBattery';
               if (!v.powerCut && (v.externalVoltage === undefined || v.externalVoltage >= 5)) {
                 // Corte de energia detectado (transição)
-                if (v.settings?.powerNotify !== false) {
+                if (isAlarmAllowed(v, 'bateria', v.settings?.powerNotify !== false)) {
                   addNotification({
                     title: '🚨 Corte de Energia / Bateria Desconectada',
                     message: `O rastreador de ${v.name} perdeu a alimentação principal de 12V! Bateria do veículo foi removida ou cortada. Operando na bateria interna de emergência.`,
@@ -2388,7 +2420,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             }
             if (batteryLevel !== undefined && batteryLevel <= 20 && (v.batteryLevel === undefined || v.batteryLevel > 20)) {
               // Bateria fraca backup
-              if (v.settings?.batteryNotify !== false) {
+              if (isAlarmAllowed(v, 'bateria', v.settings?.batteryNotify !== false)) {
                 addNotification({
                   title: '🔋 Bateria de Backup Fraca',
                   message: `O rastreador de ${v.name} está rodando na bateria de backup e restam apenas ${Math.round(batteryLevel)}%.`,
@@ -2405,7 +2437,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             // Alertas em tempo real de Ignição
             if (v.status && v.status !== newStatus) {
               if ((v.status === 'IgnitionOff' || v.status === 'Offline') && (newStatus === 'IgnitionOn' || newStatus === 'Moving')) {
-                if (v.settings?.accNotify !== false) {
+                if (isAlarmAllowed(v, 'acc', v.settings?.accNotify !== false)) {
                   addNotification({
                     title: '🔑 Ignição Ligada',
                     message: `O veículo ${v.name} deu partida / ligou a ignição.`,
@@ -2418,7 +2450,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   });
                 }
               } else if ((v.status === 'IgnitionOn' || v.status === 'Moving') && newStatus === 'IgnitionOff') {
-                if (v.settings?.accNotify !== false) {
+                if (isAlarmAllowed(v, 'acc', v.settings?.accNotify !== false)) {
                   addNotification({
                     title: '🅿️ Ignição Desligada',
                     message: `O veículo ${v.name} desligou o motor e estacionou.`,
@@ -2435,7 +2467,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
                         // Alerta de Choque / Vibração
             const shockEvent = t['alarm.shock']?.value || t['alarm.vibration']?.value || t['vibration.event']?.value;
-            if (shockEvent && v.settings?.shockNotify) {
+            if (shockEvent && isAlarmAllowed(v, 'choque', v.settings?.shockNotify)) {
                addNotification({
                   title: '📳 Alerta de Vibração / Choque',
                   message: `O sensor de vibração de ${v.name} foi disparado! Possível tentativa de violação ou colisão.`,
@@ -2450,7 +2482,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             // Alerta de Excesso de Velocidade
             const activeSpeedLimit = v.settings?.smartSpeedMode ? (v.settings?.detectedRoadSpeed || 60) : (v.settings?.speedLimit || 60);
             if (realSpeed > activeSpeedLimit && (v.speed || 0) <= activeSpeedLimit) {
-              if (v.settings?.speedNotify !== false) {
+              if (isAlarmAllowed(v, 'velocidade', v.settings?.speedNotify !== false)) {
                 addNotification({
                   title: '⚡ Excesso de Velocidade Detectado',
                   message: `O veículo ${v.name} atingiu ${realSpeed} km/h (Limite configurado: ${activeSpeedLimit} km/h).`,

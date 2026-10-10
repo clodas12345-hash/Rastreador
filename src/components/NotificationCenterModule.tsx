@@ -96,7 +96,12 @@ export default function NotificationCenterModule({
       ...v,
       settings: {
         ...(v.settings || {}),
-        alarmSettings: newAlarmSettingsStr
+        alarmSettings: newAlarmSettingsStr,
+        accNotify: newSettingsList.includes('acc'),
+        speedNotify: newSettingsList.includes('velocidade'),
+        powerNotify: newSettingsList.includes('bateria'),
+        shockNotify: newSettingsList.includes('choque'),
+        geofenceNotify: newSettingsList.includes('cerca')
       } as any
     };
 
@@ -133,6 +138,26 @@ export default function NotificationCenterModule({
               <h2 className="font-extrabold text-base sm:text-lg tracking-tight">Central de Notificações</h2>
               <p className="text-xs text-slate-400 font-medium">15 Opções de Alertas Disponíveis por Veículo</p>
             </div>
+          </div>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-slate-500">Perm: {notificationPermissionStatus}</span>
+            <button 
+              onClick={async () => {
+                await LocalNotifications.schedule({
+                  notifications: [{
+                    title: "Teste",
+                    body: "Teste 5s",
+                    id: 9999,
+                    schedule: { at: new Date(Date.now() + 5000) },
+                    channelId: "padrao"
+                  }]
+                });
+                showToast("Notif agendada");
+              }}
+              className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded"
+            >
+              Testar
+            </button>
           </div>
         </div>
 
