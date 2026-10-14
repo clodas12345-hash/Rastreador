@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Shield, ArrowLeft, Trash2, CheckCircle2, Volume2, Settings, Zap, AlertTriangle, Car, Check } from 'lucide-react';
 import { Vehicle } from '../types';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
 
 interface NotificationCenterModuleProps {
   notifications: any[];
@@ -143,16 +145,24 @@ export default function NotificationCenterModule({
             <span className="text-[10px] text-slate-500">Perm: {notificationPermissionStatus}</span>
             <button 
               onClick={async () => {
-                await LocalNotifications.schedule({
-                  notifications: [{
-                    title: "Teste",
-                    body: "Teste 5s",
-                    id: 9999,
-                    schedule: { at: new Date(Date.now() + 5000) },
-                    channelId: "padrao"
-                  }]
-                });
-                showToast("Notif agendada");
+                if (Capacitor.isNativePlatform()) {
+                  try {
+                    await LocalNotifications.schedule({
+                      notifications: [{
+                        title: "Teste",
+                        body: "Teste 5s",
+                        id: 9999,
+                        schedule: { at: new Date(Date.now() + 5000) },
+                        channelId: "padrao"
+                      }]
+                    });
+                    showToast("Notif agendada");
+                  } catch (e) {
+                    showToast("Erro ao agendar notificação");
+                  }
+                } else {
+                  showToast("Notificações locais requerem o app nativo (Android/iOS).");
+                }
               }}
               className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded"
             >

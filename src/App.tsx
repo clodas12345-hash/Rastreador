@@ -739,20 +739,22 @@ export default function App() {
 
   useEffect(() => {
     const initNotifications = async () => {
-      // 1. Request Permission
-      const perm = await LocalNotifications.requestPermissions();
-      setNotificationPermission(perm.display);
-
-      // 2. Create Channel
       if (Capacitor.isNativePlatform()) {
-        await LocalNotifications.createChannel({
-          id: 'padrao',
-          name: 'Padrao',
-          description: 'Canal de notificacoes padrao',
-          importance: 5,
-          visibility: 1,
-          vibration: true,
-        });
+        try {
+          // 1. Request Permission
+          const perm = await LocalNotifications.requestPermissions();
+          setNotificationPermission(perm.display);
+
+          // 2. Create Channel
+          await LocalNotifications.createChannel({
+            id: 'padrao',
+            name: 'Padrao',
+            description: 'Canal de notificacoes padrao',
+            importance: 5,
+            visibility: 1,
+            vibration: true,
+          });
+        } catch (e) {}
       }
     };
     initNotifications();
@@ -1734,6 +1736,14 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       return;
     }
 
+    const getNotificationIconUrl = () => {
+      try {
+        return new URL('./icon-192.png', window.location.href).href;
+      } catch (e) {
+        return '/icon-192.png';
+      }
+    };
+
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
         const permission = await Notification.requestPermission();
@@ -1743,7 +1753,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           try {
             new Notification('GKD Mobility', {
               body: 'Notificações em tempo real ativadas com sucesso!',
-              icon: '/1786699612187.png'
+              icon: getNotificationIconUrl()
             });
           } catch (e) {}
         } else if (permission === 'denied') {
@@ -1958,17 +1968,22 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     // 3. Real Browser Native Notification (Desktop fallback)
     else if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
+        let iconUrl = '/icon-192.png';
+        try {
+          iconUrl = new URL('./icon-192.png', window.location.href).href;
+        } catch (e) {}
+
         const delay = Math.max(0, targetDate.getTime() - Date.now());
         if (delay <= 1000) {
           new Notification(newNotif.title, {
             body: newNotif.message,
-            icon: '/1786699612187.png'
+            icon: iconUrl
           });
         } else {
           setTimeout(() => {
             new Notification(newNotif.title, {
               body: newNotif.message,
-              icon: '/1786699612187.png'
+              icon: iconUrl
             });
           }, delay);
         }
@@ -3040,13 +3055,15 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                      <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                      v.speed > (v.settings?.smartSpeedMode ? (v.settings?.detectedRoadSpeed || 60) : (v.settings?.speedLimit || 60))
-                        ? 'bg-red-100 text-red-700 border border-red-300 animate-pulse'
-                        : 'bg-blue-50 text-blue-700 border border-blue-100'
-                     }`}>
-                      ⚡ {v.speed || 0} km/h
-                    </span>
+                      {v.speed >= 10 && (
+                        <span className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                        v.speed > (v.settings?.smartSpeedMode ? (v.settings?.detectedRoadSpeed || 60) : (v.settings?.speedLimit || 60))
+                          ? 'bg-red-100 text-red-700 border border-red-300 animate-pulse'
+                          : 'bg-blue-50 text-blue-700 border border-blue-100'
+                       }`}>
+                          ⚡ {Math.round(v.speed)} km/h
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -4437,10 +4454,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 mb-0.5">
                             <h4 className="font-bold text-[13px] text-gray-900 truncate">
-                              {n.type === 'speed' ? 'Velocidade' :
-                               n.type === 'command' ? 'Controle Diário' :
-                               n.type === 'battery' ? 'Energia' :
-                               n.type === 'geofence' ? 'Cerca Virtual' : 'GKD Mobility'}
+                              {n.title || 'Rastreador'}
                             </h4>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-[10px] font-medium text-gray-500">{n.timestamp}</span>
