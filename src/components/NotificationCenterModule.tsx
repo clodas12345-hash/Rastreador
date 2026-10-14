@@ -411,12 +411,8 @@ export default function NotificationCenterModule({
                     notif.read ? 'bg-white border-gray-200 opacity-80' : 'bg-blue-50/40 border-blue-200 shadow-sm'
                   }`}
                 >
-                  <div className={`p-2.5 rounded-2xl text-xl shrink-0 ${
-                    notif.severity === 'critical' || notif.type === 'battery' ? 'bg-red-100 text-red-600' :
-                    notif.type === 'speed' ? 'bg-amber-100 text-amber-600' :
-                    'bg-blue-100 text-blue-600'
-                  }`}>
-                    {notif.type === 'battery' ? '🛡️' : notif.type === 'speed' ? '⚡' : notif.type === 'geofence' ? '📍' : '🔔'}
+                  <div className="w-11 h-11 shrink-0 rounded-2xl overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
+                    <img src="/1786699612187.png" alt="GKD" className="w-full h-full object-cover" />
                   </div>
 
                   <div className="flex-1 min-w-0">

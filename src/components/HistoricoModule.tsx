@@ -5,7 +5,7 @@ import {
   Battery, BatteryCharging, BatteryWarning, ShieldCheck, AlertOctagon,
   FileText, Download, TrendingUp, BarChart2, ShieldAlert, Calendar,
   RotateCw, Compass, Gauge, Satellite, Mountain, Fuel, X, Layers, ChevronRight, CheckCircle2,
-  Radar, Sparkles, Cpu, Radio, Flame
+  Radar, Sparkles, Cpu, Radio, Flame, Filter, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { collection } from 'firebase/firestore';
 import { safeAddDoc } from '../utils/firestoreWrapper';
@@ -69,6 +69,36 @@ export interface DayBreakdownSummary {
   maxBattery?: number;
   pointsCount: number;
 }
+
+export interface MonthBreakdownGroup {
+  monthKey: string;
+  monthName: string;
+  year: string;
+  monthLabel: string;
+  shortLabel: string;
+  days: DayBreakdownSummary[];
+  totalDistanceKm: number;
+  totalMovingMs: number;
+  totalIdleMs: number;
+  totalStoppedMs: number;
+  totalHarshEvents: number;
+  maxSpeed: number;
+}
+
+export const MONTH_NAMES_PT: Record<string, string> = {
+  '01': 'Janeiro',
+  '02': 'Fevereiro',
+  '03': 'Março',
+  '04': 'Abril',
+  '05': 'Maio',
+  '06': 'Junho',
+  '07': 'Julho',
+  '08': 'Agosto',
+  '09': 'Setembro',
+  '10': 'Outubro',
+  '11': 'Novembro',
+  '12': 'Dezembro'
+};
 
 function getDailyBreakdown(points: RoutePoint[]): DayBreakdownSummary[] {
   if (!points || points.length === 0) return [];
@@ -219,6 +249,31 @@ function getDaysAgoDate(days: number): string {
   return `${year}-${month}-${day}`;
 }
 
+function getFirstDayOfCurrentMonth(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}-01`;
+}
+
+function getFirstDayOfPrevMonth(): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}-01`;
+}
+
+function getLastDayOfPrevMonth(): string {
+  const d = new Date();
+  d.setDate(0); // Último dia do mês anterior
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function HistoricoModule({ 
   vehicles, 
   fetchFlespiHistory, 
@@ -236,7 +291,16 @@ export default function HistoricoModule({
   const [showPdfOptionsModal, setShowPdfOptionsModal] = useState(false);
   const [report, setReport] = useState<SavedRoute | null>(null);
   const [activeChartTab, setActiveChartTab] = useState<'velocidade' | 'bateria' | 'altitude'>('velocidade');
-  const [periodPreset, setPeriodPreset] = useState<'hoje' | 'ontem' | '7d' | '15d' | '30d' | 'custom'>('hoje');
+  const [periodPreset, setPeriodPreset] = useState<'hoje' | 'ontem' | '7d' | '15d' | '30d' | 'mes_atual' | 'mes_anterior' | 'custom'>('hoje');
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('todos');
+  const [collapsedMonths, setCollapsedMonths] = useState<Record<string, boolean>>({});
+
+  const toggleCollapseMonth = (mKey: string) => {
+    setCollapsedMonths(prev => ({
+      ...prev,
+      [mKey]: !prev[mKey]
+    }));
+  };
 
   const formatDuration = (ms: number | undefined | null) => {
     if (!ms || isNaN(ms) || ms <= 0) return '0m';
@@ -248,7 +312,7 @@ export default function HistoricoModule({
     return `${seconds}s`;
   };
 
-  const applyPreset = (preset: 'hoje' | 'ontem' | '7d' | '15d' | '30d') => {
+  const applyPreset = (preset: 'hoje' | 'ontem' | '7d' | '15d' | '30d' | 'mes_atual' | 'mes_anterior') => {
     setPeriodPreset(preset);
     const today = getLocalTodayDate();
     if (preset === 'hoje') {
@@ -267,6 +331,12 @@ export default function HistoricoModule({
     } else if (preset === '30d') {
       setStartDate(getDaysAgoDate(29));
       setEndDate(today);
+    } else if (preset === 'mes_atual') {
+      setStartDate(getFirstDayOfCurrentMonth());
+      setEndDate(today);
+    } else if (preset === 'mes_anterior') {
+      setStartDate(getFirstDayOfPrevMonth());
+      setEndDate(getLastDayOfPrevMonth());
     }
   };
 
@@ -681,6 +751,56 @@ export default function HistoricoModule({
     return getDailyBreakdown(report?.points || []);
   }, [report]);
 
+  const monthlyBreakdownData = useMemo<MonthBreakdownGroup[]>(() => {
+    if (!dailyBreakdownData || dailyBreakdownData.length === 0) return [];
+    const map = new Map<string, DayBreakdownSummary[]>();
+    for (const day of dailyBreakdownData) {
+      const parts = (day.rawDate || '').split('-');
+      const monthKey = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : 'outros';
+      if (!map.has(monthKey)) {
+        map.set(monthKey, []);
+      }
+      map.get(monthKey)!.push(day);
+    }
+
+    const sortedMonthKeys = Array.from(map.keys()).sort();
+    return sortedMonthKeys.map(mKey => {
+      const days = map.get(mKey) || [];
+      const [year, monthNum] = mKey.split('-');
+      const monthName = MONTH_NAMES_PT[monthNum] || monthNum;
+      const monthLabel = year ? `${monthName} de ${year}` : mKey;
+      const shortLabel = year ? `${monthName.slice(0, 3)}/${year.slice(2)}` : mKey;
+      const totalDistanceKm = Number(days.reduce((acc, d) => acc + (d.distanceKm || 0), 0).toFixed(1));
+      const totalMovingMs = days.reduce((acc, d) => acc + (d.movingTimeMs || 0), 0);
+      const totalIdleMs = days.reduce((acc, d) => acc + (d.idleTimeMs || 0), 0);
+      const totalStoppedMs = days.reduce((acc, d) => acc + (d.stoppedTimeMs || 0), 0);
+      const totalHarshEvents = days.reduce((acc, d) => acc + (d.harshEvents || 0), 0);
+      const maxSpeed = Math.max(0, ...days.map(d => d.maxSpeed || 0));
+
+      return {
+        monthKey: mKey,
+        monthName,
+        year: year || '',
+        monthLabel,
+        shortLabel,
+        days,
+        totalDistanceKm,
+        totalMovingMs,
+        totalIdleMs,
+        totalStoppedMs,
+        totalHarshEvents,
+        maxSpeed
+      };
+    });
+  }, [dailyBreakdownData]);
+
+  const displayedMonthGroups = useMemo(() => {
+    if (selectedMonthFilter === 'todos') {
+      return monthlyBreakdownData;
+    }
+    return monthlyBreakdownData.filter(g => g.monthKey === selectedMonthFilter);
+  }, [monthlyBreakdownData, selectedMonthFilter]);
+
   const handleExportPDF = (mode: 'total' | 'diario' = 'total') => {
     if (!report) return;
     setShowPdfOptionsModal(false);
@@ -727,14 +847,14 @@ export default function HistoricoModule({
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
       const titleText = isDailyMode 
-        ? 'GKD MOBILITY - RELATÓRIO ANALÍTICO DIA A DIA DE TELEMETRIA'
-        : 'GKD MOBILITY - RELATÓRIO CONSOLIDADO TOTAL DE TELEMETRIA';
+        ? 'GKD RASTREADOR - RELATÓRIO ANALÍTICO DA JORNADA SEPARADO POR MESES'
+        : 'GKD RASTREADOR - RELATÓRIO CONSOLIDADO TOTAL DE TELEMETRIA';
       doc.text(titleText, 14, 14);
 
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(203, 213, 225);
-      doc.text(`Emissão: ${new Date().toLocaleString('pt-BR')} | Tipo: ${isDailyMode ? 'Detalhamento Dia a Dia (Jornada Diária)' : 'Resumo Consolidado Total'} • Sensores Flespi`, 14, 24);
+      doc.text(`Emissão: ${new Date().toLocaleString('pt-BR')} | Tipo: ${isDailyMode ? 'Detalhamento Separado por Meses' : 'Resumo Consolidado Total'} • Sensores Flespi`, 14, 24);
 
       // 1. Informações do Veículo e Período
       doc.setTextColor(15, 23, 42);
@@ -787,17 +907,23 @@ export default function HistoricoModule({
         styles: { fontSize: 8, cellPadding: 2 }
       });
 
-      // Se for modo Dia a Dia, insere a tabela discriminada por dia com quebra segura
+      // Se for modo Dia a Dia, insere as tabelas discriminadas separadas por mês com quebra segura
       if (isDailyMode) {
-        const dailyData = getDailyBreakdown(report.points || []);
-        const currentYDaily = ensureSpace(50);
+        const currentYDaily = ensureSpace(45);
         doc.setFontSize(10.5);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(15, 23, 42);
-        doc.text('3. DETALHAMENTO ANALÍTICO DIA A DIA (JORNADA & CONSUMO)', 14, currentYDaily);
+        doc.text('3. DETALHAMENTO DA JORNADA SEPARADO POR MESES', 14, currentYDaily);
 
-        const dailyRows = (dailyData && dailyData.length > 0)
-          ? dailyData.map(d => [
+        if (monthlyBreakdownData && monthlyBreakdownData.length > 0) {
+          monthlyBreakdownData.forEach((group) => {
+            const groupStartY = ensureSpace(35);
+            doc.setFontSize(9.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(88, 28, 135);
+            doc.text(`📅 MÊS: ${group.monthLabel.toUpperCase()} — TOTAL DO MÊS: ${group.totalDistanceKm} KM (${group.days.length} DIAS)`, 14, groupStartY);
+
+            const dailyRows = group.days.map(d => [
               String(d.dateStr || '--/--/----'),
               `${Number(d.distanceKm || 0).toFixed(1)} km`,
               String(d.firstStartTime || '--:--'),
@@ -807,33 +933,35 @@ export default function HistoricoModule({
               `${Number(d.maxSpeed || 0).toFixed(1)} km/h`,
               `${Number(d.harshEvents || 0)} ev`,
               d.minBattery && d.maxBattery ? `${d.minBattery}V / ${d.maxBattery}V` : '12.6V'
-            ])
-          : [
-              [
-                String(startDate || 'Hoje'),
-                `${Number(report.distanceKm || 0).toFixed(1)} km`,
-                String(report.stats?.firstStartTime || '--:--'),
-                String(report.stats?.lastStopTime || '--:--'),
-                String(formatDuration(report.stats?.movingTimeMs || 0)),
-                String(formatDuration(report.stats?.idleTimeMs || 0)),
-                `${Number(report.stats?.maxSpeed || 0).toFixed(1)} km/h`,
-                `${(report.stats?.sharpTurnsCount || 0) + (report.stats?.harshBrakingCount || 0)} ev`,
-                `${report.stats?.minBatteryVoltage || 12.2}V / ${report.stats?.maxBatteryVoltage || 14.1}V`
-              ]
-            ];
+            ]);
 
-        runTable({
-          startY: currentYDaily + 4,
-          head: [['Data', 'Km Dia', '1ª Partida', 'Últ. Parada', 'Rodando', 'Ocioso', 'Vel. Máx', 'Eventos', 'Bateria Mín/Máx']],
-          body: dailyRows,
-          theme: 'striped',
-          headStyles: { fillColor: [109, 40, 217], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
-          styles: { fontSize: 7.2, cellPadding: 1.8, halign: 'center' },
-          columnStyles: {
-            0: { fontStyle: 'bold', halign: 'left' },
-            1: { fontStyle: 'bold', textColor: [30, 64, 175] }
-          }
-        });
+            // Linha de Subtotal do Mês
+            dailyRows.push([
+              `SUBTOTAL (${group.monthName.toUpperCase()})`,
+              `${group.totalDistanceKm} km`,
+              '--',
+              '--',
+              String(formatDuration(group.totalMovingMs)),
+              String(formatDuration(group.totalIdleMs)),
+              `${group.maxSpeed} km/h`,
+              `${group.totalHarshEvents} ev`,
+              '--'
+            ]);
+
+            runTable({
+              startY: groupStartY + 3,
+              head: [['Data', 'Km Dia', '1ª Partida', 'Últ. Parada', 'Rodando', 'Ocioso', 'Vel. Máx', 'Eventos', 'Bateria Mín/Máx']],
+              body: dailyRows,
+              theme: 'striped',
+              headStyles: { fillColor: [109, 40, 217], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+              styles: { fontSize: 7.2, cellPadding: 1.8, halign: 'center' },
+              columnStyles: {
+                0: { fontStyle: 'bold', halign: 'left' },
+                1: { fontStyle: 'bold', textColor: [30, 64, 175] }
+              }
+            });
+          });
+        }
       }
 
       // 3/4. Sensores de Condução e Comportamento (Eco-Driving)
@@ -1025,7 +1153,7 @@ export default function HistoricoModule({
               <button
                 type="button"
                 onClick={() => applyPreset('hoje')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   periodPreset === 'hoje' 
                     ? 'bg-purple-600 text-white shadow-sm' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1036,7 +1164,7 @@ export default function HistoricoModule({
               <button
                 type="button"
                 onClick={() => applyPreset('ontem')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   periodPreset === 'ontem' 
                     ? 'bg-purple-600 text-white shadow-sm' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1047,7 +1175,7 @@ export default function HistoricoModule({
               <button
                 type="button"
                 onClick={() => applyPreset('7d')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   periodPreset === '7d' 
                     ? 'bg-purple-600 text-white shadow-sm' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1058,7 +1186,7 @@ export default function HistoricoModule({
               <button
                 type="button"
                 onClick={() => applyPreset('15d')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   periodPreset === '15d' 
                     ? 'bg-purple-600 text-white shadow-sm' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1069,13 +1197,35 @@ export default function HistoricoModule({
               <button
                 type="button"
                 onClick={() => applyPreset('30d')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   periodPreset === '30d' 
                     ? 'bg-purple-600 text-white shadow-sm' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 Últimos 30 Dias
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('mes_atual')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  periodPreset === 'mes_atual' 
+                    ? 'bg-purple-600 text-white shadow-sm' 
+                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                }`}
+              >
+                <span>📅 Mês Atual</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('mes_anterior')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  periodPreset === 'mes_anterior' 
+                    ? 'bg-purple-600 text-white shadow-sm' 
+                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                }`}
+              >
+                <span>🗓️ Mês Anterior</span>
               </button>
             </div>
           </div>
@@ -1536,80 +1686,203 @@ export default function HistoricoModule({
               </div>
             </div>
 
-            {/* TABELA DE DETALHAMENTO ANALÍTICO DIA A DIA (JORNADA DIÁRIA) */}
+            {/* TABELA DE DETALHAMENTO ANALÍTICO DA JORNADA SEPARADO POR MESES */}
             <div className="px-5 pb-5">
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-100">
+              <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
                   <div className="flex items-center gap-2.5">
                     <div className="bg-purple-100 text-purple-700 p-2 rounded-xl">
                       <Calendar className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-sm sm:text-base text-gray-900">Detalhamento da Jornada Dia a Dia</h4>
-                      <p className="text-xs text-gray-500">Quilometragem, horários de ignição, tempos de motor e ocorrências por dia</p>
+                      <h4 className="font-bold text-sm sm:text-base text-gray-900">Detalhamento da Jornada Separado por Meses</h4>
+                      <p className="text-xs text-gray-500">Quilometragem, horários de ignição, tempos de motor e ocorrências agrupados mês a mês</p>
                     </div>
                   </div>
 
                   <button
                     onClick={() => handleExportPDF('diario')}
                     disabled={isGeneratingPdf}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-xl border border-purple-200 transition-colors shadow-sm self-start sm:self-auto"
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-xl border border-purple-200 transition-colors shadow-sm self-start sm:self-auto cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Exportar Diário (PDF)</span>
+                    <span>Exportar Diário por Mês (PDF)</span>
                   </button>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                        <th className="py-2.5 px-3 rounded-l-lg">Data</th>
-                        <th className="py-2.5 px-3">Km Dia</th>
-                        <th className="py-2.5 px-3">1ª Partida</th>
-                        <th className="py-2.5 px-3">Últ. Parada</th>
-                        <th className="py-2.5 px-3">Rodando</th>
-                        <th className="py-2.5 px-3">Ocioso</th>
-                        <th className="py-2.5 px-3">Vel. Máx</th>
-                        <th className="py-2.5 px-3">Eventos</th>
-                        <th className="py-2.5 px-3 rounded-r-lg">Bateria Mín/Máx</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {dailyBreakdownData.length > 0 ? (
-                        dailyBreakdownData.map((day, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-2.5 px-3 font-bold text-gray-900">{day.dateStr}</td>
-                            <td className="py-2.5 px-3 font-black text-blue-600">{day.distanceKm} km</td>
-                            <td className="py-2.5 px-3 text-gray-700">{day.firstStartTime}</td>
-                            <td className="py-2.5 px-3 text-gray-700">{day.lastStopTime}</td>
-                            <td className="py-2.5 px-3 font-semibold text-emerald-700">{formatDuration(day.movingTimeMs)}</td>
-                            <td className="py-2.5 px-3 font-medium text-amber-700">{formatDuration(day.idleTimeMs)}</td>
-                            <td className="py-2.5 px-3 text-gray-800 font-semibold">{day.maxSpeed} km/h</td>
-                            <td className="py-2.5 px-3">
-                              {day.harshEvents > 0 ? (
-                                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold text-[10px]">
-                                  {day.harshEvents} ev
+                {/* Filtro / Abas de Meses (quando o período englobar mais de 1 mês) */}
+                {monthlyBreakdownData.length > 1 && (
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                      <Filter className="w-3.5 h-3.5" /> Mês:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonthFilter('todos')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                        selectedMonthFilter === 'todos'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Todos os Meses ({monthlyBreakdownData.length})
+                    </button>
+                    {monthlyBreakdownData.map(group => (
+                      <button
+                        key={group.monthKey}
+                        type="button"
+                        onClick={() => setSelectedMonthFilter(group.monthKey)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                          selectedMonthFilter === group.monthKey
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        <span>{group.monthLabel}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                          selectedMonthFilter === group.monthKey ? 'bg-purple-800 text-white' : 'bg-gray-200 text-gray-700'
+                        }`}>
+                          {group.totalDistanceKm} km
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Lista de Meses Separados */}
+                {displayedMonthGroups.length === 0 ? (
+                  <div className="py-8 text-center text-gray-400 text-xs">
+                    Nenhum registro encontrado para este período.
+                  </div>
+                ) : (
+                  displayedMonthGroups.map(group => {
+                    const isCollapsed = Boolean(collapsedMonths[group.monthKey]);
+                    return (
+                      <div key={group.monthKey} className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/50 shadow-xs mb-3">
+                        {/* Cabeçalho Destacado do Mês */}
+                        <div 
+                          onClick={() => toggleCollapseMonth(group.monthKey)}
+                          className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none hover:brightness-105 transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-500/20 text-purple-300 rounded-xl border border-purple-400/30">
+                              <Calendar className="w-4 h-4 text-purple-300" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h5 className="font-extrabold text-sm sm:text-base text-white tracking-tight flex items-center gap-1.5">
+                                  <span>📅</span> {group.monthLabel}
+                                </h5>
+                                <span className="text-[10px] font-mono uppercase bg-purple-500/30 border border-purple-400/40 text-purple-200 px-2 py-0.5 rounded-full font-bold">
+                                  {group.days.length} {group.days.length === 1 ? 'dia' : 'dias'}
                                 </span>
-                              ) : (
-                                <span className="text-gray-400 font-medium">0</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 text-gray-700 font-mono text-[11px]">
-                              {day.minBattery && day.maxBattery ? `${day.minBattery}V / ${day.maxBattery}V` : '12.6V'}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={9} className="py-6 text-center text-gray-400">
-                            Nenhum registro encontrado para este período.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                              </div>
+                              <span className="text-[11px] text-slate-300">
+                                Relatório analítico consolidado do mês de {group.monthName}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Métricas e Subtotais do Mês */}
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="bg-blue-500/20 border border-blue-400/30 text-blue-200 px-2.5 py-1 rounded-xl font-bold font-mono">
+                              ⚡ Total: {group.totalDistanceKm} km
+                            </span>
+                            <span className="bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 px-2.5 py-1 rounded-xl font-medium">
+                              🟢 Rodando: {formatDuration(group.totalMovingMs)}
+                            </span>
+                            <span className="bg-amber-500/20 border border-amber-400/30 text-amber-200 px-2.5 py-1 rounded-xl font-medium">
+                              ⏸️ Ocioso: {formatDuration(group.totalIdleMs)}
+                            </span>
+                            {group.totalHarshEvents > 0 && (
+                              <span className="bg-rose-500/20 border border-rose-400/30 text-rose-200 px-2.5 py-1 rounded-xl font-medium">
+                                ⚠️ {group.totalHarshEvents} ev
+                              </span>
+                            )}
+                            <div className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors">
+                              {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tabela de Dias do Mês */}
+                        {!isCollapsed && (
+                          <div className="overflow-x-auto bg-white">
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200">
+                                  <th className="py-2.5 px-3">Data</th>
+                                  <th className="py-2.5 px-3">Km Dia</th>
+                                  <th className="py-2.5 px-3">1ª Partida</th>
+                                  <th className="py-2.5 px-3">Últ. Parada</th>
+                                  <th className="py-2.5 px-3">Rodando</th>
+                                  <th className="py-2.5 px-3">Ocioso</th>
+                                  <th className="py-2.5 px-3">Vel. Máx</th>
+                                  <th className="py-2.5 px-3">Eventos</th>
+                                  <th className="py-2.5 px-3">Bateria Mín/Máx</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {group.days.map((day, idx) => (
+                                  <tr key={idx} className="hover:bg-purple-50/40 transition-colors">
+                                    <td className="py-2.5 px-3 font-bold text-gray-900 whitespace-nowrap">{day.dateStr}</td>
+                                    <td className="py-2.5 px-3 font-black text-blue-600 whitespace-nowrap">{day.distanceKm} km</td>
+                                    <td className="py-2.5 px-3 text-gray-700 whitespace-nowrap">{day.firstStartTime}</td>
+                                    <td className="py-2.5 px-3 text-gray-700 whitespace-nowrap">{day.lastStopTime}</td>
+                                    <td className="py-2.5 px-3 font-semibold text-emerald-700 whitespace-nowrap">{formatDuration(day.movingTimeMs)}</td>
+                                    <td className="py-2.5 px-3 font-medium text-amber-700 whitespace-nowrap">{formatDuration(day.idleTimeMs)}</td>
+                                    <td className="py-2.5 px-3 text-gray-800 font-semibold whitespace-nowrap">{day.maxSpeed} km/h</td>
+                                    <td className="py-2.5 px-3 whitespace-nowrap">
+                                      {day.harshEvents > 0 ? (
+                                        <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                                          {day.harshEvents} ev
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-400 font-medium">0</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-gray-700 font-mono text-[11px] whitespace-nowrap">
+                                      {day.minBattery && day.maxBattery ? `${day.minBattery}V / ${day.maxBattery}V` : '12.6V'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              {/* Subtotal do Mês no rodapé da tabela */}
+                              <tfoot>
+                                <tr className="bg-slate-50 font-bold border-t-2 border-purple-200 text-slate-800">
+                                  <td className="py-2.5 px-3 text-[11px] uppercase tracking-wider text-purple-900">
+                                    Subtotal ({group.monthName})
+                                  </td>
+                                  <td className="py-2.5 px-3 text-blue-700 font-black">
+                                    {group.totalDistanceKm} km
+                                  </td>
+                                  <td colSpan={2} className="py-2.5 px-3 text-gray-400 text-[10px]">
+                                    {group.days.length} dias no mês
+                                  </td>
+                                  <td className="py-2.5 px-3 text-emerald-800">
+                                    {formatDuration(group.totalMovingMs)}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-amber-800">
+                                    {formatDuration(group.totalIdleMs)}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-gray-800 font-mono">
+                                    {group.maxSpeed} km/h
+                                  </td>
+                                  <td className="py-2.5 px-3 text-purple-800">
+                                    {group.totalHarshEvents} ev
+                                  </td>
+                                  <td className="py-2.5 px-3 text-emerald-700 font-medium text-[10px]">
+                                    Mês Consolidado
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>

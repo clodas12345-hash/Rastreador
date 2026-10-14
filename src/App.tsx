@@ -4453,17 +4453,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         !n.read ? 'bg-white/95 border-blue-100' : 'bg-gray-50/80 border-gray-100'
                       }`}>
                         
-                        {/* App/Category Icon (Rounded Square) */}
-                        <div className={`w-12 h-12 shrink-0 rounded-[14px] flex items-center justify-center shadow-sm border ${
-                          n.severity === 'critical' ? 'bg-red-50 border-red-100 text-red-600' :
-                          n.severity === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600' :
-                          'bg-white border-gray-100 text-blue-600'
-                        }`}>
-                          {n.type === 'speed' ? <span className="text-xl">⚡</span> :
-                           n.type === 'command' ? <span className="text-xl">⚙️</span> :
-                           n.type === 'battery' ? <span className="text-xl">🔋</span> :
-                           n.type === 'geofence' ? <span className="text-xl">🎯</span> :
-                           <img src="/1786699612187.png" alt="GKD" className="w-8 h-8 object-contain" />}
+                        {/* App Logo */}
+                        <div className="w-12 h-12 shrink-0 rounded-[14px] overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
+                          <img src="/1786699612187.png" alt="GKD" className="w-full h-full object-cover" />
                         </div>
 
                         {/* Content Area */}
