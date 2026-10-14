@@ -166,6 +166,12 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
     powerCut = true;
   }
 
+  // Precision & Anti-Drift: If ignition is off, speed is strictly 0. If speed < 4 km/h (GPS noise/jitter), speed is 0.
+  let effectiveSpeed = speed;
+  if (explicitIgnition === false || effectiveSpeed < 4) {
+    effectiveSpeed = 0;
+  }
+
   let status: Vehicle['status'] = previousVehicle?.status || 'IgnitionOff';
 
   if (previousVehicle?.settings?.isBlocked) {
@@ -173,25 +179,18 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   } else if (powerCut) {
     status = 'NoBattery';
   } else if (!isOnline) {
-    // Only show Offline if it's truly beyond the grace period
     status = 'Offline';
-  } else if (speed > 2) {
-    // If vehicle is moving (> 2 km/h), vehicle is in motion and engine is ON
+  } else if (explicitIgnition === false) {
+    status = 'IgnitionOff';
+  } else if (effectiveSpeed >= 4) {
     status = 'Moving';
+  } else if (explicitIgnition === true) {
+    status = 'IgnitionOn';
   } else {
-    // Speed <= 2 km/h (Stopped / In traffic / Idling / Red light)
-    if (explicitIgnition === true) {
-      status = 'IgnitionOn';
-    } else if (explicitIgnition === false) {
-      status = 'IgnitionOff';
+    if (effectiveSpeed >= 4) {
+      status = 'Moving';
     } else {
-      // Inconclusive message (keepalive ping without ignition sensor flag)
-      // Retain active state if vehicle was previously Moving or IgnitionOn!
-      if (previousVehicle?.status === 'Moving' || previousVehicle?.status === 'IgnitionOn') {
-        status = 'IgnitionOn';
-      } else {
-        status = previousVehicle?.status || 'IgnitionOff';
-      }
+      status = previousVehicle?.status === 'IgnitionOn' ? 'IgnitionOn' : 'IgnitionOff';
     }
   }
 
@@ -200,7 +199,7 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   return {
     lat,
     lng,
-    speed,
+    speed: effectiveSpeed,
     direction,
     satellites,
     hdop,
@@ -241,10 +240,13 @@ const fetchFlespiLocation = async (imei: string, previousVehicle?: Partial<Vehic
     if (telData && telData.result) {
       const device = telData.result.find((d: any) => String(d.telemetry?.ident?.value) === String(imei));
       if (device && device.telemetry?.['position.latitude'] && device.telemetry?.['position.longitude']) {
-        const speed = Math.round(Number(device.telemetry?.['position.speed']?.value || 0));
         const explicitIgnition = device.telemetry?.['engine.ignition.status']?.value;
-        const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (speed > 2 || previousVehicle?.status === 'IgnitionOn' || previousVehicle?.status === 'Moving');
-        const status: Vehicle['status'] = speed > 2 ? 'Moving' : (ignition ? 'IgnitionOn' : 'IgnitionOff');
+        let speed = Math.round(Number(device.telemetry?.['position.speed']?.value || 0));
+        if (explicitIgnition === false || speed < 4) {
+          speed = 0;
+        }
+        const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (speed >= 4);
+        const status: Vehicle['status'] = (ignition && speed >= 4) ? 'Moving' : (ignition ? 'IgnitionOn' : 'IgnitionOff');
         return {
           lat: Number(device.telemetry['position.latitude'].value),
           lng: Number(device.telemetry['position.longitude'].value),
@@ -403,12 +405,12 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     iconType: 'car',
     color: '#2563eb',
     licensePlate: 'BRA-2E19',
-    status: 'Moving',
+    status: 'IgnitionOff',
     trackerNumber: '868166052523461',
     phoneNumber: '+55 11 98765-4321',
     lat: -23.514971,
     lng: -46.548199,
-    speed: 31,
+    speed: 0,
     fuel: 85,
     sharpTurns: 0,
     harshBraking: 0,
@@ -2264,10 +2266,23 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             console.log(`[DEBUG] Telemetry for ${v.name}:`, t);
             const realLat = t['position.latitude']?.value ?? v.lat;
             const realLng = t['position.longitude']?.value ?? v.lng;
-            const realSpeed = Math.round(Number(t['position.speed']?.value || 0));
-            
+            const rawSpeed = Number(t['position.speed']?.value || 0);
+            const speedTs = t['position.speed']?.ts ?? 0;
+            const nowSec = Date.now() / 1000;
+            const isStaleSpeed = speedTs > 0 && (nowSec - speedTs > 180);
+
             const explicitIgnition = t['engine.ignition.status']?.value ?? t['ignition.status']?.value ?? t['io.ignition']?.value ?? t['din.1']?.value ?? t['acc']?.value ?? t['input.1']?.value ?? t['input.2']?.value ?? t['io.1']?.value ?? t['io.2']?.value ?? t['ignition']?.value ?? t['engine.status']?.value;
-            const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (realSpeed > 2 || v.status === 'IgnitionOn' || v.status === 'Moving');
+
+            // Precision & Anti-Drift:
+            // 1. If ignition is explicitly false (motor desligado), speed is strictly 0.
+            // 2. If speed timestamp is stale (> 3 minutes without update), speed is 0.
+            // 3. If speed is under 4 km/h (GPS drift/jitter while stopped), speed is 0.
+            let realSpeed = Math.round(rawSpeed);
+            if (explicitIgnition === false || isStaleSpeed || realSpeed < 4) {
+              realSpeed = 0;
+            }
+
+            const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (realSpeed >= 4 || v.status === 'IgnitionOn' || v.status === 'Moving');
             
             // --- BLOQUEIO SEGURO (SAFE BLOCK) LOGIC ---
             // Se houver um bloqueio pendente e a ignição acabou de ser desligada
@@ -2312,7 +2327,6 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             }
 
             // Power cut detection (12V disconnected / cable cut) - only consider fresh telemetry within 300s
-            const nowSec = Date.now() / 1000;
             const extVoltVal = t['external.powersource.voltage']?.value ?? t['power.voltage']?.value;
             const extVoltTs = t['external.powersource.voltage']?.ts ?? t['power.voltage']?.ts ?? 0;
             const extStatusVal = t['external.powersource.status']?.value;
@@ -2355,7 +2369,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               newStatus = 'NoBattery';
             } else if (!isOnline) {
               newStatus = 'Offline';
-            } else if (realSpeed > 2) {
+            } else if (explicitIgnition === false) {
+              newStatus = 'IgnitionOff';
+            } else if (ignition && realSpeed >= 4) {
               newStatus = 'Moving';
             } else {
               newStatus = ignition ? 'IgnitionOn' : 'IgnitionOff';
@@ -2537,12 +2553,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               ? flespiDirection
               : (deltaKm > 0.001 ? calculateBearing(v.lat, v.lng, realLat, realLng) : (v.heading || 0));
 
-            const isMoving = realSpeed > 2;
+            const isMoving = realSpeed >= 4 && ignition;
             const driftThresholdKm = 0.02; // 20 metros de trava para evitar "carro dançando" no mapa
             const isSignificantMove = deltaKm > driftThresholdKm;
             
-            // Filtro de Drift: Se a ignição está desligada e o movimento é minúsculo, mantém a posição antiga
-            const isDrift = !ignition && !isMoving && !isSignificantMove && deltaKm > 0;
+            // Filtro de Drift: Se a ignição está desligada e não há movimento expressivo (> 20m), mantém a posição estável sem drift
+            const isDrift = !ignition && !isSignificantMove;
 
             const hasCoordinatesChanged = (v.lat !== realLat || v.lng !== realLng) && !isDrift;
 

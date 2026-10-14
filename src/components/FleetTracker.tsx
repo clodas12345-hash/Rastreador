@@ -735,13 +735,13 @@ export default function FleetTracker({
           <span className="text-gray-700">
             Seguindo <strong className="text-blue-700">{currentSelected.name}</strong>
           </span>
-          {currentSelected.speed > 0 ? (
+          {currentSelected.status === 'Moving' && currentSelected.speed >= 10 ? (
             <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
               {Math.round(currentSelected.speed)} km/h
             </span>
           ) : (
-            <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[11px]">
-              {currentSelected.status === 'IgnitionOn' ? 'Parado (Ligado)' : 'Desligado'}
+            <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[11px] font-semibold">
+              {currentSelected.status === 'Moving' ? `${Math.round(currentSelected.speed)} km/h` : currentSelected.status === 'IgnitionOn' ? 'Parado (Ligado)' : currentSelected.status === 'Stopped' ? 'Bloqueado' : 'Desligado'}
             </span>
           )}
         </div>
@@ -964,7 +964,7 @@ export default function FleetTracker({
             const jitterLng = overlapCount > 0 ? v.lng + (overlapCount * 0.0002) : v.lng;
             
             const isSelected = selectedVehicle?.id === v.id;
-            const isMoving = v.status === 'Moving' || (v.speed || 0) > 2;
+            const isMoving = v.status === 'Moving' && (v.speed || 0) >= 4;
             const pointerHeight = Math.max(0, (18 - mapZoom) * 8);
             const statusColor = v.settings?.isBlocked ? 'bg-red-600' : v.status === 'Offline' || v.status === 'NoBattery' ? 'bg-red-600' : isMoving || v.status === 'IgnitionOn' ? 'bg-green-500' : 'bg-gray-400';
             const heading = typeof v.heading === 'number' ? v.heading : 0;
@@ -1038,7 +1038,7 @@ export default function FleetTracker({
                       : 'bg-white/95 text-gray-800 border border-gray-200'
                   }`}>
                     {v.settings?.isBlocked ? `🔒 [BLOQUEADO] ${v.name}` : v.name}
-                    {isMoving && v.speed > 0 ? ` • ${Math.round(v.speed)} km/h` : ''}
+                    {isMoving && v.speed >= 10 ? ` • ${Math.round(v.speed)} km/h` : ''}
                   </span>
                 </div>
               </div>
