@@ -52,8 +52,8 @@ self.addEventListener('push', (event) => {
   
   const options = {
     body: data.body,
-    icon: '/1786699612187.png',
-    badge: '/1786699612187.png',
+    icon: '/gkd_logo_official.png',
+    badge: '/gkd_logo_official.png',
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),

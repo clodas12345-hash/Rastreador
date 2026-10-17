@@ -133,8 +133,8 @@ export default function NotificationCenterModule({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-600 text-white rounded-xl shadow">
-              <Bell className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm border border-slate-700 bg-white flex items-center justify-center">
+              <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-contain" />
             </div>
             <div>
               <h2 className="font-extrabold text-base sm:text-lg tracking-tight">Central de Notificações</h2>
@@ -412,7 +412,7 @@ export default function NotificationCenterModule({
                   }`}
                 >
                   <div className="w-11 h-11 shrink-0 rounded-2xl overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
-                    <img src="/1786699612187.png" alt="GKD" className="w-full h-full object-cover" />
+                    <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-contain" />
                   </div>
 
                   <div className="flex-1 min-w-0">

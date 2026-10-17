@@ -75,16 +75,40 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
     (b.timestamp || b['server.timestamp'] || 0) - (a.timestamp || a['server.timestamp'] || 0)
   );
 
-  // 1. Find latest GPS Fix message
-  const posMsg = sorted.find(m => typeof m['position.latitude'] === 'number' && typeof m['position.longitude'] === 'number' && (m['position.latitude'] !== 0 || m['position.longitude'] !== 0));
+  // 1. Find the best GPS Fix message (prioritizing low HDOP)
+  const gpsMessages = sorted.filter(m => typeof m['position.latitude'] === 'number' && typeof m['position.longitude'] === 'number' && (m['position.latitude'] !== 0 || m['position.longitude'] !== 0));
+  
+  // Filter out extremely high HDOP (> 10) if we have other options
+  const reliableGpsMessages = gpsMessages.filter(m => (m['position.hdop'] || m['gnss.hdop'] || 1) < 10);
+  
+  const posMsg = reliableGpsMessages.length > 0 
+    ? reliableGpsMessages.sort((a, b) => (a['position.hdop'] || a['gnss.hdop'] || 1) - (b['position.hdop'] || b['gnss.hdop'] || 1))[0]
+    : gpsMessages[0];
   const latestMsg = sorted[0];
 
-  const lat = posMsg ? Number(posMsg['position.latitude']) : (previousVehicle?.lat ?? 0);
-  const lng = posMsg ? Number(posMsg['position.longitude']) : (previousVehicle?.lng ?? 0);
+  const rawLat = posMsg ? Number(posMsg['position.latitude']) : (previousVehicle?.lat ?? 0);
+  const rawLng = posMsg ? Number(posMsg['position.longitude']) : (previousVehicle?.lng ?? 0);
   const speed = posMsg ? Math.round(Number(posMsg['position.speed'] || 0)) : (previousVehicle?.speed ?? 0);
   const direction = posMsg ? Number(posMsg['position.direction'] || 0) : 0;
-  const satellites = posMsg ? Number(posMsg['position.satellites'] || posMsg['gnss.satellites'] || (lat !== 0 ? 12 : 0)) : (previousVehicle?.satellites ?? 12);
+  const satellites = posMsg ? Number(posMsg['position.satellites'] || posMsg['gnss.satellites'] || (rawLat !== 0 ? 12 : 0)) : (previousVehicle?.satellites ?? 12);
   const hdop = posMsg ? Number(posMsg['position.hdop'] || posMsg['gnss.hdop'] || 0.9) : 0.9;
+  
+  // Kalman Filter / Smoothing for GPS jitter & stationary anti-drift
+  let lat = rawLat;
+  let lng = rawLng;
+  if (previousVehicle && previousVehicle.lat && previousVehicle.lng && previousVehicle.lat !== 0 && previousVehicle.lng !== 0 && rawLat !== 0 && rawLng !== 0) {
+    const prevLat = previousVehicle.lat;
+    const prevLng = previousVehicle.lng;
+    const distMeters = calculateDistanceKm(prevLat, prevLng, rawLat, rawLng) * 1000;
+    
+    // If vehicle is stationary (speed < 4 or small jitter < 6 meters), apply Kalman gain favoring previous position (anti-drift)
+    const isStationary = (speed < 4) || (distMeters < 6);
+    const kalmanGain = isStationary ? (distMeters < 3 ? 0.05 : 0.15) : Math.max(0.3, Math.min(0.9, 1.0 / (hdop + 0.5)));
+    
+    lat = prevLat + (rawLat - prevLat) * kalmanGain;
+    lng = prevLng + (rawLng - prevLng) * kalmanGain;
+  }
+
   const timestamp = Number(latestMsg.timestamp || latestMsg['server.timestamp'] || (previousVehicle?.lastTelemetryTime || 0));
   
   let batteryLevel = latestMsg['battery.level'] !== undefined ? Number(latestMsg['battery.level']) : previousVehicle?.batteryLevel;
@@ -1003,7 +1027,7 @@ export default function App() {
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] w-[90vw] max-w-md bg-white/90 backdrop-blur-2xl px-4 py-3 rounded-[26px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/40 flex items-center gap-3 animate-fadeIn">
           {/* Native Style App Icon */}
           <div className="w-10 h-10 bg-white rounded-[14px] shadow-sm border border-gray-100 flex items-center justify-center shrink-0">
-            <img src="/1786699612187.png" alt="GKD" className="w-6 h-6 object-contain" />
+            <img src="/gkd_logo_official.png" alt="GKD" className="w-6 h-6 object-contain" />
           </div>
           
           <div className="flex-1 min-w-0">
@@ -2834,7 +2858,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             onClick={() => setShowVersionModal(true)}
           >
             <div className="bg-white rounded-xl shadow-md p-1.5 flex items-center justify-center overflow-hidden w-10 h-10 shrink-0">
-              <img src="/1786699612187.png" alt="GKD Logo" className="w-full h-full object-contain" />
+              <img src="/gkd_logo_official.png" alt="GKD Logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-sm font-extrabold text-white leading-tight">GKD Mobility</h1>
@@ -3364,7 +3388,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
               <div className="p-8 pb-6 flex flex-col items-center text-center bg-gradient-to-b from-slate-50 to-white">
-                <img src="/1786699612187.png" alt="GKD Logo" className="w-32 h-32 object-contain mb-4 drop-shadow-md rounded-2xl" />
+                <img src="/gkd_logo_official.png" alt="GKD Logo" className="w-32 h-32 object-contain mb-4 drop-shadow-md rounded-2xl" />
                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">GKD Mobility</h2>
                 <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-bold tracking-wider">
                   VERSÃO GKD.R.V.1.0.0
@@ -4261,8 +4285,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               {/* Header - One UI Style */}
               <div className="bg-white/90 backdrop-blur-md p-4 flex items-center justify-between border-b border-gray-100 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-blue-600 rounded-2xl text-white shadow-blue-200 shadow-lg">
-                    <Bell className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
+                    <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <h3 className="font-black text-lg text-gray-900 tracking-tight flex items-center gap-2">
@@ -4455,7 +4479,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         
                         {/* App Logo */}
                         <div className="w-12 h-12 shrink-0 rounded-[14px] overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
-                          <img src="/1786699612187.png" alt="GKD" className="w-full h-full object-cover" />
+                          <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-contain" />
                         </div>
 
                         {/* Content Area */}
