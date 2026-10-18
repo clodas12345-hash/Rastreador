@@ -1,0 +1,414 @@
+src/App.tsx:2885:          <button
+src/App.tsx:2898:            <button 
+src/App.tsx:2904:            <button 
+src/App.tsx:2910:            <button 
+src/App.tsx:2912:              onClick={(e) => { 
+src/App.tsx:2920:            <button 
+src/App.tsx:2926:            <button 
+src/App.tsx:2932:            <button 
+src/App.tsx:2938:            <button 
+src/App.tsx:2944:            <button 
+src/App.tsx:2951:            <button 
+src/App.tsx:2957:            <button 
+src/App.tsx:2963:            <button 
+src/App.tsx:2969:            <button 
+src/App.tsx:2975:            <button 
+src/App.tsx:2981:            <button 
+src/App.tsx:3005:                <button 
+src/App.tsx:3006:                  onClick={() => openModal({
+src/App.tsx:3084:                      <button
+src/App.tsx:3085:                        onClick={(e) => {
+src/App.tsx:3094:                      <button
+src/App.tsx:3095:                        onClick={(e) => {
+src/App.tsx:3104:                      <button
+src/App.tsx:3105:                        onClick={(e) => {
+src/App.tsx:3142:              <button 
+src/App.tsx:3155:                <button
+src/App.tsx:3186:              <button
+src/App.tsx:3198:                <button
+src/App.tsx:3440:                <button
+src/App.tsx:3447:                <button
+src/App.tsx:3454:                <button
+src/App.tsx:3461:                <button
+src/App.tsx:3500:                        <button
+src/App.tsx:3502:                          onClick={() => {
+src/App.tsx:3650:                          <button 
+src/App.tsx:3675:                          <button 
+src/App.tsx:3708:                      <button
+src/App.tsx:3710:                        onClick={() => {
+src/App.tsx:3784:                        <button
+src/App.tsx:3786:                          onClick={(e) => {
+src/App.tsx:3801:                            <button
+src/App.tsx:3803:                              onClick={(e) => {
+src/App.tsx:3814:                            <button
+src/App.tsx:3816:                              onClick={(e) => {
+src/App.tsx:3829:                            <button
+src/App.tsx:3831:                              onClick={(e) => {
+src/App.tsx:3873:                        <button
+src/App.tsx:3875:                          onClick={(e) => {
+src/App.tsx:3892:                        <button
+src/App.tsx:3894:                          onClick={(e) => {
+src/App.tsx:3911:                        <button
+src/App.tsx:3913:                          onClick={(e) => {
+src/App.tsx:3929:                        <button
+src/App.tsx:3931:                          onClick={(e) => {
+src/App.tsx:3971:                        <button
+src/App.tsx:3973:                          onClick={(e) => {
+src/App.tsx:3984:                        <button
+src/App.tsx:3986:                          onClick={(e) => {
+src/App.tsx:3997:                        <button
+src/App.tsx:3999:                          onClick={(e) => {
+src/App.tsx:4238:                    <button 
+src/App.tsx:4250:                    <button 
+src/App.tsx:4251:                      onClick={(e) => { e.preventDefault(); e.stopPropagation();
+src/App.tsx:4276:                <button 
+src/App.tsx:4282:                <button 
+src/App.tsx:4283:                  onClick={(e) => { e.preventDefault(); e.stopPropagation();
+src/App.tsx:4318:                <button
+src/App.tsx:4335:                  <button
+src/App.tsx:4345:                <button
+src/App.tsx:4347:                  onClick={() => {
+src/App.tsx:4361:                     <button
+src/App.tsx:4367:                     <button
+src/App.tsx:4373:                     <button
+src/App.tsx:4382:                     <button
+src/App.tsx:4389:                     <button
+src/App.tsx:4400:                  <button
+src/App.tsx:4401:                    onClick={() => {
+src/App.tsx:4415:                  <button
+src/App.tsx:4416:                    onClick={() => {
+src/App.tsx:4432:                  <button
+src/App.tsx:4433:                    onClick={() => {
+src/App.tsx:4455:                  <button
+src/App.tsx:4462:                  <button
+src/App.tsx:4483:                      onClick={() => {
+src/App.tsx:4524:                           <button
+src/App.tsx:4536:                          <button
+src/App.tsx:4537:                            onClick={(e) => {
+src/App.tsx:4565:                    <button
+src/App.tsx:4566:                      onClick={() => {
+src/App.tsx:4585:                <button
+src/App.tsx:4604:                <button 
+src/App.tsx:4615:                <button 
+src/App.tsx:4643:                <button
+src/App.tsx:4660:                  <button
+src/App.tsx:4690:                <button
+src/App.tsx:4691:                  onClick={() => {
+src/App.tsx:4707:                <button
+src/App.tsx:4739:                <button
+src/App.tsx:4741:                  onClick={() => {
+src/App.tsx:4761:                <button
+src/App.tsx:4763:                  onClick={() => {
+src/App.tsx:4783:                <button
+src/App.tsx:4785:                  onClick={() => {
+src/App.tsx:4807:                <button
+src/App.tsx:4883:                <button
+src/App.tsx:4885:                  onClick={() => {
+src/App.tsx:4902:                <button
+src/App.tsx:4904:                  onClick={() => {
+src/App.tsx:4924:                  <button
+src/App.tsx:4926:                    onClick={async () => {
+src/App.tsx:4947:                <button
+src/App.tsx:4984:                <button
+src/App.tsx:5036:                <button
+src/App.tsx:5038:                  onClick={() => {
+src/App.tsx:5049:                <button
+src/components/DigitalTwinModal.tsx:49:              <button
+src/components/DigitalTwinModal.tsx:59:              <button
+src/components/DigitalTwinModal.tsx:70:            <button
+src/components/DigitalTwinModal.tsx:170:                    <button
+src/components/MotoristasModule.tsx:192:              <button 
+src/components/MotoristasModule.tsx:211:          <button
+src/components/MotoristasModule.tsx:304:                      <button
+src/components/MotoristasModule.tsx:311:                      <button
+src/components/MotoristasModule.tsx:489:              <button
+src/components/MotoristasModule.tsx:497:              <button
+src/components/RouteManagerModal.tsx:207:          <button
+src/components/RouteManagerModal.tsx:218:          <button
+src/components/RouteManagerModal.tsx:256:                    <button
+src/components/RouteManagerModal.tsx:265:                      <button
+src/components/RouteManagerModal.tsx:271:                      <button
+src/components/RouteManagerModal.tsx:272:                        onClick={() => {
+src/components/RouteManagerModal.tsx:298:                  <button
+src/components/RouteManagerModal.tsx:334:                            <button
+src/components/RouteManagerModal.tsx:335:                              onClick={() => {
+src/components/RouteManagerModal.tsx:345:                            <button
+src/components/RouteManagerModal.tsx:346:                              onClick={() => {
+src/components/RouteManagerModal.tsx:371:                            <button
+src/components/RouteManagerModal.tsx:472:                <button
+src/components/RouteManagerModal.tsx:479:                <button
+src/components/ShareTrackingModal.tsx:241:          <button
+src/components/ShareTrackingModal.tsx:294:              <button
+src/components/ShareTrackingModal.tsx:308:            <button
+src/components/ShareTrackingModal.tsx:318:            <button
+src/components/ShareTrackingModal.tsx:328:            <button
+src/components/ErrorBoundary.tsx:61:              <button
+src/components/ErrorBoundary.tsx:71:              <button
+src/components/Dashboard.tsx:334:              <button
+src/components/Dashboard.tsx:388:                          <button
+src/components/Dashboard.tsx:422:                              <button
+src/components/Dashboard.tsx:424:                                onClick={(e) => {
+src/components/HistoricoModule.tsx:1153:              <button
+src/components/HistoricoModule.tsx:1164:              <button
+src/components/HistoricoModule.tsx:1175:              <button
+src/components/HistoricoModule.tsx:1186:              <button
+src/components/HistoricoModule.tsx:1197:              <button
+src/components/HistoricoModule.tsx:1208:              <button
+src/components/HistoricoModule.tsx:1219:              <button
+src/components/HistoricoModule.tsx:1278:            <button
+src/components/HistoricoModule.tsx:1316:                <button
+src/components/HistoricoModule.tsx:1324:                <button
+src/components/HistoricoModule.tsx:1510:                    <button
+src/components/HistoricoModule.tsx:1520:                    <button
+src/components/HistoricoModule.tsx:1530:                    <button
+src/components/HistoricoModule.tsx:1703:                  <button
+src/components/HistoricoModule.tsx:1719:                    <button
+src/components/HistoricoModule.tsx:1731:                      <button
+src/components/HistoricoModule.tsx:1906:                <button 
+src/components/HistoricoModule.tsx:1971:                <button
+src/components/HelpModule.tsx:801:                <button
+src/components/HelpModule.tsx:830:                <button
+src/components/HelpModule.tsx:869:            <button
+src/components/HelpModule.tsx:1041:          <button
+src/components/HelpModule.tsx:1049:          <button
+src/components/HelpModule.tsx:1058:          <button
+src/components/HelpModule.tsx:1067:          <button
+src/components/HelpModule.tsx:1076:          <button
+src/components/HelpModule.tsx:1085:          <button
+src/components/HelpModule.tsx:1094:          <button
+src/components/HelpModule.tsx:1123:                  <button
+src/components/HelpModule.tsx:1197:          <button
+src/components/HelpModule.tsx:1238:          <button
+src/components/HelpModule.tsx:1273:            <button
+src/components/HelpModule.tsx:1305:            <button
+src/components/HelpModule.tsx:1340:                  <button
+src/components/HelpModule.tsx:1349:                  <button
+src/components/HelpModule.tsx:1366:            <button
+src/components/HelpModule.tsx:1393:                  <button
+src/components/HelpModule.tsx:1395:                    onClick={() => {
+src/components/HelpModule.tsx:1412:                  <button
+src/components/HelpModule.tsx:1432:            <button
+src/components/HelpModule.tsx:1433:              onClick={() => {
+src/components/HelpModule.tsx:1458:                  <button
+src/components/HelpModule.tsx:1553:                  <button
+src/components/HelpModule.tsx:1560:                  <button
+src/components/HelpModule.tsx:1595:                  <button
+src/components/HelpModule.tsx:1603:                  <button
+src/components/HelpModule.tsx:1623:            <button
+src/components/HelpModule.tsx:1644:              <button
+src/components/HelpModule.tsx:1654:              <button
+src/components/HelpModule.tsx:1671:            <button
+src/components/HelpModule.tsx:1672:              onClick={() => {
+src/components/HelpModule.tsx:1713:              <button
+src/components/HelpModule.tsx:1716:                onClick={() => {
+src/components/HelpModule.tsx:1724:              <button
+src/components/PermissoesModule.tsx:421:            <button 
+src/components/PermissoesModule.tsx:439:          <button
+src/components/PermissoesModule.tsx:515:                <button
+src/components/PermissoesModule.tsx:570:            <button
+src/components/PermissoesModule.tsx:581:            <button
+src/components/PermissoesModule.tsx:592:            <button
+src/components/PermissoesModule.tsx:603:            <button
+src/components/PermissoesModule.tsx:614:            <button
+src/components/PermissoesModule.tsx:649:              <button 
+src/components/PermissoesModule.tsx:682:              <button
+src/components/PermissoesModule.tsx:694:              <button
+src/components/PermissoesModule.tsx:695:                onClick={() => {
+src/components/PermissoesModule.tsx:706:              <button
+src/components/DadosModule.tsx:69:              <button 
+src/components/DadosModule.tsx:89:            <button
+src/components/DadosModule.tsx:162:            <button
+src/components/DadosModule.tsx:170:            <button
+src/components/DadosModule.tsx:178:            <button
+src/components/DadosModule.tsx:186:            <button
+src/components/DadosModule.tsx:238:                    <button
+src/components/DadosModule.tsx:246:                    <button
+src/components/DadosModule.tsx:380:                <button
+src/components/DadosModule.tsx:389:                <button
+src/components/DadosModule.tsx:422:                <button
+src/components/FleetTracker.tsx:99:        <button
+src/components/FleetTracker.tsx:109:            <button
+src/components/FleetTracker.tsx:115:            <button
+src/components/FleetTracker.tsx:121:            <button
+src/components/FleetTracker.tsx:127:            <button
+src/components/FleetTracker.tsx:133:            <button
+src/components/FleetTracker.tsx:139:            <button
+src/components/FleetTracker.tsx:140:              onClick={() => {
+src/components/FleetTracker.tsx:473:      <button
+src/components/FleetTracker.tsx:776:                <button
+src/components/FleetTracker.tsx:778:                  onClick={() => {
+src/components/FleetTracker.tsx:788:                <button
+src/components/FleetTracker.tsx:790:                  onClick={() => {
+src/components/FleetTracker.tsx:810:            <button
+src/components/FleetTracker.tsx:821:            <button
+src/components/FleetTracker.tsx:833:              <button
+src/components/FleetTracker.tsx:855:          onClick={(e) => {
+src/components/FleetTracker.tsx:934:                  onClick={(e) => {
+src/components/FleetTracker.tsx:1083:                <button
+src/components/FleetTracker.tsx:1091:              <button
+src/components/FleetTracker.tsx:1112:                <button
+src/components/FleetTracker.tsx:1134:                <button
+src/components/FleetTracker.tsx:1159:            <button
+src/components/FleetTracker.tsx:1161:              onClick={() => {
+src/components/FleetTracker.tsx:1180:            <button
+src/components/FleetTracker.tsx:1192:            <button
+src/components/FleetTracker.tsx:1204:            <button
+src/components/FleetTracker.tsx:1206:              onClick={() => {
+src/components/FleetTracker.tsx:1289:              <button
+src/components/FleetTracker.tsx:1353:            <button
+src/components/FleetTracker.tsx:1387:            <button
+src/components/FleetTracker.tsx:1388:              onClick={() => {
+src/components/FleetTracker.tsx:1423:                <button
+src/components/FleetTracker.tsx:1432:                <button
+src/components/FleetTracker.tsx:1465:                <button
+src/components/FleetTracker.tsx:1483:              <button
+src/components/FleetTracker.tsx:1492:              <button
+src/components/FleetTracker.tsx:1504:                    <button
+src/components/FleetTracker.tsx:1556:            <button
+src/components/FleetTracker.tsx:1579:                    onClick={() => {
+src/components/TerminalTools.tsx:601:          <button
+src/components/TerminalTools.tsx:632:          <button
+src/components/TerminalTools.tsx:634:            onClick={() => {
+src/components/TerminalTools.tsx:684:              onClick={() => {
+src/components/TerminalTools.tsx:793:                    <button
+src/components/TerminalTools.tsx:795:                      onClick={() => {
+src/components/TerminalTools.tsx:853:                    <button
+src/components/TerminalTools.tsx:855:                      onClick={() => {
+src/components/TerminalTools.tsx:944:              <button 
+src/components/TerminalTools.tsx:951:              <button
+src/components/TerminalTools.tsx:982:              <button 
+src/components/TerminalTools.tsx:1062:                <button
+src/components/TerminalTools.tsx:1108:                    <button
+src/components/TerminalTools.tsx:1116:                    <button
+src/components/TerminalTools.tsx:1152:                    <button
+src/components/TerminalTools.tsx:1160:                    <button
+src/components/TerminalTools.tsx:1196:                    <button
+src/components/TerminalTools.tsx:1204:                    <button
+src/components/TerminalTools.tsx:1230:                <button
+src/components/TerminalTools.tsx:1232:                  onClick={() => {
+src/components/TerminalTools.tsx:1245:              <button
+src/components/TerminalTools.tsx:1293:                    <button
+src/components/TerminalTools.tsx:1295:                      onClick={() => {
+src/components/TerminalTools.tsx:1324:                    <button
+src/components/TerminalTools.tsx:1326:                      onClick={() => {
+src/components/TerminalTools.tsx:1360:                    <button
+src/components/TerminalTools.tsx:1362:                      onClick={() => {
+src/components/TerminalTools.tsx:1377:                    <button
+src/components/TerminalTools.tsx:1379:                      onClick={() => {
+src/components/TerminalTools.tsx:1407:                    <button
+src/components/TerminalTools.tsx:1409:                      onClick={() => {
+src/components/TerminalTools.tsx:1459:                    <button
+src/components/TerminalTools.tsx:1461:                      onClick={() => {
+src/components/TerminalTools.tsx:1482:                    <button
+src/components/TerminalTools.tsx:1484:                      onClick={() => {
+src/components/TerminalTools.tsx:1511:                    <button
+src/components/TerminalTools.tsx:1513:                      onClick={() => {
+src/components/TerminalTools.tsx:1544:                    <button
+src/components/TerminalTools.tsx:1546:                      onClick={() => {
+src/components/TerminalTools.tsx:1567:                    <button
+src/components/TerminalTools.tsx:1569:                      onClick={() => {
+src/components/TerminalTools.tsx:1594:                    <button
+src/components/TerminalTools.tsx:1596:                      onClick={() => {
+src/components/TerminalTools.tsx:1617:                    <button
+src/components/TerminalTools.tsx:1619:                      onClick={() => {
+src/components/TerminalTools.tsx:1644:                    <button
+src/components/TerminalTools.tsx:1646:                      onClick={() => {
+src/components/TerminalTools.tsx:1666:                    <button
+src/components/TerminalTools.tsx:1668:                      onClick={() => {
+src/components/TerminalTools.tsx:1688:                    <button
+src/components/TerminalTools.tsx:1690:                      onClick={() => {
+src/components/TerminalTools.tsx:1719:                    <button
+src/components/TerminalTools.tsx:1721:                      onClick={() => {
+src/components/TerminalTools.tsx:1750:                    <button
+src/components/TerminalTools.tsx:1752:                      onClick={() => {
+src/components/TerminalTools.tsx:1772:                    <button
+src/components/TerminalTools.tsx:1774:                      onClick={() => {
+src/components/TerminalTools.tsx:1794:                    <button
+src/components/TerminalTools.tsx:1796:                      onClick={() => {
+src/components/TerminalTools.tsx:1816:                    <button
+src/components/TerminalTools.tsx:1818:                      onClick={() => {
+src/components/TerminalTools.tsx:1845:            <button 
+src/components/TerminalTools.tsx:1859:            <button
+src/components/TerminalTools.tsx:1919:                  <button
+src/components/TerminalTools.tsx:1956:                      <button
+src/components/TerminalTools.tsx:1972:                  <button
+src/components/TerminalTools.tsx:1991:                        <button
+src/components/TerminalTools.tsx:1994:                          onClick={() => {
+src/components/TerminalTools.tsx:2076:                    <button
+src/components/TerminalTools.tsx:2079:                      onClick={() => {
+src/components/TerminalTools.tsx:2099:              <button
+src/components/TerminalTools.tsx:2130:              <button
+src/components/TerminalTools.tsx:2145:                <button
+src/components/TerminalTools.tsx:2154:                <button
+src/components/TerminalTools.tsx:2177:                <button
+src/components/TerminalTools.tsx:2188:              <button
+src/components/TerminalTools.tsx:2240:                  <button key={i} className="bg-slate-800 hover:bg-blue-700 text-white p-2.5 rounded-xl font-bold text-xs cursor-pointer flex items-center justify-between transition-colors text-left"
+src/components/TerminalTools.tsx:2241:                          onClick={() => {
+src/components/RelatoriosConsumoModule.tsx:114:          <button
+src/components/RelatoriosConsumoModule.tsx:125:          <button
+src/components/RelatoriosConsumoModule.tsx:136:          <button
+src/components/RelatoriosConsumoModule.tsx:203:                    <button
+src/components/RelatoriosConsumoModule.tsx:206:                      onClick={() => {
+src/components/RelatoriosConsumoModule.tsx:427:                <button
+src/components/RelatoriosConsumoModule.tsx:435:                <button
+src/components/RelatoriosConsumoModule.tsx:603:                    <button
+src/components/PdfReader.tsx:166:            <button 
+src/components/PdfReader.tsx:177:            <button 
+src/components/PdfReader.tsx:189:            <button 
+src/components/PdfReader.tsx:197:            <button 
+src/components/PdfReader.tsx:204:            <button 
+src/components/PdfReader.tsx:215:            <button 
+src/components/PdfReader.tsx:222:            <button 
+src/components/PdfReader.tsx:229:            <button 
+src/components/PdfReader.tsx:239:          <button 
+src/components/PdfReader.tsx:253:          <button 
+src/components/PdfReader.tsx:271:          <button 
+src/components/PdfReader.tsx:316:                      <button className="p-1 text-gray-400 group-hover:text-blue-600">
+src/components/PdfReader.tsx:337:                  <button
+src/components/NotificationCenterModule.tsx:127:          <button
+src/components/NotificationCenterModule.tsx:146:            <button 
+src/components/NotificationCenterModule.tsx:147:              onClick={async () => {
+src/components/NotificationCenterModule.tsx:175:          <button
+src/components/NotificationCenterModule.tsx:201:            <button
+src/components/NotificationCenterModule.tsx:214:            <button
+src/components/NotificationCenterModule.tsx:223:            <button
+src/components/NotificationCenterModule.tsx:232:            <button
+src/components/NotificationCenterModule.tsx:241:            <button
+src/components/NotificationCenterModule.tsx:254:            <button
+src/components/NotificationCenterModule.tsx:262:            <button
+src/components/NotificationCenterModule.tsx:298:                        <button
+src/components/NotificationCenterModule.tsx:376:              <button
+src/components/NotificationCenterModule.tsx:386:              <button
+src/components/NotificationCenterModule.tsx:388:                onClick={() => {
+src/components/FloatingAI.tsx:122:            <button 
+src/components/FloatingAI.tsx:142:                    <button
+src/components/FloatingAI.tsx:144:                      onClick={() => {
+src/components/FloatingAI.tsx:177:            <button
+src/components/FloatingAI.tsx:188:      <button
+src/components/RegistradorModule.tsx:321:            <button
+src/components/RegistradorModule.tsx:329:            <button
+src/components/RegistradorModule.tsx:402:                <button
+src/components/RegistradorModule.tsx:414:                <button
+src/components/RegistradorModule.tsx:428:                <button
+src/components/RegistradorModule.tsx:437:                <button
+src/components/RegistradorModule.tsx:450:                onClick={() => {
+src/components/RegistradorModule.tsx:468:                      <button
+src/components/RegistradorModule.tsx:471:                        onClick={() => {
+src/components/RegistradorModule.tsx:560:                    <button
+src/components/RegistradorModule.tsx:563:                      onClick={() => {
+src/components/RegistradorModule.tsx:583:              <button
+src/components/RegistradorModule.tsx:610:              <button
+src/components/RegistradorModule.tsx:637:              <button
+src/components/RegistradorModule.tsx:638:                onClick={() => {
+src/components/RegistradorModule.tsx:669:              <button
+src/components/RegistradorModule.tsx:745:                  <button
+src/components/RegistradorModule.tsx:746:                    onClick={() => {
+src/components/RegistradorModule.tsx:765:                  <button
+src/components/RegistradorModule.tsx:766:                    onClick={() => {
+src/components/RegistradorModule.tsx:783:                  <button
+src/components/RegistradorModule.tsx:806:              <button
+src/components/RegistradorModule.tsx:853:              <button
+src/components/RegistradorModule.tsx:860:              <button
+src/components/CaixaPretaModule.tsx:106:              <button 
+src/components/CaixaPretaModule.tsx:125:          <button
+src/components/CaixaPretaModule.tsx:237:                <button

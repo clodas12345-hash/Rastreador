@@ -1,0 +1,707 @@
+src/App.tsx:2861:          onClick={() => setSidebarOpen(false)}
+src/App.tsx:2875:            onClick={() => setShowVersionModal(true)}
+src/App.tsx:2885:          <button
+src/App.tsx:2887:            onClick={() => setSidebarOpen(false)}
+src/App.tsx:2898:            <button 
+src/App.tsx:2900:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('rastreamento'); setSidebarOpen(false); }}
+src/App.tsx:2904:            <button 
+src/App.tsx:2906:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('dashboard'); setSidebarOpen(false); }}
+src/App.tsx:2910:            <button 
+src/App.tsx:2912:              onClick={(e) => { 
+src/App.tsx:2920:            <button 
+src/App.tsx:2922:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('historico'); setSidebarOpen(false); }}
+src/App.tsx:2926:            <button 
+src/App.tsx:2928:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('ferramentas'); setSidebarOpen(false); }}
+src/App.tsx:2932:            <button 
+src/App.tsx:2934:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('dados'); setSidebarOpen(false); }}
+src/App.tsx:2938:            <button 
+src/App.tsx:2940:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('cercas'); setSidebarOpen(false); }}
+src/App.tsx:2944:            <button 
+src/App.tsx:2946:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('registros'); setSidebarOpen(false); }}
+src/App.tsx:2951:            <button 
+src/App.tsx:2953:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('motoristas'); setSidebarOpen(false); }}
+src/App.tsx:2957:            <button 
+src/App.tsx:2959:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('caixa_preta'); setSidebarOpen(false); }}
+src/App.tsx:2963:            <button 
+src/App.tsx:2965:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('relatorios'); setSidebarOpen(false); }}
+src/App.tsx:2969:            <button 
+src/App.tsx:2971:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('notificacoes'); setSidebarOpen(false); }}
+src/App.tsx:2975:            <button 
+src/App.tsx:2977:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('permissoes'); setSidebarOpen(false); }}
+src/App.tsx:2981:            <button 
+src/App.tsx:2983:              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveModule('ajuda'); setSidebarOpen(false); }}
+src/App.tsx:3005:                <button 
+src/App.tsx:3006:                  onClick={() => openModal({
+src/App.tsx:3021:                  onClick={(e) => { e.preventDefault(); handleListItemClick(v); }}
+src/App.tsx:3027:                        <VehicleIcon iconType={v.iconType} color={v.color} size={16} photoUrl={v.photoUrl} onClick={(e: any) => { e.stopPropagation(); if (v.photoUrl) setPhotoViewerUrl(v.photoUrl); }} />
+src/App.tsx:3084:                      <button
+src/App.tsx:3085:                        onClick={(e) => {
+src/App.tsx:3094:                      <button
+src/App.tsx:3095:                        onClick={(e) => {
+src/App.tsx:3104:                      <button
+src/App.tsx:3105:                        onClick={(e) => {
+src/App.tsx:3142:              <button 
+src/App.tsx:3144:                onClick={() => setSidebarOpen(!sidebarOpen)} 
+src/App.tsx:3155:                <button
+src/App.tsx:3157:                  onClick={() => setActiveModule('rastreamento')}
+src/App.tsx:3186:              <button
+src/App.tsx:3188:                onClick={() => handleOpenDirectTimeline(selectedVehicle || vehicles[0] || null)}
+src/App.tsx:3198:                <button
+src/App.tsx:3200:                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowNotificationDrawer(!showNotificationDrawer); }}
+src/App.tsx:3404:              <button onClick={() => setShowVersionModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors">
+src/App.tsx:3440:                <button
+src/App.tsx:3443:                  onClick={() => setModalMode('position')}
+src/App.tsx:3447:                <button
+src/App.tsx:3450:                  onClick={() => setModalMode('emergency')}
+src/App.tsx:3454:                <button
+src/App.tsx:3457:                  onClick={() => setModalMode('settings')}
+src/App.tsx:3461:                <button
+src/App.tsx:3464:                  onClick={() => setModalMode('details')}
+src/App.tsx:3500:                        <button
+src/App.tsx:3502:                          onClick={() => {
+src/App.tsx:3650:                          <button 
+src/App.tsx:3652:                            onClick={() => setPhotoViewerUrl(editingVehicle.photoUrl)} 
+src/App.tsx:3675:                          <button 
+src/App.tsx:3677:                            onClick={() => setEditingVehicle({...editingVehicle, photoUrl: ''})} 
+src/App.tsx:3708:                      <button
+src/App.tsx:3710:                        onClick={() => {
+src/App.tsx:3784:                        <button
+src/App.tsx:3786:                          onClick={(e) => {
+src/App.tsx:3801:                            <button
+src/App.tsx:3803:                              onClick={(e) => {
+src/App.tsx:3814:                            <button
+src/App.tsx:3816:                              onClick={(e) => {
+src/App.tsx:3829:                            <button
+src/App.tsx:3831:                              onClick={(e) => {
+src/App.tsx:3873:                        <button
+src/App.tsx:3875:                          onClick={(e) => {
+src/App.tsx:3892:                        <button
+src/App.tsx:3894:                          onClick={(e) => {
+src/App.tsx:3911:                        <button
+src/App.tsx:3913:                          onClick={(e) => {
+src/App.tsx:3929:                        <button
+src/App.tsx:3931:                          onClick={(e) => {
+src/App.tsx:3971:                        <button
+src/App.tsx:3973:                          onClick={(e) => {
+src/App.tsx:3984:                        <button
+src/App.tsx:3986:                          onClick={(e) => {
+src/App.tsx:3997:                        <button
+src/App.tsx:3999:                          onClick={(e) => {
+src/App.tsx:4238:                    <button 
+src/App.tsx:4239:                      onClick={() => setShowDeleteConfirm(true)} 
+src/App.tsx:4249:                    <button onClick={closeModal} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium">Cancelar</button>
+src/App.tsx:4250:                    <button 
+src/App.tsx:4251:                      onClick={(e) => { e.preventDefault(); e.stopPropagation();
+src/App.tsx:4276:                <button 
+src/App.tsx:4277:                  onClick={() => setShowDeleteConfirm(false)} 
+src/App.tsx:4282:                <button 
+src/App.tsx:4283:                  onClick={(e) => { e.preventDefault(); e.stopPropagation();
+src/App.tsx:4318:                <button
+src/App.tsx:4319:                  onClick={() => setShowNotificationDrawer(false)}
+src/App.tsx:4335:                  <button
+src/App.tsx:4336:                    onClick={requestNotificationPermission}
+src/App.tsx:4345:                <button
+src/App.tsx:4347:                  onClick={() => {
+src/App.tsx:4361:                     <button
+src/App.tsx:4362:                       onClick={() => setNotificationFilter('all')}
+src/App.tsx:4367:                     <button
+src/App.tsx:4368:                       onClick={() => setNotificationFilter('unread')}
+src/App.tsx:4373:                     <button
+src/App.tsx:4374:                       onClick={() => setNotificationFilter('critical')}
+src/App.tsx:4382:                     <button
+src/App.tsx:4383:                       onClick={clearNotifications}
+src/App.tsx:4389:                     <button
+src/App.tsx:4390:                       onClick={markAllNotificationsAsRead}
+src/App.tsx:4400:                  <button
+src/App.tsx:4401:                    onClick={() => {
+src/App.tsx:4415:                  <button
+src/App.tsx:4416:                    onClick={() => {
+src/App.tsx:4432:                  <button
+src/App.tsx:4433:                    onClick={() => {
+src/App.tsx:4455:                  <button
+src/App.tsx:4456:                    onClick={requestBatteryOptimizationExemption}
+src/App.tsx:4462:                  <button
+src/App.tsx:4463:                    onClick={() => setShowBatteryOptimizationModal(true)}
+src/App.tsx:4483:                      onClick={() => {
+src/App.tsx:4524:                           <button
+src/App.tsx:4525:                             onClick={(e) => { e.stopPropagation(); handleDeleteNotification(n.id); }}
+src/App.tsx:4536:                          <button
+src/App.tsx:4537:                            onClick={(e) => {
+src/App.tsx:4565:                    <button
+src/App.tsx:4566:                      onClick={() => {
+src/App.tsx:4585:                <button
+src/App.tsx:4586:                  onClick={() => setShowNotificationDrawer(false)}
+src/App.tsx:4598:          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1020] backdrop-blur-md p-4 animate-fade-in" onClick={() => setPhotoViewerUrl(null)}>
+src/App.tsx:4599:            <div className="bg-white p-4 rounded-2xl shadow-2xl max-w-lg w-full relative overflow-hidden" onClick={e => e.stopPropagation()}>
+src/App.tsx:4604:                <button 
+src/App.tsx:4605:                  onClick={() => setPhotoViewerUrl(null)}
+src/App.tsx:4615:                <button 
+src/App.tsx:4616:                  onClick={() => setPhotoViewerUrl(null)}
+src/App.tsx:4627:          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1030] backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowBatteryOptimizationModal(false)}>
+src/App.tsx:4628:            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full relative overflow-hidden border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+src/App.tsx:4643:                <button
+src/App.tsx:4644:                  onClick={() => setShowBatteryOptimizationModal(false)}
+src/App.tsx:4660:                  <button
+src/App.tsx:4661:                    onClick={requestBatteryOptimizationExemption}
+src/App.tsx:4690:                <button
+src/App.tsx:4691:                  onClick={() => {
+src/App.tsx:4707:                <button
+src/App.tsx:4708:                  onClick={() => setShowBatteryOptimizationModal(false)}
+src/App.tsx:4722:            onClick={() => setEmergencySelector(null)}
+src/App.tsx:4726:              onClick={e => e.stopPropagation()}
+src/App.tsx:4739:                <button
+src/App.tsx:4741:                  onClick={() => {
+src/App.tsx:4761:                <button
+src/App.tsx:4763:                  onClick={() => {
+src/App.tsx:4783:                <button
+src/App.tsx:4785:                  onClick={() => {
+src/App.tsx:4807:                <button
+src/App.tsx:4809:                  onClick={() => setEmergencySelector(null)}
+src/App.tsx:4823:            onClick={() => setDualDispatchData(null)}
+src/App.tsx:4827:              onClick={e => e.stopPropagation()}
+src/App.tsx:4883:                <button
+src/App.tsx:4885:                  onClick={() => {
+src/App.tsx:4902:                <button
+src/App.tsx:4904:                  onClick={() => {
+src/App.tsx:4924:                  <button
+src/App.tsx:4926:                    onClick={async () => {
+src/App.tsx:4947:                <button
+src/App.tsx:4949:                  onClick={() => setDualDispatchData(null)}
+src/App.tsx:4963:            onClick={() => setActionConfirm(null)}
+src/App.tsx:4967:              onClick={e => e.stopPropagation()}
+src/App.tsx:4984:                <button
+src/App.tsx:4986:                  onClick={() => setActionConfirm(null)}
+src/App.tsx:5036:                <button
+src/App.tsx:5038:                  onClick={() => {
+src/App.tsx:5049:                <button
+src/App.tsx:5051:                  onClick={() => setActionConfirm(null)}
+src/components/DigitalTwinModal.tsx:49:              <button
+src/components/DigitalTwinModal.tsx:51:                onClick={() => setActiveTab('twin')}
+src/components/DigitalTwinModal.tsx:59:              <button
+src/components/DigitalTwinModal.tsx:61:                onClick={() => setActiveTab('birds_eye')}
+src/components/DigitalTwinModal.tsx:70:            <button
+src/components/DigitalTwinModal.tsx:71:              onClick={onClose}
+src/components/DigitalTwinModal.tsx:170:                    <button
+src/components/DigitalTwinModal.tsx:172:                      onClick={onOpenMaintenance}
+src/components/MotoristasModule.tsx:192:              <button 
+src/components/MotoristasModule.tsx:193:                onClick={onBackToMap}
+src/components/MotoristasModule.tsx:211:          <button
+src/components/MotoristasModule.tsx:212:            onClick={() => handleOpenAddModal()}
+src/components/MotoristasModule.tsx:304:                      <button
+src/components/MotoristasModule.tsx:305:                        onClick={() => handleOpenAddModal(driver)}
+src/components/MotoristasModule.tsx:311:                      <button
+src/components/MotoristasModule.tsx:312:                        onClick={() => handleDeleteDriver(driver.id, driver.name)}
+src/components/MotoristasModule.tsx:489:              <button
+src/components/MotoristasModule.tsx:491:                onClick={() => setShowAddModal(false)}
+src/components/MotoristasModule.tsx:497:              <button
+src/components/MotoristasModule.tsx:499:                onClick={() => handleSaveDriver()}
+src/components/RouteManagerModal.tsx:200:          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
+src/components/RouteManagerModal.tsx:207:          <button
+src/components/RouteManagerModal.tsx:208:            onClick={() => setActiveTab('lista')}
+src/components/RouteManagerModal.tsx:218:          <button
+src/components/RouteManagerModal.tsx:219:            onClick={() => setActiveTab('novo')}
+src/components/RouteManagerModal.tsx:256:                    <button
+src/components/RouteManagerModal.tsx:257:                      onClick={onStartRecording}
+src/components/RouteManagerModal.tsx:265:                      <button
+src/components/RouteManagerModal.tsx:266:                        onClick={onStopRecording}
+src/components/RouteManagerModal.tsx:271:                      <button
+src/components/RouteManagerModal.tsx:272:                        onClick={() => {
+src/components/RouteManagerModal.tsx:298:                  <button
+src/components/RouteManagerModal.tsx:299:                    onClick={() => setActiveTab('novo')}
+src/components/RouteManagerModal.tsx:334:                            <button
+src/components/RouteManagerModal.tsx:335:                              onClick={() => {
+src/components/RouteManagerModal.tsx:345:                            <button
+src/components/RouteManagerModal.tsx:346:                              onClick={() => {
+src/components/RouteManagerModal.tsx:371:                            <button
+src/components/RouteManagerModal.tsx:372:                              onClick={(e) => handleDeleteRoute(r.id, e)}
+src/components/RouteManagerModal.tsx:472:                <button
+src/components/RouteManagerModal.tsx:474:                  onClick={() => setActiveTab('lista')}
+src/components/RouteManagerModal.tsx:479:                <button
+src/components/RouteManagerModal.tsx:481:                  onClick={handleSaveRoute}
+src/components/ShareTrackingModal.tsx:241:          <button
+src/components/ShareTrackingModal.tsx:242:            onClick={onClose}
+src/components/ShareTrackingModal.tsx:294:              <button
+src/components/ShareTrackingModal.tsx:296:                onClick={handleCopyLink}
+src/components/ShareTrackingModal.tsx:308:            <button
+src/components/ShareTrackingModal.tsx:310:              onClick={handleSendWhatsApp}
+src/components/ShareTrackingModal.tsx:318:            <button
+src/components/ShareTrackingModal.tsx:320:              onClick={handleSendSMS}
+src/components/ShareTrackingModal.tsx:328:            <button
+src/components/ShareTrackingModal.tsx:330:              onClick={handleOpenLinkInBrowser}
+src/components/ErrorBoundary.tsx:61:              <button
+src/components/ErrorBoundary.tsx:64:                onClick={this.handleReload}
+src/components/ErrorBoundary.tsx:71:              <button
+src/components/ErrorBoundary.tsx:74:                onClick={this.handleReset}
+src/components/Dashboard.tsx:176:            onClick={() => setSelectedFilter('all')}
+src/components/Dashboard.tsx:192:            onClick={() => setSelectedFilter('moving')}
+src/components/Dashboard.tsx:208:            onClick={() => setSelectedFilter('stopped')}
+src/components/Dashboard.tsx:224:            onClick={() => setSelectedFilter('maintenance')}
+src/components/Dashboard.tsx:334:              <button
+src/components/Dashboard.tsx:335:                onClick={() => setShowDevices(false)}
+src/components/Dashboard.tsx:352:                        onClick={(e) => toggleExpand(vehicle.id, e)}
+src/components/Dashboard.tsx:388:                          <button
+src/components/Dashboard.tsx:390:                            onClick={(e) => toggleExpand(vehicle.id, e)}
+src/components/Dashboard.tsx:422:                              <button
+src/components/Dashboard.tsx:424:                                onClick={(e) => {
+src/components/HistoricoModule.tsx:1126:              onClick={() => setActiveModule('rastreamento')}
+src/components/HistoricoModule.tsx:1153:              <button
+src/components/HistoricoModule.tsx:1155:                onClick={() => applyPreset('hoje')}
+src/components/HistoricoModule.tsx:1164:              <button
+src/components/HistoricoModule.tsx:1166:                onClick={() => applyPreset('ontem')}
+src/components/HistoricoModule.tsx:1175:              <button
+src/components/HistoricoModule.tsx:1177:                onClick={() => applyPreset('7d')}
+src/components/HistoricoModule.tsx:1186:              <button
+src/components/HistoricoModule.tsx:1188:                onClick={() => applyPreset('15d')}
+src/components/HistoricoModule.tsx:1197:              <button
+src/components/HistoricoModule.tsx:1199:                onClick={() => applyPreset('30d')}
+src/components/HistoricoModule.tsx:1208:              <button
+src/components/HistoricoModule.tsx:1210:                onClick={() => applyPreset('mes_atual')}
+src/components/HistoricoModule.tsx:1219:              <button
+src/components/HistoricoModule.tsx:1221:                onClick={() => applyPreset('mes_anterior')}
+src/components/HistoricoModule.tsx:1278:            <button
+src/components/HistoricoModule.tsx:1280:              onClick={() => handleSearch(false)}
+src/components/HistoricoModule.tsx:1316:                <button
+src/components/HistoricoModule.tsx:1317:                  onClick={() => setShowPdfOptionsModal(true)}
+src/components/HistoricoModule.tsx:1324:                <button
+src/components/HistoricoModule.tsx:1325:                  onClick={handleViewOnMap}
+src/components/HistoricoModule.tsx:1510:                    <button
+src/components/HistoricoModule.tsx:1511:                      onClick={() => setActiveChartTab('velocidade')}
+src/components/HistoricoModule.tsx:1520:                    <button
+src/components/HistoricoModule.tsx:1521:                      onClick={() => setActiveChartTab('bateria')}
+src/components/HistoricoModule.tsx:1530:                    <button
+src/components/HistoricoModule.tsx:1531:                      onClick={() => setActiveChartTab('altitude')}
+src/components/HistoricoModule.tsx:1703:                  <button
+src/components/HistoricoModule.tsx:1704:                    onClick={() => handleExportPDF('diario')}
+src/components/HistoricoModule.tsx:1719:                    <button
+src/components/HistoricoModule.tsx:1721:                      onClick={() => setSelectedMonthFilter('todos')}
+src/components/HistoricoModule.tsx:1731:                      <button
+src/components/HistoricoModule.tsx:1734:                        onClick={() => setSelectedMonthFilter(group.monthKey)}
+src/components/HistoricoModule.tsx:1764:                          onClick={() => toggleCollapseMonth(group.monthKey)}
+src/components/HistoricoModule.tsx:1906:                <button 
+src/components/HistoricoModule.tsx:1907:                  onClick={() => setShowPdfOptionsModal(false)}
+src/components/HistoricoModule.tsx:1930:                    onClick={() => handleExportPDF('total')}
+src/components/HistoricoModule.tsx:1949:                    onClick={() => handleExportPDF('diario')}
+src/components/HistoricoModule.tsx:1971:                <button
+src/components/HistoricoModule.tsx:1972:                  onClick={() => setShowPdfOptionsModal(false)}
+src/components/HelpModule.tsx:801:                <button
+src/components/HelpModule.tsx:803:                  onClick={onBackToMap}
+src/components/HelpModule.tsx:830:                <button
+src/components/HelpModule.tsx:831:                  onClick={() => setSearchQuery('')}
+src/components/HelpModule.tsx:869:            <button
+src/components/HelpModule.tsx:870:              onClick={checkBrowserPermissions}
+src/components/HelpModule.tsx:894:              <button onClick={testGeolocation} className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+src/components/HelpModule.tsx:912:              <button onClick={testMicrophone} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+src/components/HelpModule.tsx:930:              <button onClick={testCamera} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+src/components/HelpModule.tsx:948:              <button onClick={testContacts} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+src/components/HelpModule.tsx:966:              <button onClick={testBluetooth} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+src/components/HelpModule.tsx:984:              <button onClick={testStorage} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+src/components/HelpModule.tsx:1018:              <button onClick={requestNotificationPermission} className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-3 rounded-lg text-[10px] transition-all cursor-pointer shadow">Solicitar</button>
+src/components/HelpModule.tsx:1041:          <button
+src/components/HelpModule.tsx:1042:            onClick={() => setActiveTab('all')}
+src/components/HelpModule.tsx:1049:          <button
+src/components/HelpModule.tsx:1050:            onClick={() => setActiveTab('rastreamento')}
+src/components/HelpModule.tsx:1058:          <button
+src/components/HelpModule.tsx:1059:            onClick={() => setActiveTab('comandos')}
+src/components/HelpModule.tsx:1067:          <button
+src/components/HelpModule.tsx:1068:            onClick={() => setActiveTab('dashboard')}
+src/components/HelpModule.tsx:1076:          <button
+src/components/HelpModule.tsx:1077:            onClick={() => setActiveTab('audio')}
+src/components/HelpModule.tsx:1085:          <button
+src/components/HelpModule.tsx:1086:            onClick={() => setActiveTab('backup')}
+src/components/HelpModule.tsx:1094:          <button
+src/components/HelpModule.tsx:1095:            onClick={() => setActiveTab('manual')}
+src/components/HelpModule.tsx:1123:                  <button
+src/components/HelpModule.tsx:1124:                    onClick={() => toggleTopic(topic.id)}
+src/components/HelpModule.tsx:1166:                                onClick={() => handleCopy(c.cmd)}
+src/components/HelpModule.tsx:1197:          <button
+src/components/HelpModule.tsx:1198:            onClick={() => setShowStatusColors(!showStatusColors)}
+src/components/HelpModule.tsx:1238:          <button
+src/components/HelpModule.tsx:1239:            onClick={() => setShowSpeedAlerts(!showSpeedAlerts)}
+src/components/HelpModule.tsx:1273:            <button
+src/components/HelpModule.tsx:1274:              onClick={() => setShowPdfReader(!showPdfReader)}
+src/components/HelpModule.tsx:1305:            <button
+src/components/HelpModule.tsx:1306:              onClick={() => setShowBackupPanel(!showBackupPanel)}
+src/components/HelpModule.tsx:1340:                  <button
+src/components/HelpModule.tsx:1342:                    onClick={handleDownloadBackup}
+src/components/HelpModule.tsx:1349:                  <button
+src/components/HelpModule.tsx:1351:                    onClick={() => fileInputRef.current?.click()}
+src/components/HelpModule.tsx:1366:            <button
+src/components/HelpModule.tsx:1367:              onClick={() => setShowResetPanel(!showResetPanel)}
+src/components/HelpModule.tsx:1393:                  <button
+src/components/HelpModule.tsx:1395:                    onClick={() => {
+src/components/HelpModule.tsx:1412:                  <button
+src/components/HelpModule.tsx:1414:                    onClick={() => setShowDeleteAllModal(true)}
+src/components/HelpModule.tsx:1432:            <button
+src/components/HelpModule.tsx:1433:              onClick={() => {
+src/components/HelpModule.tsx:1458:                  <button
+src/components/HelpModule.tsx:1460:                    onClick={toggleSelectAll}
+src/components/HelpModule.tsx:1470:                    onClick={() => toggleItem('carros')}
+src/components/HelpModule.tsx:1488:                    onClick={() => toggleItem('notificacoes')}
+src/components/HelpModule.tsx:1504:                    onClick={() => toggleItem('gravacoes')}
+src/components/HelpModule.tsx:1520:                    onClick={() => toggleItem('rotas')}
+src/components/HelpModule.tsx:1536:                    onClick={() => toggleItem('cache')}
+src/components/HelpModule.tsx:1553:                  <button
+src/components/HelpModule.tsx:1555:                    onClick={() => setShowFactoryModal(false)}
+src/components/HelpModule.tsx:1560:                  <button
+src/components/HelpModule.tsx:1563:                    onClick={() => setConfirmStep(true)}
+src/components/HelpModule.tsx:1595:                  <button
+src/components/HelpModule.tsx:1598:                    onClick={() => setConfirmStep(false)}
+src/components/HelpModule.tsx:1603:                  <button
+src/components/HelpModule.tsx:1606:                    onClick={executeFactoryReset}
+src/components/HelpModule.tsx:1623:            <button
+src/components/HelpModule.tsx:1624:              onClick={() => setShowDeleteAllModal(false)}
+src/components/HelpModule.tsx:1644:              <button
+src/components/HelpModule.tsx:1647:                onClick={executeDeleteAll}
+src/components/HelpModule.tsx:1654:              <button
+src/components/HelpModule.tsx:1657:                onClick={() => setShowDeleteAllModal(false)}
+src/components/HelpModule.tsx:1671:            <button
+src/components/HelpModule.tsx:1672:              onClick={() => {
+src/components/HelpModule.tsx:1713:              <button
+src/components/HelpModule.tsx:1716:                onClick={() => {
+src/components/HelpModule.tsx:1724:              <button
+src/components/HelpModule.tsx:1727:                onClick={executeRestore}
+src/components/PermissoesModule.tsx:421:            <button 
+src/components/PermissoesModule.tsx:422:              onClick={onBackToMap}
+src/components/PermissoesModule.tsx:439:          <button
+src/components/PermissoesModule.tsx:440:            onClick={forceGrantAllPermissions}
+src/components/PermissoesModule.tsx:469:                  onClick={() => setActiveDetailPermission(permId)}
+src/components/PermissoesModule.tsx:515:                <button
+src/components/PermissoesModule.tsx:516:                  onClick={forceGrantAllPermissions}
+src/components/PermissoesModule.tsx:570:            <button
+src/components/PermissoesModule.tsx:571:              onClick={() => triggerTestNotification('speed')}
+src/components/PermissoesModule.tsx:581:            <button
+src/components/PermissoesModule.tsx:582:              onClick={() => triggerTestNotification('ignition')}
+src/components/PermissoesModule.tsx:592:            <button
+src/components/PermissoesModule.tsx:593:              onClick={() => triggerTestNotification('geofence')}
+src/components/PermissoesModule.tsx:603:            <button
+src/components/PermissoesModule.tsx:604:              onClick={() => triggerTestNotification('battery')}
+src/components/PermissoesModule.tsx:614:            <button
+src/components/PermissoesModule.tsx:615:              onClick={() => triggerTestNotification('panic')}
+src/components/PermissoesModule.tsx:649:              <button 
+src/components/PermissoesModule.tsx:650:                onClick={() => setActiveDetailPermission(null)}
+src/components/PermissoesModule.tsx:682:              <button
+src/components/PermissoesModule.tsx:684:                onClick={() => requestPermissionNative(activeDetailPermission)}
+src/components/PermissoesModule.tsx:694:              <button
+src/components/PermissoesModule.tsx:695:                onClick={() => {
+src/components/PermissoesModule.tsx:706:              <button
+src/components/PermissoesModule.tsx:707:                onClick={() => setActiveDetailPermission(null)}
+src/components/DadosModule.tsx:69:              <button 
+src/components/DadosModule.tsx:70:                onClick={onBackToMap}
+src/components/DadosModule.tsx:89:            <button
+src/components/DadosModule.tsx:90:              onClick={handleRefresh}
+src/components/DadosModule.tsx:162:            <button
+src/components/DadosModule.tsx:163:              onClick={() => setStatusFilter('todos')}
+src/components/DadosModule.tsx:170:            <button
+src/components/DadosModule.tsx:171:              onClick={() => setStatusFilter('online')}
+src/components/DadosModule.tsx:178:            <button
+src/components/DadosModule.tsx:179:              onClick={() => setStatusFilter('movimento')}
+src/components/DadosModule.tsx:186:            <button
+src/components/DadosModule.tsx:187:              onClick={() => setStatusFilter('offline')}
+src/components/DadosModule.tsx:238:                    <button
+src/components/DadosModule.tsx:240:                      onClick={() => setStreetViewVehicle(vehicle)}
+src/components/DadosModule.tsx:246:                    <button
+src/components/DadosModule.tsx:247:                      onClick={() => setRawViewVehicleId(isRawOpen ? null : vehicle.id)}
+src/components/DadosModule.tsx:380:                <button
+src/components/DadosModule.tsx:382:                  onClick={() => openNativeMaps(streetViewVehicle.lat, streetViewVehicle.lng)}
+src/components/DadosModule.tsx:389:                <button
+src/components/DadosModule.tsx:391:                  onClick={() => setStreetViewVehicle(null)}
+src/components/DadosModule.tsx:422:                <button
+src/components/DadosModule.tsx:424:                  onClick={() => setStreetViewVehicle(null)}
+src/components/FleetTracker.tsx:99:        <button
+src/components/FleetTracker.tsx:100:          onClick={() => setIsOpen(!isOpen)}
+src/components/FleetTracker.tsx:109:            <button
+src/components/FleetTracker.tsx:110:              onClick={() => { setMapType('roadmap'); setIsOpen(false); }}
+src/components/FleetTracker.tsx:115:            <button
+src/components/FleetTracker.tsx:116:              onClick={() => { setMapType('dark'); setIsOpen(false); }}
+src/components/FleetTracker.tsx:121:            <button
+src/components/FleetTracker.tsx:122:              onClick={() => { setMapType('satellite'); setIsOpen(false); }}
+src/components/FleetTracker.tsx:127:            <button
+src/components/FleetTracker.tsx:128:              onClick={() => { setMapType('hybrid'); setIsOpen(false); }}
+src/components/FleetTracker.tsx:133:            <button
+src/components/FleetTracker.tsx:134:              onClick={() => { setMapType('terrain'); setIsOpen(false); }}
+src/components/FleetTracker.tsx:139:            <button
+src/components/FleetTracker.tsx:140:              onClick={() => {
+src/components/FleetTracker.tsx:473:      <button
+src/components/FleetTracker.tsx:475:        onClick={handleToggle}
+src/components/FleetTracker.tsx:776:                <button
+src/components/FleetTracker.tsx:778:                  onClick={() => {
+src/components/FleetTracker.tsx:788:                <button
+src/components/FleetTracker.tsx:790:                  onClick={() => {
+src/components/FleetTracker.tsx:810:            <button
+src/components/FleetTracker.tsx:812:              onClick={() => setShowTimelineDrawer(!showTimelineDrawer)}
+src/components/FleetTracker.tsx:821:            <button
+src/components/FleetTracker.tsx:823:              onClick={() => setShowOnlyStops(!showOnlyStops)}
+src/components/FleetTracker.tsx:833:              <button
+src/components/FleetTracker.tsx:835:                onClick={onCloseActiveRoute}
+src/components/FleetTracker.tsx:855:          onClick={(e) => {
+src/components/FleetTracker.tsx:930:                onClick={() => setActiveStopIndex(idx)}
+src/components/FleetTracker.tsx:934:                  onClick={(e) => {
+src/components/FleetTracker.tsx:976:              onClick={(e) => handleVehicleClick(v, e as any)}
+src/components/FleetTracker.tsx:980:                onClick={(e) => handleVehicleClick(v, e)}
+src/components/FleetTracker.tsx:1083:                <button
+src/components/FleetTracker.tsx:1084:                  onClick={() => onMarkerDoubleClick(currentSelected)}
+src/components/FleetTracker.tsx:1091:              <button
+src/components/FleetTracker.tsx:1092:                onClick={() => setActivePopupVehicleId(null)}
+src/components/FleetTracker.tsx:1112:                <button
+src/components/FleetTracker.tsx:1113:                  onClick={() => onMarkerDoubleClick(currentSelected)}
+src/components/FleetTracker.tsx:1134:                <button
+src/components/FleetTracker.tsx:1135:                  onClick={() => onMarkerDoubleClick(currentSelected)}
+src/components/FleetTracker.tsx:1159:            <button
+src/components/FleetTracker.tsx:1161:              onClick={() => {
+src/components/FleetTracker.tsx:1180:            <button
+src/components/FleetTracker.tsx:1182:              onClick={() => setShowShareModal(true)}
+src/components/FleetTracker.tsx:1192:            <button
+src/components/FleetTracker.tsx:1194:              onClick={() => onOpenTimeline(currentSelected)}
+src/components/FleetTracker.tsx:1204:            <button
+src/components/FleetTracker.tsx:1206:              onClick={() => {
+src/components/FleetTracker.tsx:1289:              <button
+src/components/FleetTracker.tsx:1291:                onClick={() => openNativeStreetView(currentSelected.lat, currentSelected.lng)}
+src/components/FleetTracker.tsx:1301:              onClick={() => setShowStreetViewModal(true)}
+src/components/FleetTracker.tsx:1353:            <button
+src/components/FleetTracker.tsx:1354:              onClick={() => setActiveStopIndex(null)}
+src/components/FleetTracker.tsx:1387:            <button
+src/components/FleetTracker.tsx:1388:              onClick={() => {
+src/components/FleetTracker.tsx:1423:                <button
+src/components/FleetTracker.tsx:1425:                  onClick={() => openNativeStreetView(currentSelected.lat, currentSelected.lng)}
+src/components/FleetTracker.tsx:1432:                <button
+src/components/FleetTracker.tsx:1434:                  onClick={() => setShowStreetViewModal(false)}
+src/components/FleetTracker.tsx:1465:                <button
+src/components/FleetTracker.tsx:1467:                  onClick={() => setShowStreetViewModal(false)}
+src/components/FleetTracker.tsx:1483:              <button
+src/components/FleetTracker.tsx:1485:                onClick={onTogglePlayback}
+src/components/FleetTracker.tsx:1492:              <button
+src/components/FleetTracker.tsx:1494:                onClick={() => onSeekPlayback && onSeekPlayback(0)}
+src/components/FleetTracker.tsx:1504:                    <button
+src/components/FleetTracker.tsx:1507:                      onClick={() => onChangePlaybackSpeed(spd)}
+src/components/FleetTracker.tsx:1556:            <button
+src/components/FleetTracker.tsx:1557:              onClick={() => setShowTimelineDrawer(false)}
+src/components/FleetTracker.tsx:1579:                    onClick={() => {
+src/components/VehicleIcon.tsx:7:        onClick={onClick}
+src/components/VehicleIcon.tsx:24:    case 'truck': return <Truck size={size} color={color || "currentColor"} fill={color ? "currentColor" : "none"} className={className} onClick={onClick} />;
+src/components/VehicleIcon.tsx:25:    case 'bus': return <Bus size={size} color={color || "currentColor"} fill={color ? "currentColor" : "none"} className={className} onClick={onClick} />;
+src/components/VehicleIcon.tsx:26:    case 'motorcycle': return <Bike size={size} color={color || "currentColor"} fill={color ? "currentColor" : "none"} className={className} onClick={onClick} />;
+src/components/VehicleIcon.tsx:27:    case 'car-front': return <CarFront size={size} color={color || "currentColor"} fill={color ? "currentColor" : "none"} className={className} onClick={onClick} />;
+src/components/VehicleIcon.tsx:30:      return <Car size={size} color={color || "currentColor"} fill={color ? "currentColor" : "none"} className={className} onClick={onClick} />;
+src/components/TerminalTools.tsx:601:          <button
+src/components/TerminalTools.tsx:603:            onClick={() => setActiveTool('bateria_sleep')}
+src/components/TerminalTools.tsx:632:          <button
+src/components/TerminalTools.tsx:634:            onClick={() => {
+src/components/TerminalTools.tsx:684:              onClick={() => {
+src/components/TerminalTools.tsx:710:              <button onClick={() => setActiveTool(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+src/components/TerminalTools.tsx:719:                  onClick={() => setActiveTopic(topic.id)}
+src/components/TerminalTools.tsx:743:              <button onClick={() => setActiveTopic(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+src/components/TerminalTools.tsx:793:                    <button
+src/components/TerminalTools.tsx:795:                      onClick={() => {
+src/components/TerminalTools.tsx:853:                    <button
+src/components/TerminalTools.tsx:855:                      onClick={() => {
+src/components/TerminalTools.tsx:944:              <button 
+src/components/TerminalTools.tsx:945:                onClick={() => setActiveTopic(null)}
+src/components/TerminalTools.tsx:951:              <button
+src/components/TerminalTools.tsx:952:                onClick={handleSave}
+src/components/TerminalTools.tsx:982:              <button 
+src/components/TerminalTools.tsx:983:                onClick={() => setActiveTool(null)} 
+src/components/TerminalTools.tsx:1062:                <button
+src/components/TerminalTools.tsx:1065:                  onClick={() => handleApplyTK303GSleep(sleepTargetId)}
+src/components/TerminalTools.tsx:1108:                    <button
+src/components/TerminalTools.tsx:1110:                      onClick={() => handleSendSingleTK303GCommand('Modo Sleep por Choque', 'sleep123456 shock', sleepTargetId)}
+src/components/TerminalTools.tsx:1116:                    <button
+src/components/TerminalTools.tsx:1118:                      onClick={() => handleCopyCommand('sleep123456 shock', 'cmd1')}
+src/components/TerminalTools.tsx:1152:                    <button
+src/components/TerminalTools.tsx:1154:                      onClick={() => handleSendSingleTK303GCommand('Intervalo 30s/1h', 'fix030s01h***n123456', sleepTargetId)}
+src/components/TerminalTools.tsx:1160:                    <button
+src/components/TerminalTools.tsx:1162:                      onClick={() => handleCopyCommand('fix030s01h***n123456', 'cmd2')}
+src/components/TerminalTools.tsx:1196:                    <button
+src/components/TerminalTools.tsx:1198:                      onClick={() => handleSendSingleTK303GCommand('Economia GPRS', 'less gprs123456 on', sleepTargetId)}
+src/components/TerminalTools.tsx:1204:                    <button
+src/components/TerminalTools.tsx:1206:                      onClick={() => handleCopyCommand('less gprs123456 on', 'cmd3')}
+src/components/TerminalTools.tsx:1230:                <button
+src/components/TerminalTools.tsx:1232:                  onClick={() => {
+src/components/TerminalTools.tsx:1245:              <button
+src/components/TerminalTools.tsx:1247:                onClick={() => setActiveTool(null)}
+src/components/TerminalTools.tsx:1293:                    <button
+src/components/TerminalTools.tsx:1295:                      onClick={() => {
+src/components/TerminalTools.tsx:1324:                    <button
+src/components/TerminalTools.tsx:1326:                      onClick={() => {
+src/components/TerminalTools.tsx:1360:                    <button
+src/components/TerminalTools.tsx:1362:                      onClick={() => {
+src/components/TerminalTools.tsx:1377:                    <button
+src/components/TerminalTools.tsx:1379:                      onClick={() => {
+src/components/TerminalTools.tsx:1407:                    <button
+src/components/TerminalTools.tsx:1409:                      onClick={() => {
+src/components/TerminalTools.tsx:1459:                    <button
+src/components/TerminalTools.tsx:1461:                      onClick={() => {
+src/components/TerminalTools.tsx:1482:                    <button
+src/components/TerminalTools.tsx:1484:                      onClick={() => {
+src/components/TerminalTools.tsx:1511:                    <button
+src/components/TerminalTools.tsx:1513:                      onClick={() => {
+src/components/TerminalTools.tsx:1544:                    <button
+src/components/TerminalTools.tsx:1546:                      onClick={() => {
+src/components/TerminalTools.tsx:1567:                    <button
+src/components/TerminalTools.tsx:1569:                      onClick={() => {
+src/components/TerminalTools.tsx:1594:                    <button
+src/components/TerminalTools.tsx:1596:                      onClick={() => {
+src/components/TerminalTools.tsx:1617:                    <button
+src/components/TerminalTools.tsx:1619:                      onClick={() => {
+src/components/TerminalTools.tsx:1644:                    <button
+src/components/TerminalTools.tsx:1646:                      onClick={() => {
+src/components/TerminalTools.tsx:1666:                    <button
+src/components/TerminalTools.tsx:1668:                      onClick={() => {
+src/components/TerminalTools.tsx:1688:                    <button
+src/components/TerminalTools.tsx:1690:                      onClick={() => {
+src/components/TerminalTools.tsx:1719:                    <button
+src/components/TerminalTools.tsx:1721:                      onClick={() => {
+src/components/TerminalTools.tsx:1750:                    <button
+src/components/TerminalTools.tsx:1752:                      onClick={() => {
+src/components/TerminalTools.tsx:1772:                    <button
+src/components/TerminalTools.tsx:1774:                      onClick={() => {
+src/components/TerminalTools.tsx:1794:                    <button
+src/components/TerminalTools.tsx:1796:                      onClick={() => {
+src/components/TerminalTools.tsx:1816:                    <button
+src/components/TerminalTools.tsx:1818:                      onClick={() => {
+src/components/TerminalTools.tsx:1845:            <button 
+src/components/TerminalTools.tsx:1846:              onClick={() => setActiveTool(null)} 
+src/components/TerminalTools.tsx:1859:            <button
+src/components/TerminalTools.tsx:1860:              onClick={handleCloseListenModal}
+src/components/TerminalTools.tsx:1919:                  <button
+src/components/TerminalTools.tsx:1920:                    onClick={handleSoftphoneClear}
+src/components/TerminalTools.tsx:1956:                      <button
+src/components/TerminalTools.tsx:1959:                        onClick={() => handleSoftphoneKeyPress(digit)}
+src/components/TerminalTools.tsx:1972:                  <button
+src/components/TerminalTools.tsx:1974:                    onClick={handleStartSoftphoneCall}
+src/components/TerminalTools.tsx:1991:                        <button
+src/components/TerminalTools.tsx:1994:                          onClick={() => {
+src/components/TerminalTools.tsx:2076:                    <button
+src/components/TerminalTools.tsx:2079:                      onClick={() => {
+src/components/TerminalTools.tsx:2099:              <button
+src/components/TerminalTools.tsx:2101:                onClick={toggleSpeakerphone}
+src/components/TerminalTools.tsx:2130:              <button
+src/components/TerminalTools.tsx:2132:                onClick={toggleMute}
+src/components/TerminalTools.tsx:2145:                <button
+src/components/TerminalTools.tsx:2147:                  onClick={handleStartRecording}
+src/components/TerminalTools.tsx:2154:                <button
+src/components/TerminalTools.tsx:2156:                  onClick={handleStopRecording}
+src/components/TerminalTools.tsx:2177:                <button
+src/components/TerminalTools.tsx:2179:                  onClick={handleSaveInAppAggregation}
+src/components/TerminalTools.tsx:2188:              <button
+src/components/TerminalTools.tsx:2190:                onClick={handleCloseListenModal}
+src/components/TerminalTools.tsx:2207:             onClick={() => setShowMessageModal(false)}>
+src/components/TerminalTools.tsx:2208:          <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+src/components/TerminalTools.tsx:2240:                  <button key={i} className="bg-slate-800 hover:bg-blue-700 text-white p-2.5 rounded-xl font-bold text-xs cursor-pointer flex items-center justify-between transition-colors text-left"
+src/components/TerminalTools.tsx:2241:                          onClick={() => {
+src/components/TerminalTools.tsx:2252:            <button className="w-full bg-gray-200 hover:bg-gray-300 p-2 rounded-xl text-xs font-bold cursor-pointer" onClick={() => setShowMessageModal(false)}>Fechar</button>
+src/components/RelatoriosConsumoModule.tsx:114:          <button
+src/components/RelatoriosConsumoModule.tsx:115:            onClick={() => setActiveTab('consumo')}
+src/components/RelatoriosConsumoModule.tsx:125:          <button
+src/components/RelatoriosConsumoModule.tsx:126:            onClick={() => setActiveTab('relatorios')}
+src/components/RelatoriosConsumoModule.tsx:136:          <button
+src/components/RelatoriosConsumoModule.tsx:137:            onClick={() => setActiveTab('sleep_sos')}
+src/components/RelatoriosConsumoModule.tsx:203:                    <button
+src/components/RelatoriosConsumoModule.tsx:206:                      onClick={() => {
+src/components/RelatoriosConsumoModule.tsx:427:                <button
+src/components/RelatoriosConsumoModule.tsx:428:                  onClick={handleExportCSV}
+src/components/RelatoriosConsumoModule.tsx:435:                <button
+src/components/RelatoriosConsumoModule.tsx:436:                  onClick={handlePrintPDF}
+src/components/RelatoriosConsumoModule.tsx:603:                    <button
+src/components/RelatoriosConsumoModule.tsx:605:                      onClick={() => handleTriggerSOS(v)}
+src/components/PdfReader.tsx:166:            <button 
+src/components/PdfReader.tsx:167:              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+src/components/PdfReader.tsx:177:            <button 
+src/components/PdfReader.tsx:178:              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+src/components/PdfReader.tsx:189:            <button 
+src/components/PdfReader.tsx:190:              onClick={() => setZoom(prev => Math.max(50, prev - 25))}
+src/components/PdfReader.tsx:197:            <button 
+src/components/PdfReader.tsx:198:              onClick={() => setZoom(prev => Math.min(200, prev + 25))}
+src/components/PdfReader.tsx:204:            <button 
+src/components/PdfReader.tsx:205:              onClick={() => setZoom(100)}
+src/components/PdfReader.tsx:215:            <button 
+src/components/PdfReader.tsx:216:              onClick={() => setReadingTheme('light')}
+src/components/PdfReader.tsx:222:            <button 
+src/components/PdfReader.tsx:223:              onClick={() => setReadingTheme('sepia')}
+src/components/PdfReader.tsx:229:            <button 
+src/components/PdfReader.tsx:230:              onClick={() => setReadingTheme('dark')}
+src/components/PdfReader.tsx:239:          <button 
+src/components/PdfReader.tsx:240:            onClick={() => setShowToc(!showToc)}
+src/components/PdfReader.tsx:253:          <button 
+src/components/PdfReader.tsx:254:            onClick={handlePrint}
+src/components/PdfReader.tsx:271:          <button 
+src/components/PdfReader.tsx:272:            onClick={toggleFullscreen}
+src/components/PdfReader.tsx:309:                    onClick={() => handleCopy(item.cmd)}
+src/components/PdfReader.tsx:316:                      <button className="p-1 text-gray-400 group-hover:text-blue-600">
+src/components/PdfReader.tsx:337:                  <button
+src/components/PdfReader.tsx:339:                    onClick={() => setCurrentPage(sec.page)}
+src/components/NotificationCenterModule.tsx:127:          <button
+src/components/NotificationCenterModule.tsx:129:            onClick={onBackToMap}
+src/components/NotificationCenterModule.tsx:146:            <button 
+src/components/NotificationCenterModule.tsx:147:              onClick={async () => {
+src/components/NotificationCenterModule.tsx:175:          <button
+src/components/NotificationCenterModule.tsx:177:            onClick={() => setFilterTab('settings')}
+src/components/NotificationCenterModule.tsx:201:            <button
+src/components/NotificationCenterModule.tsx:203:              onClick={requestNotificationPermission}
+src/components/NotificationCenterModule.tsx:214:            <button
+src/components/NotificationCenterModule.tsx:216:              onClick={() => setFilterTab('all')}
+src/components/NotificationCenterModule.tsx:223:            <button
+src/components/NotificationCenterModule.tsx:225:              onClick={() => setFilterTab('unread')}
+src/components/NotificationCenterModule.tsx:232:            <button
+src/components/NotificationCenterModule.tsx:234:              onClick={() => setFilterTab('critical')}
+src/components/NotificationCenterModule.tsx:241:            <button
+src/components/NotificationCenterModule.tsx:243:              onClick={() => setFilterTab('settings')}
+src/components/NotificationCenterModule.tsx:254:            <button
+src/components/NotificationCenterModule.tsx:256:              onClick={markAllNotificationsAsRead}
+src/components/NotificationCenterModule.tsx:262:            <button
+src/components/NotificationCenterModule.tsx:264:              onClick={clearNotifications}
+src/components/NotificationCenterModule.tsx:298:                        <button
+src/components/NotificationCenterModule.tsx:301:                          onClick={() => setSelectedCarId(v.id)}
+src/components/NotificationCenterModule.tsx:376:              <button
+src/components/NotificationCenterModule.tsx:378:                onClick={requestBatteryOptimizationExemption}
+src/components/NotificationCenterModule.tsx:386:              <button
+src/components/NotificationCenterModule.tsx:388:                onClick={() => {
+src/components/FloatingAI.tsx:122:            <button 
+src/components/FloatingAI.tsx:123:              onClick={() => setIsOpen(false)} 
+src/components/FloatingAI.tsx:142:                    <button
+src/components/FloatingAI.tsx:144:                      onClick={() => {
+src/components/FloatingAI.tsx:177:            <button
+src/components/FloatingAI.tsx:188:      <button
+src/components/FloatingAI.tsx:189:        onClick={() => setIsOpen(!isOpen)}
+src/components/RegistradorModule.tsx:321:            <button
+src/components/RegistradorModule.tsx:322:              onClick={() => setShowAddModal(true)}
+src/components/RegistradorModule.tsx:329:            <button
+src/components/RegistradorModule.tsx:330:              onClick={handleExportCSV}
+src/components/RegistradorModule.tsx:402:                <button
+src/components/RegistradorModule.tsx:403:                  onClick={handleSoftphoneClear}
+src/components/RegistradorModule.tsx:414:                <button
+src/components/RegistradorModule.tsx:417:                  onClick={() => handleSoftphoneKeyPress(digit)}
+src/components/RegistradorModule.tsx:428:                <button
+src/components/RegistradorModule.tsx:430:                  onClick={handleStartSoftphoneCall}
+src/components/RegistradorModule.tsx:437:                <button
+src/components/RegistradorModule.tsx:439:                  onClick={handleEndSoftphoneCall}
+src/components/RegistradorModule.tsx:450:                onClick={() => {
+src/components/RegistradorModule.tsx:468:                      <button
+src/components/RegistradorModule.tsx:471:                        onClick={() => {
+src/components/RegistradorModule.tsx:560:                    <button
+src/components/RegistradorModule.tsx:563:                      onClick={() => {
+src/components/RegistradorModule.tsx:583:              <button
+src/components/RegistradorModule.tsx:585:                onClick={toggleSpeakerphone}
+src/components/RegistradorModule.tsx:610:              <button
+src/components/RegistradorModule.tsx:612:                onClick={handleSaveAggregationFromDialer}
+src/components/RegistradorModule.tsx:637:              <button
+src/components/RegistradorModule.tsx:638:                onClick={() => {
+src/components/RegistradorModule.tsx:669:              <button
+src/components/RegistradorModule.tsx:671:                onClick={() => setSelectedCategory(cat)}
+src/components/RegistradorModule.tsx:745:                  <button
+src/components/RegistradorModule.tsx:746:                    onClick={() => {
+src/components/RegistradorModule.tsx:765:                  <button
+src/components/RegistradorModule.tsx:766:                    onClick={() => {
+src/components/RegistradorModule.tsx:783:                  <button
+src/components/RegistradorModule.tsx:784:                    onClick={() => handleDeleteRecord(rec.id)}
+src/components/RegistradorModule.tsx:806:              <button
+src/components/RegistradorModule.tsx:807:                onClick={() => setShowAddModal(false)}
+src/components/RegistradorModule.tsx:853:              <button
+src/components/RegistradorModule.tsx:855:                onClick={() => setShowAddModal(false)}
+src/components/RegistradorModule.tsx:860:              <button
+src/components/RegistradorModule.tsx:862:                onClick={handleAddManualAggregation}
+src/components/CaixaPretaModule.tsx:106:              <button 
+src/components/CaixaPretaModule.tsx:107:                onClick={onBackToMap}
+src/components/CaixaPretaModule.tsx:125:          <button
+src/components/CaixaPretaModule.tsx:126:            onClick={handlePrintLaudo}
+src/components/CaixaPretaModule.tsx:224:                onClick={() => setSelectedEvent(evt)}
+src/components/CaixaPretaModule.tsx:237:                <button

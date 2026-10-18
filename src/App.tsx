@@ -78,8 +78,12 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   // 1. Find the best GPS Fix message (prioritizing low HDOP)
   const gpsMessages = sorted.filter(m => typeof m['position.latitude'] === 'number' && typeof m['position.longitude'] === 'number' && (m['position.latitude'] !== 0 || m['position.longitude'] !== 0));
   
-  // Filter out extremely high HDOP (> 10) if we have other options
-  const reliableGpsMessages = gpsMessages.filter(m => (m['position.hdop'] || m['gnss.hdop'] || 1) < 10);
+  // Filter out extremely high HDOP (> 10) OR low satellite count (< 5)
+  const reliableGpsMessages = gpsMessages.filter(m => {
+      const hdop = (m['position.hdop'] || m['gnss.hdop'] || 1);
+      const sats = Number(m['position.satellites'] || m['gnss.satellites'] || 0);
+      return hdop < 10 && sats >= 5;
+  });
   
   const posMsg = reliableGpsMessages.length > 0 
     ? reliableGpsMessages.sort((a, b) => (a['position.hdop'] || a['gnss.hdop'] || 1) - (b['position.hdop'] || b['gnss.hdop'] || 1))[0]
@@ -90,7 +94,7 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   const rawLng = posMsg ? Number(posMsg['position.longitude']) : (previousVehicle?.lng ?? 0);
   const speed = posMsg ? Math.round(Number(posMsg['position.speed'] || 0)) : (previousVehicle?.speed ?? 0);
   const direction = posMsg ? Number(posMsg['position.direction'] || 0) : 0;
-  const satellites = posMsg ? Number(posMsg['position.satellites'] || posMsg['gnss.satellites'] || (rawLat !== 0 ? 12 : 0)) : (previousVehicle?.satellites ?? 12);
+  const satellites = posMsg ? Number(posMsg['position.satellites'] || posMsg['gnss.satellites'] || 0) : (previousVehicle?.satellites ?? 0);
   const hdop = posMsg ? Number(posMsg['position.hdop'] || posMsg['gnss.hdop'] || 0.9) : 0.9;
   
   // Kalman Filter / Smoothing for GPS jitter & stationary anti-drift
@@ -101,15 +105,28 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
     const prevLng = previousVehicle.lng;
     const distMeters = calculateDistanceKm(prevLat, prevLng, rawLat, rawLng) * 1000;
     
-    // If vehicle is stationary (speed < 4 or small jitter < 6 meters), apply Kalman gain favoring previous position (anti-drift)
-    const isStationary = (speed < 4) || (distMeters < 6);
-    const kalmanGain = isStationary ? (distMeters < 3 ? 0.05 : 0.15) : Math.max(0.3, Math.min(0.9, 1.0 / (hdop + 0.5)));
+    // Sanity check: If the speed required to cover this distance in the elapsed time is > 180 km/h (50 m/s), assume GPS glitch
+    const timeDiffSeconds = Math.abs((Number(latestMsg.timestamp || 0) - (previousVehicle.lastTelemetryTime || 0)) / 1000) || 1;
+    const speedMps = distMeters / timeDiffSeconds;
     
-    lat = prevLat + (rawLat - prevLat) * kalmanGain;
-    lng = prevLng + (rawLng - prevLng) * kalmanGain;
+    if (speedMps > 50 && distMeters > 50) {
+        // Assume glitch: ignore new position
+        lat = prevLat;
+        lng = prevLng;
+    } else {
+        // If vehicle is stationary (speed < 4 or small jitter < 6 meters), apply Kalman gain favoring previous position (anti-drift)
+        const isStationary = (speed < 4) || (distMeters < 5);
+        // Stricter Kalman gain for better stability
+        const kalmanGain = isStationary ? (distMeters < 2 ? 0.02 : 0.1) : Math.max(0.2, Math.min(0.7, 1.0 / (hdop + 1.0)));
+        
+        lat = prevLat + (rawLat - prevLat) * kalmanGain;
+        lng = prevLng + (rawLng - prevLng) * kalmanGain;
+    }
   }
 
-  const timestamp = Number(latestMsg.timestamp || latestMsg['server.timestamp'] || (previousVehicle?.lastTelemetryTime || 0));
+  const timestamp = latestMsg.timestamp || latestMsg['server.timestamp'] || previousVehicle?.lastTelemetryTime || null;
+  if (!timestamp) return null; // Cannot process without a valid timestamp
+  const timestampNum = Number(timestamp);
   
   let batteryLevel = latestMsg['battery.level'] !== undefined ? Number(latestMsg['battery.level']) : previousVehicle?.batteryLevel;
   const internalVoltage = latestMsg['battery.voltage'];
