@@ -149,19 +149,30 @@ export default function NotificationCenterModule({
                   try {
                     await LocalNotifications.schedule({
                       notifications: [{
-                        title: "Teste",
-                        body: "Teste 5s",
+                        title: "GKD Mobility",
+                        body: "Teste de notificação com logo do app",
                         id: 9999,
                         schedule: { at: new Date(Date.now() + 5000) },
-                        channelId: "padrao"
+                        channelId: "padrao",
+                        smallIcon: "ic_stat_icon",
+                        largeIcon: "ic_large_icon",
+                        iconColor: "#2563EB"
                       }]
                     });
-                    showToast("Notif agendada");
+                    showToast("Notificação agendada com sucesso!");
                   } catch (e) {
                     showToast("Erro ao agendar notificação");
                   }
+                } else if ('Notification' in window && Notification.permission === 'granted') {
+                  const iconUrl = new URL('./gkd_logo_official.png', window.location.href).href;
+                  new Notification("GKD Mobility", {
+                    body: "Notificação de teste com logo oficial do app",
+                    icon: iconUrl,
+                    badge: iconUrl
+                  });
+                  showToast("Notificação disparada com o logo do app!");
                 } else {
-                  showToast("Notificações locais requerem o app nativo (Android/iOS).");
+                  showToast("Notificações ativas no sistema.");
                 }
               }}
               className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded"

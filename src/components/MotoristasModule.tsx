@@ -65,7 +65,20 @@ export default function MotoristasModule({
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
 
   // Form State
-  const [formData, setFormData] = useState<Omit<Driver, 'id' | 'safetyScore' | 'harshBrakingCount' | 'sharpTurnsCount' | 'overspeedCount' | 'idleTimeMinutes' | 'totalTripsCount' | 'totalKmDriven'>>({
+  const [formData, setFormData] = useState<{
+    name: string;
+    cpf: string;
+    cnhNumber: string;
+    cnhCategory: 'A' | 'B' | 'AB' | 'C' | 'D' | 'E';
+    cnhDueDate: string;
+    phoneNumber: string;
+    assignedVehicleId: string;
+    photoUrl: string;
+    harshBrakingCount: number;
+    sharpTurnsCount: number;
+    overspeedCount: number;
+    totalKmDriven: number;
+  }>({
     name: '',
     cpf: '',
     cnhNumber: '',
@@ -73,7 +86,11 @@ export default function MotoristasModule({
     cnhDueDate: '',
     phoneNumber: '',
     assignedVehicleId: vehicles[0]?.id || '',
-    photoUrl: ''
+    photoUrl: '',
+    harshBrakingCount: 0,
+    sharpTurnsCount: 0,
+    overspeedCount: 0,
+    totalKmDriven: 0
   });
 
   // Carregar motoristas do Firestore (apenas no APK)
@@ -111,7 +128,11 @@ export default function MotoristasModule({
         cnhDueDate: driverToEdit.cnhDueDate,
         phoneNumber: driverToEdit.phoneNumber,
         assignedVehicleId: driverToEdit.assignedVehicleId || '',
-        photoUrl: driverToEdit.photoUrl || ''
+        photoUrl: driverToEdit.photoUrl || '',
+        harshBrakingCount: driverToEdit.harshBrakingCount ?? 0,
+        sharpTurnsCount: driverToEdit.sharpTurnsCount ?? 0,
+        overspeedCount: driverToEdit.overspeedCount ?? 0,
+        totalKmDriven: driverToEdit.totalKmDriven ?? 0
       });
     } else {
       setEditingDriver(null);
@@ -123,7 +144,11 @@ export default function MotoristasModule({
         cnhDueDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
         phoneNumber: '+55 11 ',
         assignedVehicleId: vehicles[0]?.id || '',
-        photoUrl: ''
+        photoUrl: '',
+        harshBrakingCount: 0,
+        sharpTurnsCount: 0,
+        overspeedCount: 0,
+        totalKmDriven: 0
       });
     }
     setShowAddModal(true);
@@ -136,16 +161,26 @@ export default function MotoristasModule({
     }
 
     const driverId = editingDriver ? editingDriver.id : `driver-${Date.now()}`;
+    const deductions = (formData.harshBrakingCount * 3) + (formData.sharpTurnsCount * 2) + (formData.overspeedCount * 5);
+    const calculatedSafetyScore = Math.max(0, Math.min(100, 100 - deductions));
+
     const newDriver: Driver = {
       id: driverId,
-      ...formData,
-      safetyScore: editingDriver ? editingDriver.safetyScore : 95,
-      harshBrakingCount: editingDriver ? editingDriver.harshBrakingCount : 0,
-      sharpTurnsCount: editingDriver ? editingDriver.sharpTurnsCount : 0,
-      overspeedCount: editingDriver ? editingDriver.overspeedCount : 0,
+      name: formData.name,
+      cpf: formData.cpf,
+      cnhNumber: formData.cnhNumber,
+      cnhCategory: formData.cnhCategory,
+      cnhDueDate: formData.cnhDueDate,
+      phoneNumber: formData.phoneNumber,
+      assignedVehicleId: formData.assignedVehicleId,
+      photoUrl: formData.photoUrl,
+      safetyScore: calculatedSafetyScore,
+      harshBrakingCount: Number(formData.harshBrakingCount) || 0,
+      sharpTurnsCount: Number(formData.sharpTurnsCount) || 0,
+      overspeedCount: Number(formData.overspeedCount) || 0,
       idleTimeMinutes: editingDriver ? editingDriver.idleTimeMinutes : 0,
       totalTripsCount: editingDriver ? editingDriver.totalTripsCount : 1,
-      totalKmDriven: editingDriver ? editingDriver.totalKmDriven : 0
+      totalKmDriven: Number(formData.totalKmDriven) || 0
     };
 
     try {
@@ -274,11 +309,30 @@ export default function MotoristasModule({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           {filteredDrivers.map(driver => {
             const assignedVeh = vehicles.find(v => v.id === driver.assignedVehicleId);
-            const harshBraking = driver.harshBrakingCount || (assignedVeh?.harshBraking || (driver.name.includes('Carlos') ? 1 : 2));
-            const sharpTurns = driver.sharpTurnsCount || (assignedVeh?.sharpTurns || (driver.name.includes('Carlos') ? 2 : 1));
-            const overspeed = driver.overspeedCount || (assignedVeh && assignedVeh.speed > 80 ? 1 : 0);
-            const totalKm = driver.totalKmDriven || (assignedVeh ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 450) : (driver.name.includes('Carlos') ? 1420 : 890));
-            const computedScore = driver.safetyScore || Math.max(72, 100 - (harshBraking * 3) - (sharpTurns * 2) - (overspeed * 5));
+            
+            // Valores 100% reais (0 é 0, nunca substituído por fallback inventado)
+            const harshBraking = typeof driver.harshBrakingCount === 'number' 
+              ? driver.harshBrakingCount 
+              : (typeof assignedVeh?.harshBraking === 'number' ? assignedVeh.harshBraking : 0);
+              
+            const sharpTurns = typeof driver.sharpTurnsCount === 'number' 
+              ? driver.sharpTurnsCount 
+              : (typeof assignedVeh?.sharpTurns === 'number' ? assignedVeh.sharpTurns : 0);
+              
+            const overspeed = typeof driver.overspeedCount === 'number' 
+              ? driver.overspeedCount 
+              : 0;
+              
+            const totalKm = typeof driver.totalKmDriven === 'number' && driver.totalKmDriven > 0
+              ? driver.totalKmDriven 
+              : (assignedVeh ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0) : 0);
+              
+            // Score calculado a partir das infrações reais
+            const infractionsPenalty = (harshBraking * 3) + (sharpTurns * 2) + (overspeed * 5);
+            const computedScore = typeof driver.safetyScore === 'number' && driver.safetyScore > 0 && infractionsPenalty === 0
+              ? driver.safetyScore 
+              : Math.max(0, Math.min(100, 100 - infractionsPenalty));
+              
             const scoreBadge = getScoreBadge(computedScore);
 
             return (
@@ -482,6 +536,74 @@ export default function MotoristasModule({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Registro Telemétrico Real do Motorista */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Award className="w-4 h-4 text-amber-500" /> Histórico Telemétrico & Eco-Driving
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      harshBrakingCount: 0,
+                      sharpTurnsCount: 0,
+                      overspeedCount: 0,
+                      totalKmDriven: 0
+                    })}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
+                  >
+                    Zerar Infrações
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-red-600 block mb-0.5">Freadas Bruscas:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.harshBrakingCount}
+                      onChange={(e) => setFormData({ ...formData, harshBrakingCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-white border border-red-200 font-mono font-bold text-xs rounded-lg p-2 text-center text-red-700 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-amber-600 block mb-0.5">Curvas Rápidas:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.sharpTurnsCount}
+                      onChange={(e) => setFormData({ ...formData, sharpTurnsCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-white border border-amber-200 font-mono font-bold text-xs rounded-lg p-2 text-center text-amber-800 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-blue-600 block mb-0.5">Excesso Velocidade:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.overspeedCount}
+                      onChange={(e) => setFormData({ ...formData, overspeedCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-white border border-blue-200 font-mono font-bold text-xs rounded-lg p-2 text-center text-blue-700 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-gray-600 block mb-0.5">Quilometragem Total Guiada (KM):</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.totalKmDriven}
+                    onChange={(e) => setFormData({ ...formData, totalKmDriven: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-white border border-gray-200 font-mono font-bold text-xs rounded-lg p-2 text-gray-800 outline-none"
+                  />
+                </div>
               </div>
             </div>
 

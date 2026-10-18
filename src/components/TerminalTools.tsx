@@ -1456,28 +1456,6 @@ export default function TerminalTools({
                       {vehicles.find(v => v.id === selectedVehicleId)?.settings?.isBlocked ? '🔓 Desbloquear' : '🔒 Bloquear'}
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const v = vehicles.find(v => v.id === selectedVehicleId);
-                        if (!v || !handleUpdateVehicle) return;
-                        const identifier = v.name || v.trackerNumber || v.phoneNumber || 'Dispositivo';
-                        const isOfflineOrOff = v.status === 'NoBattery' || v.status === 'Offline';
-                        if (isOfflineOrOff) {
-                          const newQueue = [...(v.commandQueue || []), { id: Date.now().toString(), name: 'Tocar Alarme', timestamp: new Date().toLocaleTimeString() }];
-                          handleUpdateVehicle({ ...v, commandQueue: newQueue });
-                          if (addNotification) addNotification({ title: '⏳ Comando Enfileirado', message: `${identifier} offline. Comando Tocar Alarme na fila.`, type: 'command', severity: 'warning', vehicleName: identifier });
-                          if (showToast) showToast('⏳ Comando na fila de espera.');
-                        } else {
-                          if (addNotification) addNotification({ title: '📍 Comando Executado', message: `Tocar Alarme reativado para ${identifier}.`, type: 'command', severity: 'info', vehicleName: identifier });
-                          if (showToast) showToast('📍 Tocar Alarme ativado.');
-                        }
-                      }}
-                      className="bg-blue-500 hover:bg-blue-600 text-white py-3 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 shadow-sm transition-all"
-                    >
-                      🔊 Tocar Alarme
-                    </button>
-
  
                     <button
                       type="button"

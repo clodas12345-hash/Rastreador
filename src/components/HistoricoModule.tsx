@@ -506,16 +506,26 @@ export default function HistoricoModule({
             speedCount++;
           }
 
-          // 1. Viradas Bruscas / Curvas Acentuadas (Giroscópio / Bússola & Heading GPS)
+          // 1. Viradas Bruscas / Curvas Acentuadas (Giroscópio / Bússola & Dinâmica Veicular Real)
           let headingDiff = 0;
           if (p2.direction !== undefined && p1.direction !== undefined) {
             headingDiff = Math.abs(p2.direction - p1.direction);
             if (headingDiff > 180) headingDiff = 360 - headingDiff;
           }
-          const minTurnAngle = deepScanMode ? 25 : 40;
-          const minTurnSpeed = deepScanMode ? 18 : 22;
-          const isSharpTurnDetected = p2.harshCornering || (currentSpeed >= minTurnSpeed && headingDiff >= minTurnAngle && diffSec >= 0.5 && diffSec <= 4);
-          if (isSharpTurnDetected && (t2 - lastSharpTurnTs > 8000)) {
+          // Padrão de telemetria automotiva: curva brusca exige velocidade considerável (>= 36 km/h)
+          // com variação angular rápida (>= 50 graus em até 2.5s) e taxa angular acentuada (>= 20°/s)
+          // Isso evita marcar curvas e esquinas urbanas normais a 20 km/h como infração
+          const minTurnAngle = deepScanMode ? 45 : 55;
+          const minTurnSpeed = deepScanMode ? 32 : 36;
+          const turnRate = diffSec > 0 ? headingDiff / diffSec : 0;
+          const isSharpTurnDetected = p2.harshCornering || (
+            currentSpeed >= minTurnSpeed && 
+            headingDiff >= minTurnAngle && 
+            turnRate >= 20 && 
+            diffSec >= 0.5 && 
+            diffSec <= 3.0
+          );
+          if (isSharpTurnDetected && (t2 - lastSharpTurnTs > 12000)) {
             sharpTurnsCount++;
             lastSharpTurnTs = t2;
           }
@@ -634,11 +644,11 @@ export default function HistoricoModule({
         const idleHours = idleTimeMs / 3600000;
         const estimatedFuelLiters = Number(((dist / 10.5) + (idleHours * 0.9)).toFixed(1));
 
-        const avgSatellites = satCount > 0 ? Math.round(satSum / satCount) : 12;
-        const minSatellites = minSat < 999 ? minSat : 8;
-        const finalMinAlt = minAlt < 99999 ? minAlt : 650;
-        const finalMaxAlt = maxAlt > -99999 ? maxAlt : 820;
-        const gpsSignalFidelity = routePoints.length > 0 ? Math.round((preciseFidelityCount / routePoints.length) * 100) : 98;
+        const avgSatellites = satCount > 0 ? Math.round(satSum / satCount) : (vehicle.satellites && vehicle.satellites > 0 ? vehicle.satellites : undefined);
+        const minSatellites = minSat < 999 ? minSat : (vehicle.satellites && vehicle.satellites > 0 ? vehicle.satellites : undefined);
+        const finalMinAlt = minAlt < 99999 ? Math.round(minAlt) : undefined;
+        const finalMaxAlt = maxAlt > -99999 ? Math.round(maxAlt) : undefined;
+        const gpsSignalFidelity = routePoints.length > 0 ? Math.round((preciseFidelityCount / routePoints.length) * 100) : 100;
         
         const savedRoute: SavedRoute = {
           id: `flespi-history-${imei}-${fromTs}-${toTs}`,
@@ -1001,8 +1011,8 @@ export default function HistoricoModule({
         ['Tensão Mínima da Bateria (Partida/Repouso)', `${report.stats?.minBatteryVoltage || 12.2} V`],
         ['Tensão Máxima (Alternador em Carga)', `${report.stats?.maxBatteryVoltage || 14.1} V`],
         ['Chave Ligada sem Partida (Consumo Parado)', `${report.stats?.batteryDrainMinutes || 0} minutos`],
-        ['Satélites GPS Visíveis (Média / Mínimo)', `${report.stats?.avgSatellites || 12} satélites (mín: ${report.stats?.minSatellites || 8})`],
-        ['Altitude / Relevo do Trajeto', `Min: ${report.stats?.minAltitude || 650}m | Max: ${report.stats?.maxAltitude || 820}m`],
+        ['Satélites GPS Visíveis (Média / Mínimo)', report.stats?.avgSatellites ? `${report.stats.avgSatellites} satélites (mín: ${report.stats?.minSatellites || report.stats.avgSatellites})` : 'Sinal GPS Ativo (Conectado)'],
+        ['Altitude / Relevo do Trajeto', report.stats?.minAltitude !== undefined && report.stats?.maxAltitude !== undefined ? `Min: ${report.stats.minAltitude}m | Max: ${report.stats.maxAltitude}m` : 'Topografia da rota'],
         ['Estimativa de Combustível Consumido', `${report.stats?.fuelConsumedLiters || 0} Litros`]
       ];
 
@@ -1465,8 +1475,12 @@ export default function HistoricoModule({
                 </div>
                 <div>
                   <span className="text-[10px] text-gray-500 font-bold uppercase block">Satélites GPS</span>
-                  <span className="text-base font-black text-gray-900">{report.stats?.avgSatellites || 12} satélites</span>
-                  <span className="text-[10px] text-gray-400 block">Mínimo: {report.stats?.minSatellites || 8} (Alta precisão)</span>
+                  <span className="text-base font-black text-gray-900">
+                    {report.stats?.avgSatellites ? `${report.stats.avgSatellites} satélites` : `${vehicle.satellites || 0} satélites`}
+                  </span>
+                  <span className="text-[10px] text-gray-400 block">
+                    {report.stats?.minSatellites ? `Mínimo: ${report.stats.minSatellites} (Média da rota)` : 'Conexão GPS em tempo real'}
+                  </span>
                 </div>
               </div>
 
@@ -1476,7 +1490,11 @@ export default function HistoricoModule({
                 </div>
                 <div>
                   <span className="text-[10px] text-gray-500 font-bold uppercase block">Altitude / Relevo</span>
-                  <span className="text-base font-black text-gray-900">{report.stats?.minAltitude || 650}m a {report.stats?.maxAltitude || 820}m</span>
+                  <span className="text-base font-black text-gray-900">
+                    {report.stats?.minAltitude !== undefined && report.stats?.maxAltitude !== undefined && report.stats.minAltitude !== report.stats.maxAltitude
+                      ? `${report.stats.minAltitude}m a ${report.stats.maxAltitude}m`
+                      : (report.stats?.minAltitude !== undefined ? `${report.stats.minAltitude}m` : 'Topografia da rota')}
+                  </span>
                   <span className="text-[10px] text-gray-400 block">Topografia da rota</span>
                 </div>
               </div>

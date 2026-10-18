@@ -1,10 +1,12 @@
-const CACHE_NAME = 'gkd-mobility-pwa-v2';
+const CACHE_NAME = 'gkd-mobility-pwa-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/manifest.webmanifest',
-  '/1786699612187.png'
+  '/gkd_logo_official.png',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -46,18 +48,29 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Suporte para Notificações Push e Alertas
+// Suporte para Notificações Push e Alertas com Logo Oficial GKD
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'GKD Mobility', body: 'Nova atualização de telemetria.' };
+  let data = { title: 'GKD Mobility', body: 'Nova atualização de telemetria.' };
+  try {
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch (e) {
+    if (event.data) {
+      data.body = event.data.text();
+    }
+  }
   
   const options = {
     body: data.body,
     icon: '/gkd_logo_official.png',
     badge: '/gkd_logo_official.png',
+    image: data.image || undefined,
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),
-      primaryKey: '1'
+      primaryKey: '1',
+      url: data.url || '/'
     }
   };
 
@@ -68,12 +81,18 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url === '/' && 'focus' in client) return client.focus();
+        if (client.url && 'focus' in client) {
+          return client.focus();
+        }
       }
-      if (clients.openWindow) return clients.openOpenWindow('/');
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     })
   );
 });
