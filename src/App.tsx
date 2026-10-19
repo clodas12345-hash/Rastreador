@@ -1173,6 +1173,48 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(() => {
     return isPublicSingleView && vehicles.length === 1 ? vehicles[0] : null;
   });
+  const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>(() => {
+    return isPublicSingleView && vehicles.length === 1 ? [vehicles[0].id] : [];
+  });
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
+
+  const handleSelectVehicle = (v: Vehicle | null) => {
+    setSelectedVehicle(v);
+    if (v) {
+      setSelectedVehicleIds([v.id]);
+    } else {
+      setSelectedVehicleIds([]);
+    }
+  };
+
+  const handleToggleVehicleSelection = (id: string) => {
+    setSelectedVehicleIds(prev => {
+      let next: string[];
+      if (prev.includes(id)) {
+        next = prev.filter(vId => vId !== id);
+      } else {
+        next = [...prev, id];
+      }
+      if (next.length === 1) {
+        const v = vehicles.find(veh => veh.id === next[0]) || null;
+        setSelectedVehicle(v);
+      } else {
+        setSelectedVehicle(null);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllVehicles = () => {
+    const allIds = vehicles.map(v => v.id);
+    setSelectedVehicleIds(allIds);
+    setSelectedVehicle(null);
+  };
+
+  const handleClearVehicleSelection = () => {
+    setSelectedVehicleIds([]);
+    setSelectedVehicle(null);
+  };
   const [modalMode, setModalMode] = useState<'details' | 'position' | 'settings' | 'data' | 'emergency' | null>(null);
   const [photoViewerUrl, setPhotoViewerUrl] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -2147,6 +2189,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
   const handleSelectAndLocateVehicle = (v: Vehicle) => {
     setSelectedVehicle(v);
+    setSelectedVehicleIds([v.id]);
   };
 
   useEffect(() => {
@@ -2208,6 +2251,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         setSelectedVehicle(current);
       } else {
         setSelectedVehicle(null);
+      }
+    }
+    if (selectedVehicleIds.length > 0) {
+      const validIds = selectedVehicleIds.filter(id => vehicles.some(v => v.id === id));
+      if (validIds.length !== selectedVehicleIds.length) {
+        setSelectedVehicleIds(validIds);
       }
     }
   }, [vehicles]);
@@ -3004,30 +3053,116 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             {/* Bloco de Veículos Cadastrados */}
             <div className="space-y-2">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Veículos Cadastrados</h2>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Veículos</h2>
+                  <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                    {vehicles.length}
+                  </span>
                 </div>
-                <button 
-                  onClick={() => openModal({
-                    id: 'new', iconType: 'car', color: '#3b82f6', name: '', licensePlate: '', status: 'IgnitionOff', trackerNumber: '', phoneNumber: '', speed: 0, fuel: 100, lat: -23.5505 + (Math.random() - 0.5) * 0.05, lng: -46.6333 + (Math.random() - 0.5) * 0.05, sharpTurns: 0, harshBraking: 0, totalMileage: 0, dailyMileage: 0,
-                    settings: {
-                      ...DEFAULT_VEHICLE_SETTINGS
-                    }
-                  }, 'details')}
-                  className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors font-medium cursor-pointer"
-                >
-                  + Veículo
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button 
+                    type="button"
+                    onClick={() => setIsMultiSelectMode(!isMultiSelectMode)}
+                    className={`text-xs px-2 py-1 rounded transition-colors font-medium cursor-pointer ${
+                      isMultiSelectMode 
+                        ? 'bg-blue-600 text-white font-bold shadow-xs' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                    title={isMultiSelectMode ? "Desativar seleção de múltiplos veículos" : "Ativar seleção de múltiplos veículos para enquadrar juntos"}
+                  >
+                    {isMultiSelectMode ? '✓ Múltiplos' : '☑ Vários'}
+                  </button>
+                  <button 
+                    onClick={() => openModal({
+                      id: 'new', iconType: 'car', color: '#3b82f6', name: '', licensePlate: '', status: 'IgnitionOff', trackerNumber: '', phoneNumber: '', speed: 0, fuel: 100, lat: -23.5505 + (Math.random() - 0.5) * 0.05, lng: -46.6333 + (Math.random() - 0.5) * 0.05, sharpTurns: 0, harshBraking: 0, totalMileage: 0, dailyMileage: 0,
+                      settings: {
+                        ...DEFAULT_VEHICLE_SETTINGS
+                      }
+                    }, 'details')}
+                    className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors font-medium cursor-pointer"
+                  >
+                    + Veículo
+                  </button>
+                </div>
               </div>
-              {vehicles.filter(v => ((v.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (v.licensePlate || '').toLowerCase().includes(searchTerm.toLowerCase()) || (v.trackerNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) || (v.phoneNumber || '').toLowerCase().includes(searchTerm.toLowerCase()))).map((v: any) => (
+
+              {/* Barra de controle de multi-seleção */}
+              {(isMultiSelectMode || selectedVehicleIds.length > 0) && (
+                <div className="bg-blue-50 border border-blue-200 p-2 rounded-xl flex items-center justify-between gap-1.5 text-xs mb-2 animate-in fade-in">
+                  <span className="font-semibold text-blue-800 text-[11px]">
+                    {selectedVehicleIds.length > 0 ? `${selectedVehicleIds.length} selecionado(s)` : 'Marque os veículos'}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllVehicles}
+                      className="px-2 py-0.5 bg-white border border-blue-300 text-blue-700 rounded text-[10px] font-bold hover:bg-blue-100 cursor-pointer"
+                      title="Selecionar todos os veículos"
+                    >
+                      Todos
+                    </button>
+                    {selectedVehicleIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearVehicleSelection}
+                        className="px-2 py-0.5 bg-white border border-gray-300 text-gray-600 rounded text-[10px] font-bold hover:bg-gray-100 cursor-pointer"
+                        title="Limpar seleção"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveModule('rastreamento');
+                        setSidebarOpen(false);
+                      }}
+                      className="px-2 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold hover:bg-blue-700 shadow-xs cursor-pointer flex items-center gap-0.5"
+                      title="Ver e auto-ajustar zoom no mapa"
+                    >
+                      <span>🎯</span> Ver Mapa
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {vehicles.filter(v => ((v.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (v.licensePlate || '').toLowerCase().includes(searchTerm.toLowerCase()) || (v.trackerNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) || (v.phoneNumber || '').toLowerCase().includes(searchTerm.toLowerCase()))).map((v: any) => {
+                const isSelectedInList = selectedVehicleIds.includes(v.id) || selectedVehicle?.id === v.id;
+                return (
                 <div 
                   key={v.id}
-                  className={`w-full text-left p-3 rounded-lg border transition-all group cursor-pointer ${selectedVehicle?.id === v.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-100 hover:border-blue-300 hover:shadow-sm'}`}
-                  onClick={(e) => { e.preventDefault(); handleListItemClick(v); }}
+                  className={`w-full text-left p-3 rounded-lg border transition-all group cursor-pointer relative ${
+                    isSelectedInList 
+                      ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-300 shadow-xs' 
+                      : 'bg-gray-50 border-gray-100 hover:border-blue-300 hover:shadow-sm'
+                  }`}
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isMultiSelectMode) {
+                      handleToggleVehicleSelection(v.id);
+                    } else {
+                      handleListItemClick(v); 
+                    }
+                  }}
                   onDoubleClick={(e) => { e.preventDefault(); handleListItemClick(v); }}
                 >
                   <div className="flex justify-between items-start mb-1">
                     <div className="flex items-center gap-2">
+                      <div 
+                        className="flex items-center cursor-pointer p-0.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleVehicleSelection(v.id);
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedVehicleIds.includes(v.id)}
+                          onChange={() => {}}
+                          className="w-3.5 h-3.5 rounded text-blue-600 border-gray-300 focus:ring-blue-500 cursor-pointer"
+                          title="Selecionar para rastrear e enquadrar no mapa"
+                        />
+                      </div>
                       <div className="p-1.5 bg-white rounded-md shadow-sm border border-gray-100 flex-shrink-0">
                         <VehicleIcon iconType={v.iconType} color={v.color} size={16} photoUrl={v.photoUrl} onClick={(e: any) => { e.stopPropagation(); if (v.photoUrl) setPhotoViewerUrl(v.photoUrl); }} />
                       </div>
@@ -3129,7 +3264,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+            })}
               {vehicles.length === 0 && (
                 <div className="text-center py-6 text-gray-400 text-sm">Nenhum veículo cadastrado</div>
               )}
@@ -3234,11 +3370,13 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               <FleetTracker 
                 vehicles={vehicles} 
                 selectedVehicle={selectedVehicle} 
-                onMarkerClick={(v) => setSelectedVehicle(v)}
+                selectedVehicleIds={selectedVehicleIds}
+                onSelectVehicleIds={setSelectedVehicleIds}
+                onMarkerClick={(v) => handleSelectVehicle(v)}
                 onMarkerDoubleClick={(v) => !isPublicSingleView && openModal(v, v.settings?.isBlocked ? 'emergency' : 'details')}
-                onSelectVehicle={(v) => setSelectedVehicle(v)}
+                onSelectVehicle={(v) => handleSelectVehicle(v)}
                 onUpdateVehicle={(updated) => handleUpdateVehicle(updated)}
-                onMapClick={() => { setSidebarOpen(false); setSelectedVehicle(null); }} 
+                onMapClick={() => { setSidebarOpen(false); handleSelectVehicle(null); }} 
                 activeRoute={activeRoute}
                 onOpenHistorico={() => setActiveModule('historico')}
                 onOpenTimeline={(v, dateStr) => handleOpenDirectTimeline(v, dateStr)}

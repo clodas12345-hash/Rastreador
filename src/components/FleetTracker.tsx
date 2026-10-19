@@ -1,5 +1,5 @@
 import {AdvancedMarker, Map, useMap} from '@vis.gl/react-google-maps';
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useRef, useState, useCallback} from 'react';
 import {Vehicle, SavedRoute, RoutePoint, Geofence} from '../types';
 import {VehicleIcon} from './VehicleIcon';
 import GeofenceLayer from './GeofenceLayer';
@@ -245,19 +245,54 @@ function ZoomTracker({ onZoomChange }: { onZoomChange: (zoom: number) => void })
 
 function MapController({
   selectedVehicle,
+  selectedVehicleIds = [],
   activeRoute,
   vehicles,
-  isShowingAll
+  isShowingAll,
+  fitTrigger = 0
 }: {
   selectedVehicle: Vehicle | null;
+  selectedVehicleIds?: string[];
   activeRoute: SavedRoute | null;
   vehicles: Vehicle[];
   isShowingAll: boolean;
+  fitTrigger?: number;
 }) {
   const map = useMap();
   const prevSelectedId = useRef<string | null>(null);
+  const prevSelectedIdsKey = useRef<string>('');
   const prevRouteId = useRef<string | null>(null);
-  const lastFittedCount = useRef<number>(0);
+  const prevFitTrigger = useRef<number>(fitTrigger);
+
+  // Helper to fit bounds with padding and clamp maximum zoom
+  const fitVehiclesBounds = useCallback((targetVehs: Vehicle[]) => {
+    if (!map) return;
+    const valid = targetVehs.filter(v => {
+      const lat = Number(v.lat);
+      const lng = Number(v.lng);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+
+    if (valid.length > 1) {
+      const bounds = new google.maps.LatLngBounds();
+      valid.forEach(v => bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) }));
+      
+      // Responsive padding ensuring all vehicles are completely visible on screen
+      map.fitBounds(bounds, { top: 110, bottom: 130, left: 80, right: 80 });
+
+      // Clamp zoom to prevent excessive zoom-in if vehicles are close to each other
+      const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
+        const currentZoom = map.getZoom();
+        if (currentZoom !== undefined && currentZoom > 17) {
+          map.setZoom(17);
+        }
+      });
+      return () => google.maps.event.removeListener(listener);
+    } else if (valid.length === 1) {
+      map.panTo({ lat: Number(valid[0].lat), lng: Number(valid[0].lng) });
+      map.setZoom(17);
+    }
+  }, [map]);
 
   useEffect(() => {
     if (!map) return;
@@ -275,45 +310,67 @@ function MapController({
       prevRouteId.current = null;
     }
 
-    // 2. Se isShowingAll está ativo (modo "Ver todos"), enquadra TODOS os veículos juntos na tela
-    if (isShowingAll || !selectedVehicle) {
+    const currentIdsKey = (selectedVehicleIds || []).slice().sort().join(',');
+    const isMultiSelection = (selectedVehicleIds || []).length > 1;
+    const idsChanged = currentIdsKey !== prevSelectedIdsKey.current;
+    const triggerFired = fitTrigger !== prevFitTrigger.current;
+
+    // 2. Multi-seleção de veículos: Quando vários veículos estiverem selecionados
+    if (isMultiSelection) {
+      prevSelectedIdsKey.current = currentIdsKey;
+      prevFitTrigger.current = fitTrigger;
+      prevSelectedId.current = null;
+
+      const multiVehicles = vehicles.filter(v => (selectedVehicleIds || []).includes(v.id));
+
+      // Se a seleção mudou ou o botão de auto-ajustar zoom foi acionado, força o fitBounds
+      if (idsChanged || triggerFired) {
+        fitVehiclesBounds(multiVehicles);
+        return;
+      }
+
+      // Se veículos continuam selecionados e estão em movimento, verifica se algum saiu da tela
+      // Garantindo que todos os veículos selecionados permaneçam 100% visíveis na tela!
+      const currentBounds = map.getBounds();
+      if (currentBounds) {
+        const anyOutOfBounds = multiVehicles.some(v => {
+          const lat = Number(v.lat);
+          const lng = Number(v.lng);
+          if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return false;
+          return !currentBounds.contains(new google.maps.LatLng(lat, lng));
+        });
+
+        if (anyOutOfBounds) {
+          fitVehiclesBounds(multiVehicles);
+        }
+      }
+      return;
+    }
+
+    prevSelectedIdsKey.current = currentIdsKey;
+    prevFitTrigger.current = fitTrigger;
+
+    // 3. Se isShowingAll está ativo ou nenhum veículo selecionado, enquadra todos os veículos
+    if (isShowingAll || (!selectedVehicle && (!selectedVehicleIds || selectedVehicleIds.length === 0))) {
+      prevSelectedId.current = null;
       const validVehicles = vehicles.filter(v => {
         const lat = Number(v.lat);
         const lng = Number(v.lng);
         return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
       });
 
-      const fitAllVehicles = () => {
-        if (!map) return;
-        if (validVehicles.length > 1) {
-          const bounds = new google.maps.LatLngBounds();
-          validVehicles.forEach(v => {
-            bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) });
-          });
-          map.fitBounds(bounds, { top: 90, bottom: 90, left: 70, right: 70 });
-        } else if (validVehicles.length === 1) {
-          const singleV = validVehicles[0];
-          map.setCenter({ lat: Number(singleV.lat), lng: Number(singleV.lng) });
-          map.setZoom(15);
-        }
-      };
-
-      fitAllVehicles();
-      const t1 = setTimeout(fitAllVehicles, 150);
-
-      lastFittedCount.current = validVehicles.length;
-      prevSelectedId.current = null;
-      return () => {
-        clearTimeout(t1);
-      };
+      if (idsChanged || triggerFired) {
+        fitVehiclesBounds(validVehicles);
+      }
+      return;
     }
 
-    // 3. Foco individual no veículo selecionado ("Centralizar")
-    if (selectedVehicle) {
-      const target = vehicles.find(v => v.id === selectedVehicle.id) || selectedVehicle;
-
+    // 4. Foco individual no único veículo selecionado ("Centralizar")
+    const targetId = selectedVehicle?.id || (selectedVehicleIds && selectedVehicleIds.length === 1 ? selectedVehicleIds[0] : null);
+    if (targetId) {
+      const target = vehicles.find(v => v.id === targetId) || selectedVehicle;
       if (target && Number(target.lat) && Number(target.lng)) {
-        const isNewTarget = prevSelectedId.current !== target.id;
+        const isNewTarget = prevSelectedId.current !== target.id || triggerFired;
         if (isNewTarget) {
           map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
           map.setZoom(17);
@@ -323,7 +380,7 @@ function MapController({
         }
       }
     }
-  }, [map, selectedVehicle, activeRoute, vehicles, isShowingAll]);
+  }, [map, selectedVehicle, selectedVehicleIds, activeRoute, vehicles, isShowingAll, fitTrigger, fitVehiclesBounds]);
 
   return null;
 }
@@ -399,15 +456,19 @@ function UserLocationMarker({ vehicles = [], onUpdateVehicle }: { vehicles?: Veh
 function MapCenterControls({
   vehicles,
   selectedVehicle,
+  selectedVehicleIds = [],
   isShowingAll,
   setIsShowingAll,
-  onSelectVehicle
+  onSelectVehicle,
+  onTriggerFit
 }: {
   vehicles: Vehicle[];
   selectedVehicle: Vehicle | null;
+  selectedVehicleIds?: string[];
   isShowingAll: boolean;
   setIsShowingAll: (val: boolean) => void;
   onSelectVehicle: (v: Vehicle | null) => void;
+  onTriggerFit?: () => void;
 }) {
   const map = useMap();
   const lastFocusedIndexRef = useRef<number>(-1);
@@ -418,7 +479,10 @@ function MapCenterControls({
     return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
   });
 
-  // Se o usuário clicou direto em um marcador no mapa, sincroniza o índice atual para que o próximo ciclo vá para o outro veículo
+  const selectedCount = (selectedVehicleIds || []).length;
+  const isMulti = selectedCount > 1;
+
+  // Sincroniza o índice de foco quando um veículo individual é selecionado
   useEffect(() => {
     if (selectedVehicle && !isShowingAll) {
       const idx = validVehicles.findIndex(v => v.id === selectedVehicle.id);
@@ -431,6 +495,12 @@ function MapCenterControls({
   const handleToggle = () => {
     if (!map) return;
 
+    // Se múltiplos veículos estiverem selecionados, aciona imediatamente o auto-ajuste de zoom (fitBounds)
+    if (isMulti && onTriggerFit) {
+      onTriggerFit();
+      return;
+    }
+
     if (!isShowingAll) {
       // Passo "Ver todos": Enquadra todos os veículos juntos na tela
       if (validVehicles.length > 1) {
@@ -438,7 +508,7 @@ function MapCenterControls({
         validVehicles.forEach(v => {
           bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) });
         });
-        map.fitBounds(bounds, { top: 90, bottom: 90, left: 70, right: 70 });
+        map.fitBounds(bounds, { top: 110, bottom: 120, left: 70, right: 70 });
       } else if (validVehicles.length === 1) {
         map.setCenter({ lat: Number(validVehicles[0].lat), lng: Number(validVehicles[0].lng) });
         map.setZoom(15);
@@ -446,7 +516,7 @@ function MapCenterControls({
       setIsShowingAll(true);
       onSelectVehicle(null);
     } else {
-      // Passo "Centralizar": Foca no próximo veículo da fila (Carro 1 -> depois Carro 2 -> depois Carro 1...)
+      // Passo "Centralizar": Foca no próximo veículo da fila
       if (validVehicles.length === 0) return;
 
       const nextIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
@@ -474,13 +544,23 @@ function MapCenterControls({
         type="button"
         onClick={handleToggle}
         className="bg-white/95 hover:bg-blue-50 text-gray-800 hover:text-blue-600 font-bold px-4 py-2.5 rounded-2xl shadow-xl border border-blue-200 backdrop-blur-md flex items-center gap-2 text-xs transition-all hover:scale-105 active:scale-95 group cursor-pointer"
-        title={isShowingAll ? (nextTargetName ? `Centralizar em ${nextTargetName}` : "Centralizar no veículo") : "Ver todos os veículos no mapa"}
+        title={
+          isMulti
+            ? `Auto-ajustar zoom para os ${selectedCount} veículos selecionados`
+            : isShowingAll
+            ? (nextTargetName ? `Centralizar em ${nextTargetName}` : "Centralizar no veículo")
+            : "Ver todos os veículos no mapa"
+        }
       >
         <span className="p-1 bg-blue-100 group-hover:bg-blue-200 text-blue-700 rounded-lg transition-colors text-sm">
-          {isShowingAll ? '🎯' : '🗺️'}
+          {isMulti ? '🔍' : isShowingAll ? '🎯' : '🗺️'}
         </span>
         <span className="whitespace-nowrap font-bold">
-          {isShowingAll ? (nextTargetName ? `Centralizar (${nextTargetName})` : 'Centralizar') : `Ver Todos (${validVehicles.length})`}
+          {isMulti
+            ? `Auto-Ajustar Zoom (${selectedCount})`
+            : isShowingAll
+            ? (nextTargetName ? `Centralizar (${nextTargetName})` : 'Centralizar')
+            : `Ver Todos (${validVehicles.length})`}
         </span>
       </button>
     </div>
@@ -500,9 +580,11 @@ export function calculateSmartRoadSpeed(v: Vehicle): number {
 interface FleetTrackerProps {
   vehicles: Vehicle[];
   selectedVehicle: Vehicle | null;
+  selectedVehicleIds?: string[];
+  onSelectVehicleIds?: (ids: string[]) => void;
   onMarkerClick: (v: Vehicle) => void;
   onMarkerDoubleClick?: (v: Vehicle) => void;
-  onSelectVehicle?: (v: Vehicle) => void;
+  onSelectVehicle?: (v: Vehicle | null) => void;
   onUpdateVehicle?: (updated: Vehicle) => void;
   onMapClick?: () => void;
   activeRoute?: SavedRoute | null;
@@ -528,6 +610,8 @@ interface FleetTrackerProps {
 export default function FleetTracker({
   vehicles,
   selectedVehicle,
+  selectedVehicleIds = [],
+  onSelectVehicleIds,
   onMarkerClick,
   onMarkerDoubleClick,
   onSelectVehicle,
@@ -553,7 +637,12 @@ export default function FleetTracker({
   isPublicView = false
 }: FleetTrackerProps) {
   const [mapZoom, setMapZoom] = useState(13);
-  const [isShowingAll, setIsShowingAll] = useState(() => !selectedVehicle);
+  const [isShowingAll, setIsShowingAll] = useState(() => !selectedVehicle && (!selectedVehicleIds || selectedVehicleIds.length === 0));
+  const [fitTrigger, setFitTrigger] = useState(0);
+
+  const handleTriggerFitBounds = () => {
+    setFitTrigger(prev => prev + 1);
+  };
   const [startPoint, setStartPoint] = useState<RoutePoint | null>(null);
   const [endPoint, setEndPoint] = useState<RoutePoint | null>(null);
   const [showTimelineDrawer, setShowTimelineDrawer] = useState(false);
@@ -655,6 +744,23 @@ export default function FleetTracker({
     if (e) {
       e.stopPropagation();
     }
+
+    const isShiftOrCtrl = e && (e.shiftKey || e.ctrlKey || e.metaKey);
+    if (isShiftOrCtrl && onSelectVehicleIds) {
+      const currentIds = selectedVehicleIds || [];
+      const nextIds = currentIds.includes(v.id)
+        ? currentIds.filter(id => id !== v.id)
+        : [...currentIds, v.id];
+      onSelectVehicleIds(nextIds);
+      if (nextIds.length === 1) {
+        const singleV = vehicles.find(veh => veh.id === nextIds[0]) || null;
+        if (onSelectVehicle) onSelectVehicle(singleV);
+      } else {
+        if (onSelectVehicle) onSelectVehicle(null);
+      }
+      return;
+    }
+
     const now = Date.now();
     const lastTime = lastClickMapRef.current[v.id] || 0;
     const timeDiff = now - lastTime;
@@ -672,12 +778,14 @@ export default function FleetTracker({
       }
       lastClickMapRef.current[v.id] = 0;
       setActivePopupVehicleId(v.id);
+      if (onSelectVehicleIds) onSelectVehicleIds([v.id]);
       if (onSelectVehicle) onSelectVehicle(v);
       else onMarkerClick(v);
     } else {
       // 1 CLICK (Single click): Center map on car, keep popup closed unless 2 clicks happen
       lastClickMapRef.current[v.id] = now;
       setActivePopupVehicleId(null);
+      if (onSelectVehicleIds) onSelectVehicleIds([v.id]);
       if (onSelectVehicle) onSelectVehicle(v);
       else onMarkerClick(v);
 
@@ -725,8 +833,47 @@ export default function FleetTracker({
     <div className="flex-grow flex relative w-full h-full overflow-hidden">
 
 
-      {/* Top Banner when tracking a selected vehicle dynamically */}
-      {!activeRoute && currentSelected && (
+      {/* Top Banner when multiple vehicles are selected */}
+      {!activeRoute && (selectedVehicleIds || []).length > 1 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-slate-900/95 backdrop-blur-md text-white px-3.5 sm:px-4 py-2 rounded-2xl shadow-2xl border border-blue-500/40 flex items-center gap-2.5 sm:gap-3 text-xs font-semibold pointer-events-auto animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+            </span>
+            <span className="text-slate-200">
+              <strong className="text-blue-400 font-bold">{(selectedVehicleIds || []).length}</strong> veículos selecionados
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          <button
+            type="button"
+            onClick={handleTriggerFitBounds}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            title="Ajustar zoom automaticamente (fitBounds) para que todos os veículos selecionados apareçam na tela"
+          >
+            <span>🎯</span> Auto-Ajustar Zoom
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (onSelectVehicleIds) onSelectVehicleIds([]);
+              if (onSelectVehicle) onSelectVehicle(null);
+              setIsShowingAll(true);
+            }}
+            className="text-slate-400 hover:text-white px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer hover:bg-slate-800"
+            title="Desmarcar seleção e ver todos os veículos"
+          >
+            ✕ Limpar
+          </button>
+        </div>
+      )}
+
+      {/* Top Banner when tracking a single selected vehicle dynamically */}
+      {!activeRoute && currentSelected && (!selectedVehicleIds || selectedVehicleIds.length <= 1) && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-lg border border-blue-200 flex items-center gap-2.5 text-xs font-semibold pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200">
           <span className="relative flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -867,9 +1014,11 @@ export default function FleetTracker({
           <UserLocationMarker vehicles={vehicles} onUpdateVehicle={onUpdateVehicle} />
           <MapController 
             selectedVehicle={selectedVehicle} 
+            selectedVehicleIds={selectedVehicleIds}
             activeRoute={activeRoute || null} 
             vehicles={vehicles}
             isShowingAll={isShowingAll}
+            fitTrigger={fitTrigger}
           />
           
           <GeofenceLayer geofences={geofences} />
@@ -877,6 +1026,7 @@ export default function FleetTracker({
           <MapCenterControls
             vehicles={vehicles}
             selectedVehicle={selectedVehicle}
+            selectedVehicleIds={selectedVehicleIds}
             isShowingAll={isShowingAll}
             setIsShowingAll={setIsShowingAll}
             onSelectVehicle={(v) => {
@@ -886,6 +1036,7 @@ export default function FleetTracker({
               if (onSelectVehicle) onSelectVehicle(v as any);
               else if (v) onMarkerClick(v);
             }}
+            onTriggerFit={handleTriggerFitBounds}
           />
 
           {/* Render Active Saved Route Polyline */}
@@ -963,7 +1114,10 @@ export default function FleetTracker({
             const jitterLat = overlapCount > 0 ? v.lat + (overlapCount * 0.0002) : v.lat;
             const jitterLng = overlapCount > 0 ? v.lng + (overlapCount * 0.0002) : v.lng;
             
-            const isSelected = selectedVehicle?.id === v.id;
+            const isSelected = (selectedVehicleIds && selectedVehicleIds.length > 0)
+              ? selectedVehicleIds.includes(v.id)
+              : (selectedVehicle?.id === v.id);
+            const isMultiSelected = Boolean(selectedVehicleIds && selectedVehicleIds.length > 1 && selectedVehicleIds.includes(v.id));
             const isMoving = v.status === 'Moving' && (v.speed || 0) >= 4;
             const pointerHeight = Math.max(0, (18 - mapZoom) * 8);
             const statusColor = v.settings?.isBlocked ? 'bg-red-600' : v.status === 'Offline' || v.status === 'NoBattery' ? 'bg-red-600' : isMoving || v.status === 'IgnitionOn' ? 'bg-green-500' : 'bg-gray-400';
@@ -1032,12 +1186,13 @@ export default function FleetTracker({
                 
                 {/* Dynamic Vehicle Label & Speed Indicator */}
                 <div className="flex flex-col items-center absolute bottom-full mb-1 pointer-events-none">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap transition-all ${
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap transition-all flex items-center gap-1 ${
                     isSelected 
                       ? 'bg-blue-600 text-white ring-2 ring-white scale-105' 
                       : 'bg-white/95 text-gray-800 border border-gray-200'
                   }`}>
-                    {v.settings?.isBlocked ? `🔒 [BLOQUEADO] ${v.name}` : v.name}
+                    {isMultiSelected && <span className="bg-white text-blue-700 px-1 rounded text-[10px] font-black">✓</span>}
+                    <span>{v.settings?.isBlocked ? `🔒 [BLOQUEADO] ${v.name}` : v.name}</span>
                     {isMoving && v.speed >= 10 ? ` • ${Math.round(v.speed)} km/h` : ''}
                   </span>
                 </div>

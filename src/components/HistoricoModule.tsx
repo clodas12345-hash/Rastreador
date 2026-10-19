@@ -1476,7 +1476,7 @@ export default function HistoricoModule({
                 <div>
                   <span className="text-[10px] text-gray-500 font-bold uppercase block">Satélites GPS</span>
                   <span className="text-base font-black text-gray-900">
-                    {report.stats?.avgSatellites ? `${report.stats.avgSatellites} satélites` : `${vehicle.satellites || 0} satélites`}
+                    {report.stats?.avgSatellites ? `${report.stats.avgSatellites} satélites` : `${vehicles.find(v => v.id === report.vehicleId)?.satellites || 0} satélites`}
                   </span>
                   <span className="text-[10px] text-gray-400 block">
                     {report.stats?.minSatellites ? `Mínimo: ${report.stats.minSatellites} (Média da rota)` : 'Conexão GPS em tempo real'}
