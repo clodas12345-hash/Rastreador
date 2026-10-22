@@ -4,7 +4,7 @@
  */
 import {useState, useEffect, useRef} from 'react';
 import {APIProvider} from '@vis.gl/react-google-maps';
-import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X, Smartphone, CheckCircle2} from 'lucide-react';
+import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X, Smartphone, CheckCircle2, Navigation} from 'lucide-react';
 import {Vehicle, VehicleSettings, SavedRoute, RoutePoint, AppNotification, Geofence} from './types';
 import FleetTracker from './components/FleetTracker';
 import Dashboard from './components/Dashboard';
@@ -755,13 +755,57 @@ const sendFlespiCommand = async (
   }
 };
 
+const getDeletedVehicleIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem('gkd_deleted_vehicle_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch (e) {}
+  return new Set();
+};
+
+const addDeletedVehicleId = (id: string) => {
+  try {
+    const current = getDeletedVehicleIds();
+    current.add(id);
+    localStorage.setItem('gkd_deleted_vehicle_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {}
+};
+
+const removeDeletedVehicleId = (id: string) => {
+  try {
+    const current = getDeletedVehicleIds();
+    if (current.has(id)) {
+      current.delete(id);
+      localStorage.setItem('gkd_deleted_vehicle_ids', JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {}
+};
+
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
   };
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
+    try {
+      const deletedIds = getDeletedVehicleIds();
+      const cached = localStorage.getItem('app_vehicles_cache');
+      if (cached !== null) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleaned = parsed.filter((v: any) => v.type !== 'pessoa' && !deletedIds.has(v.id));
+          if (cleaned.length > 0) return cleaned;
+        }
+      }
+      return DEFAULT_INITIAL_VEHICLES.filter(v => !deletedIds.has(v.id));
+    } catch (e) {
+      return DEFAULT_INITIAL_VEHICLES;
+    }
+  });
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [activeModule, setActiveModuleState] = useState<'rastreamento' | 'dashboard' | 'historico' | 'ajuda' | 'ferramentas' | 'dados' | 'registros' | 'cercas' | 'permissoes'>(() => {
     try {
@@ -804,34 +848,6 @@ export default function App() {
     initNotifications();
   }, []);
 
-  const getDeletedVehicleIds = (): Set<string> => {
-    try {
-      const raw = localStorage.getItem('gkd_deleted_vehicle_ids');
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) return new Set(arr);
-      }
-    } catch (e) {}
-    return new Set();
-  };
-
-  const addDeletedVehicleId = (id: string) => {
-    try {
-      const current = getDeletedVehicleIds();
-      current.add(id);
-      localStorage.setItem('gkd_deleted_vehicle_ids', JSON.stringify(Array.from(current)));
-    } catch (e) {}
-  };
-
-  const removeDeletedVehicleId = (id: string) => {
-    try {
-      const current = getDeletedVehicleIds();
-      if (current.has(id)) {
-        current.delete(id);
-        localStorage.setItem('gkd_deleted_vehicle_ids', JSON.stringify(Array.from(current)));
-      }
-    } catch (e) {}
-  };
 
   // Load cached vehicles initially
   useEffect(() => {
@@ -1044,8 +1060,8 @@ export default function App() {
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] w-[90vw] max-w-md bg-white/90 backdrop-blur-2xl px-4 py-3 rounded-[26px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/40 flex items-center gap-3 animate-fadeIn">
           {/* Native Style App Icon */}
-          <div className="w-10 h-10 bg-white rounded-[14px] shadow-sm border border-gray-100 flex items-center justify-center shrink-0">
-            <img src="/gkd_logo_official.png" alt="GKD" className="w-6 h-6 object-contain" />
+          <div className="w-10 h-10 bg-blue-600 rounded-[14px] shadow-sm border border-blue-500 flex items-center justify-center shrink-0 text-white">
+            <Navigation className="w-5 h-5" />
           </div>
           
           <div className="flex-1 min-w-0">
@@ -1824,9 +1840,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
     const getNotificationIconUrl = () => {
       try {
-        return new URL('./gkd_logo_official.png', window.location.href).href;
+        return new URL('./icon-192.png', window.location.href).href;
       } catch (e) {
-        return '/gkd_logo_official.png';
+        return '/icon-192.png';
       }
     };
 
@@ -2042,7 +2058,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             },
             sound: 'alert.wav',
             smallIcon: 'ic_stat_icon', // Small icon generated by build script
-            largeIcon: 'ic_large_icon', // Full-color app logo on Android
+            largeIcon: 'ic_large_icon', // Full-color app icon on Android
             iconColor: '#2563EB',
             actionTypeId: '',
             extra: {
@@ -2056,9 +2072,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     // 3. Real Browser Native Notification (Desktop fallback)
     else if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        let iconUrl = '/gkd_logo_official.png';
+        let iconUrl = '/icon-192.png';
         try {
-          iconUrl = new URL('./gkd_logo_official.png', window.location.href).href;
+          iconUrl = new URL('./icon-192.png', window.location.href).href;
         } catch (e) {}
 
         const delay = Math.max(0, targetDate.getTime() - Date.now());
@@ -2928,8 +2944,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => setShowVersionModal(true)}
           >
-            <div className="bg-white rounded-xl shadow-md p-1.5 flex items-center justify-center overflow-hidden w-10 h-10 shrink-0">
-              <img src="/gkd_logo_official.png" alt="GKD Logo" className="w-full h-full object-contain" />
+            <div className="bg-blue-600 rounded-xl shadow-md p-2 flex items-center justify-center overflow-hidden w-10 h-10 shrink-0 text-white">
+              <Navigation className="w-5 h-5" />
             </div>
             <div>
               <h1 className="text-sm font-extrabold text-white leading-tight">GKD Mobility</h1>
@@ -3548,7 +3564,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
               <div className="p-8 pb-6 flex flex-col items-center text-center bg-gradient-to-b from-slate-50 to-white">
-                <img src="/gkd_logo_official.png" alt="GKD Logo" className="w-32 h-32 object-contain mb-4 drop-shadow-md rounded-2xl" />
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white mb-4 shadow-lg shadow-blue-500/30">
+                  <Navigation className="w-10 h-10" />
+                </div>
                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">GKD Mobility</h2>
                 <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-bold tracking-wider">
                   VERSÃO GKD.R.V.1.0.0
@@ -4445,8 +4463,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               {/* Header - One UI Style */}
               <div className="bg-white/90 backdrop-blur-md p-4 flex items-center justify-between border-b border-gray-100 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
-                    <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-cover" />
+                  <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm border border-blue-100 bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Bell className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="font-black text-lg text-gray-900 tracking-tight flex items-center gap-2">
@@ -4637,9 +4655,9 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         !n.read ? 'bg-white/95 border-blue-100' : 'bg-gray-50/80 border-gray-100'
                       }`}>
                         
-                        {/* App Logo */}
-                        <div className="w-12 h-12 shrink-0 rounded-[14px] overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
-                          <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-contain" />
+                        {/* App Icon */}
+                        <div className="w-12 h-12 shrink-0 rounded-[14px] overflow-hidden shadow-sm border border-blue-100 bg-blue-50 flex items-center justify-center text-blue-600">
+                          <Bell className="w-6 h-6" />
                         </div>
 
                         {/* Content Area */}

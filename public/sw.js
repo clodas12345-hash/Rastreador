@@ -1,10 +1,9 @@
-const CACHE_NAME = 'gkd-mobility-pwa-v5';
+const CACHE_NAME = 'gkd-mobility-pwa-v6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/manifest.webmanifest',
-  '/gkd_logo_official.png',
   '/icon-192.png',
   '/icon-512.png'
 ];
@@ -48,7 +47,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Suporte para Notificações Push e Alertas com Logo Oficial GKD
+// Suporte para Notificações Push e Alertas do Sistema
 self.addEventListener('push', (event) => {
   let data = { title: 'GKD Mobility', body: 'Nova atualização de telemetria.' };
   try {
@@ -63,8 +62,8 @@ self.addEventListener('push', (event) => {
   
   const options = {
     body: data.body,
-    icon: '/gkd_logo_official.png',
-    badge: '/gkd_logo_official.png',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     image: data.image || undefined,
     vibrate: [100, 50, 100],
     data: {

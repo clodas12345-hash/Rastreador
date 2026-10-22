@@ -393,9 +393,9 @@ export default function PermissoesModule({ vehicles, onBackToMap, showToast }: P
     // Real Native Notification if permission granted
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
-        let iconUrl = '/gkd_logo_official.png';
+        let iconUrl = '/icon-192.png';
         try {
-          iconUrl = new URL('./gkd_logo_official.png', window.location.href).href;
+          iconUrl = new URL('./icon-192.png', window.location.href).href;
         } catch (e) {}
 
         new Notification(title, {

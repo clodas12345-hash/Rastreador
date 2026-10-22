@@ -133,8 +133,8 @@ export default function NotificationCenterModule({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm border border-slate-700 bg-white flex items-center justify-center">
-              <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-contain" />
+            <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm border border-slate-700 bg-slate-800 flex items-center justify-center text-blue-400">
+              <Bell className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-extrabold text-base sm:text-lg tracking-tight">Central de Notificações</h2>
@@ -150,7 +150,7 @@ export default function NotificationCenterModule({
                     await LocalNotifications.schedule({
                       notifications: [{
                         title: "GKD Mobility",
-                        body: "Teste de notificação com logo do app",
+                        body: "Teste de notificação do sistema",
                         id: 9999,
                         schedule: { at: new Date(Date.now() + 5000) },
                         channelId: "padrao",
@@ -164,13 +164,13 @@ export default function NotificationCenterModule({
                     showToast("Erro ao agendar notificação");
                   }
                 } else if ('Notification' in window && Notification.permission === 'granted') {
-                  const iconUrl = new URL('./gkd_logo_official.png', window.location.href).href;
+                  const iconUrl = new URL('./icon-192.png', window.location.href).href;
                   new Notification("GKD Mobility", {
-                    body: "Notificação de teste com logo oficial do app",
+                    body: "Notificação de teste do sistema",
                     icon: iconUrl,
                     badge: iconUrl
                   });
-                  showToast("Notificação disparada com o logo do app!");
+                  showToast("Notificação disparada com sucesso!");
                 } else {
                   showToast("Notificações ativas no sistema.");
                 }
@@ -422,8 +422,8 @@ export default function NotificationCenterModule({
                     notif.read ? 'bg-white border-gray-200 opacity-80' : 'bg-blue-50/40 border-blue-200 shadow-sm'
                   }`}
                 >
-                  <div className="w-11 h-11 shrink-0 rounded-2xl overflow-hidden shadow-sm border border-gray-100 bg-white flex items-center justify-center">
-                    <img src="/gkd_logo_official.png" alt="GKD" className="w-full h-full object-contain" />
+                  <div className="w-11 h-11 shrink-0 rounded-2xl overflow-hidden shadow-sm border border-blue-100 bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Bell className="w-5 h-5" />
                   </div>
 
                   <div className="flex-1 min-w-0">

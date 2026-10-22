@@ -5,8 +5,9 @@ import {VehicleIcon} from './VehicleIcon';
 import GeofenceLayer from './GeofenceLayer';
 import {AddressDisplay} from './AddressDisplay';
 import ShareTrackingModal from './ShareTrackingModal';
-import {Layers, Settings, X, Gauge, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Crosshair, MapPin} from 'lucide-react';
+import {Layers, Settings, X, Gauge, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Crosshair, MapPin, Info} from 'lucide-react';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed, determineRoadSpeedLimit, RoadSpeedInfo } from '../lib/geocoding';
+import { getRoadSnappedPath, generateCurvedSmoothPath } from '../lib/routeRoadSnapper';
 
 function RoadSpeedBadge({ vehicle }: { vehicle: Vehicle }) {
   const [speedInfo, setSpeedInfo] = useState<RoadSpeedInfo>(() => {
@@ -153,7 +154,167 @@ function MapTypeSelector() {
   );
 }
 
-import { getRoadSnappedPath, generateCurvedSmoothPath } from '../lib/routeRoadSnapper';
+function VehicleStatusLegend({ vehicles = [] }: { vehicles?: Vehicle[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Compute live vehicle counts per state
+  const counts = React.useMemo(() => {
+    let moving = 0;
+    let ignitionOn = 0;
+    let ignitionOff = 0;
+    let offline = 0;
+    let blocked = 0;
+
+    vehicles.forEach(v => {
+      const isBlocked = Boolean(v.settings?.isBlocked);
+      const isOff = v.status === 'Offline' || v.status === 'NoBattery';
+      const isMov = v.status === 'Moving' && (v.speed || 0) >= 4;
+      const isIgnOn = v.status === 'IgnitionOn' || (v.status === 'Moving' && (v.speed || 0) < 4);
+
+      if (isBlocked) blocked++;
+      else if (isOff) offline++;
+      else if (isMov) moving++;
+      else if (isIgnOn) ignitionOn++;
+      else ignitionOff++;
+    });
+
+    return { moving, ignitionOn, ignitionOff, offline, blocked };
+  }, [vehicles]);
+
+  const legendItems = [
+    {
+      id: 'moving',
+      label: 'Movendo',
+      sub: 'Em deslocamento (≥ 4 km/h)',
+      count: counts.moving,
+      indicator: (
+        <div className="relative flex items-center justify-center w-5 h-5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
+          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 border-2 border-white shadow-sm ring-2 ring-green-400/50"></span>
+        </div>
+      ),
+      badgeClass: 'bg-green-500/20 text-green-400 border border-green-500/30'
+    },
+    {
+      id: 'ignitionOn',
+      label: 'IgnitionOn',
+      sub: 'Motor ligado parado (0 km/h)',
+      count: counts.ignitionOn,
+      indicator: (
+        <div className="flex items-center justify-center w-5 h-5 shrink-0">
+          <span className="inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white shadow-sm ring-1 ring-emerald-400/40"></span>
+        </div>
+      ),
+      badgeClass: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+    },
+    {
+      id: 'ignitionOff',
+      label: 'IgnitionOff',
+      sub: 'Estacionado / Desligado',
+      count: counts.ignitionOff,
+      indicator: (
+        <div className="flex items-center justify-center w-5 h-5 shrink-0">
+          <span className="inline-flex rounded-full h-3.5 w-3.5 bg-gray-400 border-2 border-white shadow-sm"></span>
+        </div>
+      ),
+      badgeClass: 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+    },
+    {
+      id: 'offline',
+      label: 'Offline',
+      sub: 'Sem sinal GPRS ou bateria',
+      count: counts.offline,
+      indicator: (
+        <div className="relative flex items-center justify-center w-5 h-5 shrink-0">
+          <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-50"></span>
+          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-red-600 border-2 border-white shadow-sm"></span>
+        </div>
+      ),
+      badgeClass: 'bg-red-500/20 text-red-400 border border-red-500/30'
+    },
+    {
+      id: 'blocked',
+      label: 'Bloqueado',
+      sub: 'Corte de combustível ativo',
+      count: counts.blocked,
+      indicator: (
+        <div className="flex items-center justify-center w-5 h-5 shrink-0">
+          <span className="inline-flex rounded-full h-3.5 w-3.5 bg-red-700 border-2 border-white shadow-sm ring-2 ring-red-500/50 flex items-center justify-center text-[8px] font-black text-white">
+            ✕
+          </span>
+        </div>
+      ),
+      badgeClass: 'bg-red-700/20 text-red-300 border border-red-700/30'
+    }
+  ];
+
+  return (
+    <div className="absolute top-4 left-4 z-20 pointer-events-auto">
+      {!isOpen ? (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="bg-slate-900/90 hover:bg-slate-800 text-white px-3 py-2 rounded-xl shadow-xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2 text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer group"
+          title="Ver legenda explicativa das cores e status dos veículos"
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span className="text-slate-200 group-hover:text-white font-bold">Legenda</span>
+          <Info className="w-3.5 h-3.5 text-blue-400" />
+        </button>
+      ) : (
+        <div className="bg-slate-900/95 backdrop-blur-xl text-white rounded-2xl shadow-2xl border border-slate-700/90 p-3.5 w-64 sm:w-72 flex flex-col gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                <Info className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-xs text-white leading-tight">Legenda de Status</h4>
+                <p className="text-[10px] text-slate-400">Cores dos veículos no mapa</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer text-xs font-bold"
+              title="Fechar legenda"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* List of Statuses */}
+          <div className="flex flex-col gap-1.5">
+            {legendItems.map(item => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-2.5 p-1.5 rounded-xl hover:bg-slate-800/60 transition-colors"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {item.indicator}
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-bold text-slate-100 truncate">{item.label}</span>
+                    <span className="text-[10px] text-slate-400 truncate">{item.sub}</span>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md shrink-0 ${item.badgeClass}`}>
+                  {item.count}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Note about selected vehicles */}
+          <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2 text-[10px] text-slate-400">
+            <div className="w-3 h-3 rounded-full bg-blue-500 border border-white ring-2 ring-blue-400/60 shrink-0"></div>
+            <span>Borda azul pulsante indica veículo em foco</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MapPolyline({
   path,
@@ -259,10 +420,12 @@ function MapController({
   fitTrigger?: number;
 }) {
   const map = useMap();
+  const hasFittedInitial = useRef<boolean>(false);
   const prevSelectedId = useRef<string | null>(null);
-  const prevSelectedIdsKey = useRef<string>('');
+  const prevSelectedIdsKey = useRef<string>('__UNINITIALIZED__');
   const prevRouteId = useRef<string | null>(null);
   const prevFitTrigger = useRef<number>(fitTrigger);
+  const prevValidVehiclesCount = useRef<number>(0);
 
   // Helper to fit bounds with padding and clamp maximum zoom
   const fitVehiclesBounds = useCallback((targetVehs: Vehicle[]) => {
@@ -276,18 +439,26 @@ function MapController({
     if (valid.length > 1) {
       const bounds = new google.maps.LatLngBounds();
       valid.forEach(v => bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) }));
-      
-      // Responsive padding ensuring all vehicles are completely visible on screen
-      map.fitBounds(bounds, { top: 110, bottom: 130, left: 80, right: 80 });
 
-      // Clamp zoom to prevent excessive zoom-in if vehicles are close to each other
-      const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
-        const currentZoom = map.getZoom();
-        if (currentZoom !== undefined && currentZoom > 17) {
-          map.setZoom(17);
-        }
-      });
-      return () => google.maps.event.removeListener(listener);
+      const executeFit = () => {
+        try {
+          // Responsive padding ensuring all vehicles are completely visible on screen
+          map.fitBounds(bounds, { top: 110, bottom: 130, left: 80, right: 80 });
+
+          // Clamp zoom to prevent excessive zoom-in if vehicles are close to each other
+          const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
+            const currentZoom = map.getZoom();
+            if (currentZoom !== undefined && currentZoom > 17) {
+              map.setZoom(17);
+            }
+          });
+        } catch (e) {}
+      };
+
+      executeFit();
+      // Second pass for mobile/APK WebView to account for delayed container dimensions
+      const timer = setTimeout(executeFit, 250);
+      return () => clearTimeout(timer);
     } else if (valid.length === 1) {
       map.panTo({ lat: Number(valid[0].lat), lng: Number(valid[0].lng) });
       map.setZoom(17);
@@ -296,6 +467,16 @@ function MapController({
 
   useEffect(() => {
     if (!map) return;
+
+    const validVehicles = vehicles.filter(v => {
+      const lat = Number(v.lat);
+      const lng = Number(v.lng);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+
+    const isInitialFitNeeded = !hasFittedInitial.current && validVehicles.length > 0;
+    const countChanged = validVehicles.length !== prevValidVehiclesCount.current;
+    prevValidVehiclesCount.current = validVehicles.length;
 
     // 1. Se uma rota da Linha do Tempo acabou de ser aberta, enquadra a rota primeiro
     if (activeRoute && activeRoute.points && activeRoute.points.length > 0 && prevRouteId.current !== activeRoute.id) {
@@ -323,8 +504,9 @@ function MapController({
 
       const multiVehicles = vehicles.filter(v => (selectedVehicleIds || []).includes(v.id));
 
-      // Se a seleção mudou ou o botão de auto-ajustar zoom foi acionado, força o fitBounds
-      if (idsChanged || triggerFired) {
+      // Se a seleção mudou, o botão de auto-ajustar zoom foi acionado ou é carga inicial
+      if (idsChanged || triggerFired || isInitialFitNeeded) {
+        hasFittedInitial.current = true;
         fitVehiclesBounds(multiVehicles);
         return;
       }
@@ -350,17 +532,16 @@ function MapController({
     prevSelectedIdsKey.current = currentIdsKey;
     prevFitTrigger.current = fitTrigger;
 
-    // 3. Se isShowingAll está ativo ou nenhum veículo selecionado, enquadra todos os veículos
+    // 3. Se isShowingAll está ativo ou nenhum veículo selecionado, enquadra todos os veículos da frota
     if (isShowingAll || (!selectedVehicle && (!selectedVehicleIds || selectedVehicleIds.length === 0))) {
       prevSelectedId.current = null;
-      const validVehicles = vehicles.filter(v => {
-        const lat = Number(v.lat);
-        const lng = Number(v.lng);
-        return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
-      });
 
-      if (idsChanged || triggerFired) {
-        fitVehiclesBounds(validVehicles);
+      // Executa auto-enquadramento (fitBounds) imediatamente na inicialização ou se a lista/botão mudou
+      if (isInitialFitNeeded || idsChanged || triggerFired || (countChanged && validVehicles.length > 0)) {
+        hasFittedInitial.current = true;
+        if (validVehicles.length > 0) {
+          fitVehiclesBounds(validVehicles);
+        }
       }
       return;
     }
@@ -370,8 +551,9 @@ function MapController({
     if (targetId) {
       const target = vehicles.find(v => v.id === targetId) || selectedVehicle;
       if (target && Number(target.lat) && Number(target.lng)) {
-        const isNewTarget = prevSelectedId.current !== target.id || triggerFired;
+        const isNewTarget = prevSelectedId.current !== target.id || triggerFired || isInitialFitNeeded;
         if (isNewTarget) {
+          hasFittedInitial.current = true;
           map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
           map.setZoom(17);
           prevSelectedId.current = target.id;
@@ -823,7 +1005,7 @@ export default function FleetTracker({
       const lng = Number(v.lng);
       return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
     });
-    if (valid.length === 0) return { lat: -23.5505, lng: -46.6333 };
+    if (valid.length === 0) return { lat: -23.5226, lng: -46.5590 };
     const sumLat = valid.reduce((acc, v) => acc + Number(v.lat), 0);
     const sumLng = valid.reduce((acc, v) => acc + Number(v.lng), 0);
     return { lat: sumLat / valid.length, lng: sumLng / valid.length };
@@ -1009,6 +1191,7 @@ export default function FleetTracker({
           disableDefaultUI={true}
           clickableIcons={false}
         >
+          <VehicleStatusLegend vehicles={vehicles} />
           <MapTypeSelector />
           <ZoomTracker onZoomChange={setMapZoom} />
           <UserLocationMarker vehicles={vehicles} onUpdateVehicle={onUpdateVehicle} />

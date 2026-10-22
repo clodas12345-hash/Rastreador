@@ -48,7 +48,7 @@ export default function PublicTrackingView({ vehicle, token }: PublicTrackingVie
       {/* Map Area */}
       <div className="flex-1 relative w-full h-full">
         <Map
-          defaultCenter={{ lat: Number(vehicle.lat) || -23.5505, lng: Number(vehicle.lng) || -46.6333 }}
+          defaultCenter={{ lat: Number(vehicle.lat) || -23.514971, lng: Number(vehicle.lng) || -46.548199 }}
           defaultZoom={16}
           mapId="DEMO_MAP_ID"
           internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
