@@ -16,50 +16,13 @@ interface MotoristasModuleProps {
   showToast?: (msg: string) => void;
 }
 
-const DEFAULT_INITIAL_DRIVERS: Driver[] = [
-  {
-    id: 'driver-1',
-    name: 'Carlos Eduardo Silva',
-    cpf: '341.892.108-44',
-    cnhNumber: '08912347101',
-    cnhCategory: 'B',
-    cnhDueDate: '2028-11-15',
-    phoneNumber: '+55 11 98765-4321',
-    assignedVehicleId: 'veh-onix-plus',
-    safetyScore: 94,
-    harshBrakingCount: 1,
-    sharpTurnsCount: 2,
-    overspeedCount: 0,
-    idleTimeMinutes: 12,
-    totalTripsCount: 48,
-    totalKmDriven: 1420
-  },
-  {
-    id: 'driver-2',
-    name: 'Roberto Alencar',
-    cpf: '219.004.991-82',
-    cnhNumber: '05432198700',
-    cnhCategory: 'D',
-    cnhDueDate: '2027-05-20',
-    phoneNumber: '+55 11 97123-8844',
-    assignedVehicleId: 'veh-honda-hrv',
-    safetyScore: 78,
-    harshBrakingCount: 6,
-    sharpTurnsCount: 5,
-    overspeedCount: 3,
-    idleTimeMinutes: 45,
-    totalTripsCount: 62,
-    totalKmDriven: 2890
-  }
-];
-
 export default function MotoristasModule({
   vehicles,
   onUpdateVehicle,
   onBackToMap,
   showToast
 }: MotoristasModuleProps) {
-  const [drivers, setDrivers] = useState<Driver[]>(!isFirestoreEnabled ? DEFAULT_INITIAL_DRIVERS : []);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
@@ -74,10 +37,6 @@ export default function MotoristasModule({
     phoneNumber: string;
     assignedVehicleId: string;
     photoUrl: string;
-    harshBrakingCount: number;
-    sharpTurnsCount: number;
-    overspeedCount: number;
-    totalKmDriven: number;
   }>({
     name: '',
     cpf: '',
@@ -86,14 +45,10 @@ export default function MotoristasModule({
     cnhDueDate: '',
     phoneNumber: '',
     assignedVehicleId: vehicles[0]?.id || '',
-    photoUrl: '',
-    harshBrakingCount: 0,
-    sharpTurnsCount: 0,
-    overspeedCount: 0,
-    totalKmDriven: 0
+    photoUrl: ''
   });
 
-  // Carregar motoristas do Firestore (apenas no APK)
+  // Carregar motoristas do Firestore e expurgar dados fictícios herdados
   useEffect(() => {
     const unsubscribe = safeOnSnapshot(collection(db, 'drivers'), (snapshot) => {
       const list: Driver[] = snapshot.docs.map((docSnap: any) => ({
@@ -101,17 +56,30 @@ export default function MotoristasModule({
         ...docSnap.data()
       } as Driver));
 
-      if (list.length === 0) {
-        DEFAULT_INITIAL_DRIVERS.forEach(d => {
-          safeSetDoc(doc(db, 'drivers', d.id), cleanFirestoreData(d)).catch(() => {});
-        });
-        setDrivers(DEFAULT_INITIAL_DRIVERS);
-      } else {
-        setDrivers(list);
-      }
+      // Expurgar motoristas mock/fictícios ou incompletos ("William", "Carlos Eduardo", etc.)
+      const realList: Driver[] = [];
+      list.forEach(d => {
+        const nameLower = (d.name || '').toLowerCase();
+        const isMock = d.id === 'driver-1' || 
+          d.id === 'driver-2' || 
+          nameLower.includes('carlos eduardo') || 
+          nameLower.includes('roberto alencar') ||
+          nameLower.includes('william') ||
+          (nameLower === 'william' && (!d.cpf || d.cpf.includes('Não informado'))) ||
+          (!d.cpf && !d.cnhNumber && (!d.phoneNumber || d.phoneNumber.trim() === '+55 11' || d.phoneNumber.trim() === ''));
+
+        if (isMock) {
+          // Deletar permanentemente do Firestore para garantir dados 100% reais
+          safeDeleteDoc(doc(db, 'drivers', d.id)).catch(() => {});
+        } else {
+          realList.push(d);
+        }
+      });
+
+      setDrivers(realList);
     }, (error) => {
       console.warn('Drivers fetch error:', error);
-      setDrivers(DEFAULT_INITIAL_DRIVERS);
+      setDrivers([]);
     });
 
     return () => unsubscribe();
@@ -128,11 +96,7 @@ export default function MotoristasModule({
         cnhDueDate: driverToEdit.cnhDueDate,
         phoneNumber: driverToEdit.phoneNumber,
         assignedVehicleId: driverToEdit.assignedVehicleId || '',
-        photoUrl: driverToEdit.photoUrl || '',
-        harshBrakingCount: driverToEdit.harshBrakingCount ?? 0,
-        sharpTurnsCount: driverToEdit.sharpTurnsCount ?? 0,
-        overspeedCount: driverToEdit.overspeedCount ?? 0,
-        totalKmDriven: driverToEdit.totalKmDriven ?? 0
+        photoUrl: driverToEdit.photoUrl || ''
       });
     } else {
       setEditingDriver(null);
@@ -144,11 +108,7 @@ export default function MotoristasModule({
         cnhDueDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
         phoneNumber: '+55 11 ',
         assignedVehicleId: vehicles[0]?.id || '',
-        photoUrl: '',
-        harshBrakingCount: 0,
-        sharpTurnsCount: 0,
-        overspeedCount: 0,
-        totalKmDriven: 0
+        photoUrl: ''
       });
     }
     setShowAddModal(true);
@@ -161,26 +121,31 @@ export default function MotoristasModule({
     }
 
     const driverId = editingDriver ? editingDriver.id : `driver-${Date.now()}`;
-    const deductions = (formData.harshBrakingCount * 3) + (formData.sharpTurnsCount * 2) + (formData.overspeedCount * 5);
+    const assignedVeh = vehicles.find(v => v.id === formData.assignedVehicleId);
+    const harshBraking = assignedVeh?.harshBraking ?? 0;
+    const sharpTurns = assignedVeh?.sharpTurns ?? 0;
+    const isOverspeeding = (assignedVeh?.speed ?? 0) > (assignedVeh?.settings?.speedLimit ?? 60);
+    const overspeed = isOverspeeding ? 1 : 0;
+    const deductions = (harshBraking * 3) + (sharpTurns * 2) + (overspeed * 5);
     const calculatedSafetyScore = Math.max(0, Math.min(100, 100 - deductions));
 
     const newDriver: Driver = {
       id: driverId,
-      name: formData.name,
-      cpf: formData.cpf,
-      cnhNumber: formData.cnhNumber,
+      name: formData.name.trim(),
+      cpf: formData.cpf.trim(),
+      cnhNumber: formData.cnhNumber.trim(),
       cnhCategory: formData.cnhCategory,
       cnhDueDate: formData.cnhDueDate,
-      phoneNumber: formData.phoneNumber,
+      phoneNumber: formData.phoneNumber.trim(),
       assignedVehicleId: formData.assignedVehicleId,
       photoUrl: formData.photoUrl,
       safetyScore: calculatedSafetyScore,
-      harshBrakingCount: Number(formData.harshBrakingCount) || 0,
-      sharpTurnsCount: Number(formData.sharpTurnsCount) || 0,
-      overspeedCount: Number(formData.overspeedCount) || 0,
+      harshBrakingCount: harshBraking,
+      sharpTurnsCount: sharpTurns,
+      overspeedCount: overspeed,
       idleTimeMinutes: editingDriver ? editingDriver.idleTimeMinutes : 0,
-      totalTripsCount: editingDriver ? editingDriver.totalTripsCount : 1,
-      totalKmDriven: Number(formData.totalKmDriven) || 0
+      totalTripsCount: editingDriver ? editingDriver.totalTripsCount : 0,
+      totalKmDriven: assignedVeh ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0) : 0
     };
 
     try {
@@ -217,6 +182,22 @@ export default function MotoristasModule({
     return { label: '🔴 Atenção', color: 'bg-red-100 text-red-800 border-red-300' };
   };
 
+  // Média Eco-Driving estritamente baseada na telemetria real dos veículos vinculados aos motoristas cadastrados
+  const averageScore = drivers.length > 0 
+    ? Math.round(
+        drivers.reduce((acc, d) => {
+          const v = vehicles.find(veh => veh.id === d.assignedVehicleId);
+          const hb = v?.harshBraking ?? 0;
+          const st = v?.sharpTurns ?? 0;
+          const os = (v?.speed ?? 0) > (v?.settings?.speedLimit ?? 60) ? 1 : 0;
+          const pen = (hb * 3) + (st * 2) + (os * 5);
+          return acc + Math.max(0, 100 - pen);
+        }, 0) / drivers.length
+      )
+    : 100;
+
+  const fleetWithDriverCount = drivers.filter(d => d.assignedVehicleId && vehicles.some(v => v.id === d.assignedVehicleId)).length;
+
   return (
     <div className="flex-1 bg-gray-50 flex flex-col h-full overflow-y-auto">
       <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
@@ -238,18 +219,20 @@ export default function MotoristasModule({
                 Cadastro de Motoristas & Ranking Eco-Driving
               </h1>
               <p className="text-xs sm:text-sm text-gray-500 font-medium">
-                Gestão de condutores, carteira de habilitação (CNH) e pontuação de comportamento
+                Gestão de condutores com vínculo direto à telemetria real dos veículos da frota
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => handleOpenAddModal()}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all shadow-sm cursor-pointer whitespace-nowrap self-start sm:self-auto"
-          >
-            <Plus className="w-4 h-4" />
-            Cadastrar Novo Motorista
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => handleOpenAddModal()}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all shadow-sm cursor-pointer whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" />
+              Cadastrar Motorista Real
+            </button>
+          </div>
         </div>
 
         {/* Top Summary Badges */}
@@ -271,9 +254,7 @@ export default function MotoristasModule({
             <div>
               <span className="text-xs text-gray-500 font-bold uppercase block">Média de Pontuação Eco-Driving</span>
               <span className="text-2xl font-black text-emerald-600">
-                {drivers.length > 0 
-                  ? Math.round(drivers.reduce((acc, d) => acc + (d.safetyScore || 90), 0) / drivers.length)
-                  : 100} / 100
+                {averageScore} / 100
               </span>
             </div>
           </div>
@@ -285,7 +266,7 @@ export default function MotoristasModule({
             <div>
               <span className="text-xs text-gray-500 font-bold uppercase block">Frota Com Motorista</span>
               <span className="text-2xl font-black text-purple-700">
-                {drivers.filter(d => d.assignedVehicleId).length} Veículos
+                {fleetWithDriverCount} {fleetWithDriverCount === 1 ? 'Veículo' : 'Veículos'}
               </span>
             </div>
           </div>
@@ -310,28 +291,19 @@ export default function MotoristasModule({
           {filteredDrivers.map(driver => {
             const assignedVeh = vehicles.find(v => v.id === driver.assignedVehicleId);
             
-            // Valores 100% reais (0 é 0, nunca substituído por fallback inventado)
-            const harshBraking = typeof driver.harshBrakingCount === 'number' 
-              ? driver.harshBrakingCount 
-              : (typeof assignedVeh?.harshBraking === 'number' ? assignedVeh.harshBraking : 0);
+            // Telemetria 100% real do veículo vinculado
+            const harshBraking = assignedVeh?.harshBraking ?? 0;
+            const sharpTurns = assignedVeh?.sharpTurns ?? 0;
+            const isOverspeeding = (assignedVeh?.speed ?? 0) > (assignedVeh?.settings?.speedLimit ?? 60);
+            const overspeed = isOverspeeding ? 1 : 0;
+            
+            const totalKm = assignedVeh 
+              ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0)
+              : (driver.totalKmDriven || 0);
               
-            const sharpTurns = typeof driver.sharpTurnsCount === 'number' 
-              ? driver.sharpTurnsCount 
-              : (typeof assignedVeh?.sharpTurns === 'number' ? assignedVeh.sharpTurns : 0);
-              
-            const overspeed = typeof driver.overspeedCount === 'number' 
-              ? driver.overspeedCount 
-              : 0;
-              
-            const totalKm = typeof driver.totalKmDriven === 'number' && driver.totalKmDriven > 0
-              ? driver.totalKmDriven 
-              : (assignedVeh ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0) : 0);
-              
-            // Score calculado a partir das infrações reais
+            // Score calculado a partir das infrações reais de telemetria
             const infractionsPenalty = (harshBraking * 3) + (sharpTurns * 2) + (overspeed * 5);
-            const computedScore = typeof driver.safetyScore === 'number' && driver.safetyScore > 0 && infractionsPenalty === 0
-              ? driver.safetyScore 
-              : Math.max(0, Math.min(100, 100 - infractionsPenalty));
+            const computedScore = Math.max(0, Math.min(100, 100 - infractionsPenalty));
               
             const scoreBadge = getScoreBadge(computedScore);
 
@@ -437,11 +409,33 @@ export default function MotoristasModule({
 
                 <div className="pt-3 border-t border-gray-100 mt-3 flex items-center justify-between text-xs text-gray-500">
                   <span>📞 {driver.phoneNumber || 'Sem telefone'}</span>
-                  <span className="font-bold text-gray-700 font-mono">{totalKm} km guiados</span>
+                  <span className="font-bold text-gray-700 font-mono">{totalKm.toLocaleString('pt-BR')} km guiados</span>
                 </div>
               </div>
             );
           })}
+
+          {filteredDrivers.length === 0 && (
+            <div className="col-span-full bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
+              <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <h3 className="font-bold text-gray-800 text-base mb-1">
+                {searchTerm ? 'Nenhum motorista encontrado com este filtro' : 'Nenhum motorista cadastrado ainda'}
+              </h3>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">
+                {searchTerm 
+                  ? 'Tente buscar por outro termo ou limpe a busca.' 
+                  : 'Cadastre os condutores da sua frota para vincular a telemetria dos veículos e monitorar infrações e pontuação Eco-Driving real.'}
+              </p>
+              {!searchTerm && (
+                <button
+                  onClick={() => handleOpenAddModal()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer"
+                >
+                  Cadastrar Primeiro Motorista
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -538,73 +532,47 @@ export default function MotoristasModule({
                 </select>
               </div>
 
-              {/* Registro Telemétrico Real do Motorista */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Award className="w-4 h-4 text-amber-500" /> Histórico Telemétrico & Eco-Driving
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({
-                      ...formData,
-                      harshBrakingCount: 0,
-                      sharpTurnsCount: 0,
-                      overspeedCount: 0,
-                      totalKmDriven: 0
-                    })}
-                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
-                  >
-                    Zerar Infrações
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-red-600 block mb-0.5">Freadas Bruscas:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.harshBrakingCount}
-                      onChange={(e) => setFormData({ ...formData, harshBrakingCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                      className="w-full bg-white border border-red-200 font-mono font-bold text-xs rounded-lg p-2 text-center text-red-700 outline-none"
-                    />
+              {/* Visualização da Telemetria Real do Veículo Vinculado */}
+              {(() => {
+                const selectedVeh = vehicles.find(v => v.id === formData.assignedVehicleId);
+                if (selectedVeh) {
+                  return (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Award className="w-4 h-4 text-emerald-600" /> Sensores do Veículo ({selectedVeh.name})
+                        </span>
+                        <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
+                          Telemetria 100% Real
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                        <div className="bg-white p-2 rounded-xl border border-gray-200">
+                          <span className="text-[10px] text-gray-500 font-bold block">Freadas</span>
+                          <span className="font-black text-gray-800 font-mono">{selectedVeh.harshBraking || 0}</span>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-gray-200">
+                          <span className="text-[10px] text-gray-500 font-bold block">Curvas</span>
+                          <span className="font-black text-gray-800 font-mono">{selectedVeh.sharpTurns || 0}</span>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-gray-200">
+                          <span className="text-[10px] text-gray-500 font-bold block">Velocidade</span>
+                          <span className="font-black text-blue-700 font-mono">{selectedVeh.speed || 0} km/h</span>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-gray-500 flex justify-between pt-1 font-medium">
+                        <span>Odômetro: <strong className="text-gray-800 font-mono">{Math.round(selectedVeh.totalMileage || selectedVeh.dailyMileage || 0).toLocaleString('pt-BR')} km</strong></span>
+                        <span>Placa: <strong className="text-gray-800 font-mono">{selectedVeh.licensePlate || 'S/ placa'}</strong></span>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                    ℹ️ Selecione um veículo da frota acima para vincular os dados telemétricos e pontuação Eco-Driving real a este motorista.
                   </div>
-
-                  <div>
-                    <label className="text-[10px] font-bold text-amber-600 block mb-0.5">Curvas Rápidas:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.sharpTurnsCount}
-                      onChange={(e) => setFormData({ ...formData, sharpTurnsCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                      className="w-full bg-white border border-amber-200 font-mono font-bold text-xs rounded-lg p-2 text-center text-amber-800 outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-bold text-blue-600 block mb-0.5">Excesso Velocidade:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.overspeedCount}
-                      onChange={(e) => setFormData({ ...formData, overspeedCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                      className="w-full bg-white border border-blue-200 font-mono font-bold text-xs rounded-lg p-2 text-center text-blue-700 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-600 block mb-0.5">Quilometragem Total Guiada (KM):</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.totalKmDriven}
-                    onChange={(e) => setFormData({ ...formData, totalKmDriven: Math.max(0, parseInt(e.target.value) || 0) })}
-                    className="w-full bg-white border border-gray-200 font-mono font-bold text-xs rounded-lg p-2 text-gray-800 outline-none"
-                  />
-                </div>
-              </div>
+                );
+              })()}
             </div>
 
             <div className="flex items-center gap-2 mt-5">

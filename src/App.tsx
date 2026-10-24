@@ -1279,62 +1279,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     }
 
     if (!points || points.length === 0) {
-      const baseLat = targetVehicle.lat || -23.5505;
-      const baseLng = targetVehicle.lng || -46.6333;
-      const isToday = chosenDate === new Date().toISOString().split('T')[0];
-      const simulated: RoutePoint[] = [];
-      const hours = isToday ? Math.max(8, new Date().getHours()) : 20;
-
-      simulated.push({
-        lat: baseLat,
-        lng: baseLng,
-        speed: 0,
-        ignition: false,
-        timestamp: new Date(year, month - 1, day, 7, 30).getTime().toString()
-      });
-
-      for (let i = 1; i <= 15; i++) {
-        simulated.push({
-          lat: baseLat + Math.sin(i * 0.4) * 0.012 + (i * 0.001),
-          lng: baseLng + Math.cos(i * 0.4) * 0.012 + (i * 0.0008),
-          speed: 25 + Math.round(Math.sin(i) * 20),
-          ignition: true,
-          timestamp: new Date(year, month - 1, day, 8, 10 + i).getTime().toString()
-        });
-      }
-
-      if (hours >= 13) {
-        for (let i = 1; i <= 10; i++) {
-          simulated.push({
-            lat: baseLat + 0.016 - (i * 0.0012),
-            lng: baseLng + 0.013 + (i * 0.0015),
-            speed: 30 + Math.round(Math.cos(i) * 18),
-            ignition: true,
-            timestamp: new Date(year, month - 1, day, 12, 15 + i).getTime().toString()
-          });
-        }
-      }
-
-      if (hours >= 18) {
-        for (let i = 1; i <= 18; i++) {
-          const fraction = i / 18;
-          simulated.push({
-            lat: (baseLat + 0.004) * fraction + (baseLat - 0.004) * (1 - fraction),
-            lng: (baseLng + 0.002) * fraction + (baseLng - 0.002) * (1 - fraction),
-            speed: 35 + Math.round(Math.sin(i) * 25),
-            ignition: true,
-            timestamp: new Date(year, month - 1, day, 17, 30 + i).getTime().toString()
-          });
-        }
-        simulated.push({
-          lat: baseLat,
-          lng: baseLng,
-          speed: 0,
-          ignition: false,
-          timestamp: new Date(year, month - 1, day, 18, 10).getTime().toString()
-        });
-      }
-      points = simulated;
+      const [y, m, d] = chosenDate.split('-');
+      const formattedDate = `${d}/${m}/${y}`;
+      showToast(`ℹ️ Nenhum deslocamento registrado no rastreador para ${targetVehicle.name} em ${formattedDate}.`);
+      return;
     }
 
     let distKm = 0;

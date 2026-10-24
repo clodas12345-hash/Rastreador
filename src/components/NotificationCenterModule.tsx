@@ -77,6 +77,12 @@ export default function NotificationCenterModule({
 
   const activeVehicle = vehicles.find(v => v.id === selectedCarId) || vehicles[0] || null;
 
+  const filteredNotifications = (notifications || []).filter(notif => {
+    if (filterTab === 'unread') return !notif.read;
+    if (filterTab === 'critical') return notif.type === 'critical' || notif.type === 'geofence' || notif.type === 'speed' || notif.type === 'cut';
+    return true;
+  });
+
   // Helper to parse active alarm settings for a vehicle
   const getVehicleAlarms = (v: Vehicle) => {
     const raw = v.settings?.alarmSettings || 'velocidade,acc,bateria,choque,cerca,frenagem,aceleracao,curva,ocioso,horario,perda_sinal,ancora_viog,jammer,combustivel,sos';
@@ -113,12 +119,6 @@ export default function NotificationCenterModule({
     }
   };
 
-  const filteredNotifications = notifications.filter(n => {
-    if (filterTab === 'unread') return !n.read;
-    if (filterTab === 'critical') return n.severity === 'critical' || n.type === 'battery' || n.type === 'speed';
-    return true;
-  });
-
   return (
     <div className="flex-grow flex flex-col h-full bg-slate-50 overflow-hidden">
       {/* Header */}
@@ -141,45 +141,6 @@ export default function NotificationCenterModule({
               <p className="text-xs text-slate-400 font-medium">15 Opções de Alertas Disponíveis por Veículo</p>
             </div>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-slate-500">Perm: {notificationPermissionStatus}</span>
-            <button 
-              onClick={async () => {
-                if (Capacitor.isNativePlatform()) {
-                  try {
-                    await LocalNotifications.schedule({
-                      notifications: [{
-                        title: "GKD Mobility",
-                        body: "Teste de notificação do sistema",
-                        id: 9999,
-                        schedule: { at: new Date(Date.now() + 5000) },
-                        channelId: "padrao",
-                        smallIcon: "ic_stat_icon",
-                        largeIcon: "ic_large_icon",
-                        iconColor: "#2563EB"
-                      }]
-                    });
-                    showToast("Notificação agendada com sucesso!");
-                  } catch (e) {
-                    showToast("Erro ao agendar notificação");
-                  }
-                } else if ('Notification' in window && Notification.permission === 'granted') {
-                  const iconUrl = new URL('./icon-192.png', window.location.href).href;
-                  new Notification("GKD Mobility", {
-                    body: "Notificação de teste do sistema",
-                    icon: iconUrl,
-                    badge: iconUrl
-                  });
-                  showToast("Notificação disparada com sucesso!");
-                } else {
-                  showToast("Notificações ativas no sistema.");
-                }
-              }}
-              className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded"
-            >
-              Testar
-            </button>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -199,6 +160,62 @@ export default function NotificationCenterModule({
       {/* Main Content Area */}
       <div className="flex-grow overflow-y-auto p-4 sm:p-6 max-w-5xl mx-auto w-full space-y-6">
         
+        {/* Guia / Banner de Notificações em Segundo Plano (App Fechado) */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-3xl shadow-xl border border-indigo-800/50 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-indigo-900/60 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-indigo-600/30 border border-indigo-500/40 rounded-2xl text-xl text-indigo-400">
+                📱
+              </div>
+              <div>
+                <h3 className="font-black text-base sm:text-lg text-white flex items-center gap-2">
+                  <span>Alertas em Segundo Plano (App Fechado)</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold font-mono">
+                    🟢 MONITORAMENTO 24/7 ATIVO
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-300 font-medium">
+                  Todos os alertas de ignição, velocidade, cercas e bateria dos seus veículos são enviados automaticamente em tempo real com o aplicativo fechado ou tela bloqueada.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={requestNotificationPermission}
+              className="p-3.5 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 hover:border-blue-500/50 rounded-2xl text-left transition-all group cursor-pointer flex items-center justify-between"
+            >
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <strong className="text-xs text-white group-hover:text-blue-300">Permissão de Notificação Push</strong>
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${notificationPermissionStatus === 'granted' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'}`}>
+                    {notificationPermissionStatus === 'granted' ? '🟢 Concedida' : '🟡 Ativar'}
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400 block">Autoriza os avisos na barra superior do celular</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={requestBatteryOptimizationExemption}
+              className="p-3.5 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/50 rounded-2xl text-left transition-all group cursor-pointer flex items-center justify-between"
+            >
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <strong className="text-xs text-white group-hover:text-amber-300">Bateria: Marcar "Sem Restrições"</strong>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold">
+                    Crucial Android
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400 block">Garante entrega instantânea sem bloqueio do Android</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
         {/* Top Permission Banner if not granted */}
         {notificationPermissionStatus !== 'granted' && (
           <div className="bg-blue-600 text-white p-4 rounded-3xl shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

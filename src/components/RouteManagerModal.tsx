@@ -97,31 +97,15 @@ export default function RouteManagerModal({
     return Number(total.toFixed(2));
   };
 
-  // Helper to generate simulated sample points if user didn't record live points
-  const generateSimulatedPoints = (v: Vehicle | undefined): RoutePoint[] => {
-    const baseLat = v ? v.lat : -23.5505;
-    const baseLng = v ? v.lng : -46.6333;
-    const pts: RoutePoint[] = [];
-    const count = 12;
-    let currentLat = baseLat;
-    let currentLng = baseLng;
-
-    for (let i = 0; i < count; i++) {
-      currentLat += (Math.random() - 0.2) * 0.004;
-      currentLng += (Math.random() - 0.2) * 0.004;
-      pts.push({
-        lat: Number(currentLat.toFixed(6)),
-        lng: Number(currentLng.toFixed(6)),
-        speed: Math.floor(20 + Math.random() * 50),
-        timestamp: new Date(Date.now() - (count - i) * 60000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      });
-    }
-    return pts;
-  };
-
   const handleSaveRoute = async () => {
     if (!routeName.trim()) {
       setErrorMsg('Por favor, informe um nome para o trajeto.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    if (recordingPoints.length < 2) {
+      setErrorMsg('Nenhum trajeto em gravação. Inicie o rastreamento ao vivo para registrar os pontos reais do trajeto.');
       setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
@@ -130,10 +114,8 @@ export default function RouteManagerModal({
     try {
       const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0];
       
-      // Use recorded points if available, otherwise generate simulated route points
-      let pointsToSave = recordingPoints.length >= 2 ? recordingPoints : generateSimulatedPoints(matchedVehicle);
-      let calculatedDist = calculateDistance(pointsToSave);
-      if (calculatedDist === 0) calculatedDist = 4.2;
+      const pointsToSave = recordingPoints;
+      const calculatedDist = calculateDistance(pointsToSave);
 
       const newRoute = {
         name: routeName.trim(),

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gkd-mobility-pwa-v6';
+const CACHE_NAME = 'gkd-mobility-pwa-v7';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -47,6 +47,29 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// Listener de Mensagens para Agendamento de Notificação em Segundo Plano (App Fechado)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SCHEDULE_BACKGROUND_NOTIFICATION') {
+    const { title, body, delayMs, icon, tag } = event.data;
+    const wait = typeof delayMs === 'number' ? delayMs : 5000;
+
+    setTimeout(() => {
+      self.registration.showNotification(title || 'GKD Mobility', {
+        body: body || 'Alerta de telemetria em segundo plano',
+        icon: icon || '/icon-192.png',
+        badge: '/icon-192.png',
+        vibrate: [200, 100, 200, 100, 200],
+        tag: tag || ('gkd-alert-' + Date.now()),
+        renotify: true,
+        data: {
+          url: '/',
+          timestamp: Date.now()
+        }
+      }).catch(err => console.warn('Service Worker notification show error:', err));
+    }, wait);
+  }
+});
+
 // Suporte para Notificações Push e Alertas do Sistema
 self.addEventListener('push', (event) => {
   let data = { title: 'GKD Mobility', body: 'Nova atualização de telemetria.' };
@@ -65,7 +88,7 @@ self.addEventListener('push', (event) => {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     image: data.image || undefined,
-    vibrate: [100, 50, 100],
+    vibrate: [200, 100, 200, 100, 200],
     data: {
       dateOfArrival: Date.now(),
       primaryKey: '1',
