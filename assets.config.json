@@ -1,0 +1,9 @@
+{
+  "android": {
+    "icon": {
+      "iconScale": 0.88,
+      "foreground": "assets/icon-foreground.png",
+      "background": "assets/icon-background.png"
+    }
+  }
+}

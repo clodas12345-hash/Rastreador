@@ -1060,8 +1060,8 @@ export default function App() {
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] w-[90vw] max-w-md bg-white/90 backdrop-blur-2xl px-4 py-3 rounded-[26px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/40 flex items-center gap-3 animate-fadeIn">
           {/* Native Style App Icon */}
-          <div className="w-10 h-10 bg-blue-600 rounded-[14px] shadow-sm border border-blue-500 flex items-center justify-center shrink-0 text-white">
-            <Navigation className="w-5 h-5" />
+          <div className="w-10 h-10 bg-white rounded-[14px] shadow-sm border border-gray-200 flex items-center justify-center shrink-0 overflow-hidden p-0.5">
+            <img src="/assets/aistudio/IMG-20261024-WA0125_4a3e8485.jpg" alt="GKD Mobility" className="w-full h-full object-contain rounded-lg" />
           </div>
           
           <div className="flex-1 min-w-0">
@@ -2892,8 +2892,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => setShowVersionModal(true)}
           >
-            <div className="bg-blue-600 rounded-xl shadow-md p-2 flex items-center justify-center overflow-hidden w-10 h-10 shrink-0 text-white">
-              <Navigation className="w-5 h-5" />
+            <div className="bg-white rounded-xl shadow-md p-0.5 flex items-center justify-center overflow-hidden w-10 h-10 shrink-0 border border-slate-700">
+              <img src="/assets/aistudio/IMG-20261024-WA0125_4a3e8485.jpg" alt="GKD Mobility" className="w-full h-full object-contain rounded-lg" />
             </div>
             <div>
               <h1 className="text-sm font-extrabold text-white leading-tight">GKD Mobility</h1>
@@ -3512,8 +3512,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
               <div className="p-8 pb-6 flex flex-col items-center text-center bg-gradient-to-b from-slate-50 to-white">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white mb-4 shadow-lg shadow-blue-500/30">
-                  <Navigation className="w-10 h-10" />
+                <div className="w-24 h-24 rounded-2xl bg-white flex items-center justify-center mb-4 shadow-xl shadow-slate-200 border border-slate-100 p-2 overflow-hidden">
+                  <img src="/assets/aistudio/IMG-20261024-WA0125_4a3e8485.jpg" alt="GKD Mobility Logo" className="w-full h-full object-contain" />
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">GKD Mobility</h2>
                 <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-bold tracking-wider">
