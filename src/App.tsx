@@ -228,15 +228,52 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   } else if (explicitIgnition === true) {
     status = 'IgnitionOn';
   } else if (previousVehicle?.status && previousVehicle.status !== 'IgnitionOff') {
-    // If we have no definitive data, maintain the last status
-    // IF the last status wasn't 'IgnitionOff'.
     status = previousVehicle.status;
   } else {
-    // Definitive IgnitionOff or no history
     status = 'IgnitionOff';
   }
 
   const ignition = (status === 'Moving' || status === 'IgnitionOn');
+
+  // 4. Dynamic Eco-Driving Kinematic Calculation (Harsh Braking & Sharp Turns)
+  let currentHarshBraking = previousVehicle?.harshBraking || 0;
+  let currentSharpTurns = previousVehicle?.sharpTurns || 0;
+  const lastProcessedTs = previousVehicle?.lastTelemetryTime || 0;
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const m1 = sorted[i];
+    const m2 = sorted[i + 1];
+    const t2 = Number(m2.timestamp || m2['server.timestamp'] || 0);
+
+    // Only evaluate new telemetry messages received since last poll
+    if (t2 > lastProcessedTs) {
+      const v1 = Number(m1['position.speed'] || 0);
+      const v2 = Number(m2['position.speed'] || 0);
+      const t1 = Number(m1.timestamp || m1['server.timestamp'] || 0);
+      const dt = Math.abs(t2 - t1);
+
+      const dir1 = Number(m1['position.direction'] ?? m1['position.course'] ?? 0);
+      const dir2 = Number(m2['position.direction'] ?? m2['position.course'] ?? 0);
+
+      // Hardware Flags from 6-axis MEMS accelerometer
+      const hwBraking = Boolean(m2['harsh.braking.event'] ?? m2['harsh.brake.event'] ?? m2['braking.event']);
+      const hwCornering = Boolean(m2['harsh.cornering.event'] ?? m2['harsh.turning.event'] ?? m2['cornering.event']);
+
+      // GPS Vector Kinematics
+      let angleDiff = Math.abs(dir2 - dir1);
+      if (angleDiff > 180) angleDiff = 360 - angleDiff;
+
+      const isGpsHarshBrake = (v1 - v2 >= 12) && (dt > 0 && dt <= 3);
+      const isGpsSharpTurn = (v2 >= 20) && (angleDiff >= 30) && (dt > 0 && dt <= 3);
+
+      if (hwBraking || isGpsHarshBrake) {
+        currentHarshBraking++;
+      }
+      if (hwCornering || isGpsSharpTurn) {
+        currentSharpTurns++;
+      }
+    }
+  }
 
   return {
     lat,
@@ -251,6 +288,8 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
     batteryLevel,
     externalVoltage,
     powerCut,
+    harshBraking: currentHarshBraking,
+    sharpTurns: currentSharpTurns,
     lastTelemetryTime: timestamp
   };
 }
