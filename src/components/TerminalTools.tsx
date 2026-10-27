@@ -6,7 +6,7 @@ import {
   MapPin, Sliders, Lock, Target, Settings, Route, FileText, MoreHorizontal, X, Save, 
   Wrench, Gauge, Bell, Cpu, Volume2, VolumeX, Mic, MicOff, Disc, Download, Phone, 
   PhoneOff, PhoneCall, MessageSquare, ArrowLeft, Battery, BatteryCharging, Zap, Sparkles, 
-  CheckCircle2, Copy, Send, Check, ShieldCheck
+  CheckCircle2, Copy, Send, Check, ShieldCheck, RotateCcw, Clock, WifiOff, AlertTriangle
 } from 'lucide-react';
 import { playAlarmSound, stopAlarmSound, isAlarmPlaying, unlockAudio, playAmbientNoise, playDtmfTone, playRingbackTone, startRingbackLoop, stopRingbackLoop } from '../lib/audioService';
 
@@ -174,7 +174,89 @@ export default function TerminalTools({
   const [isApplyingSleepAll, setIsApplyingSleepAll] = useState<boolean>(false);
   const [sleepTargetId, setSleepTargetId] = useState<string>('all');
 
+  // Reinício Programado & Watchdog GPRS
+  const [rebootTargetId, setRebootTargetId] = useState<string>('all');
+  const [scheduledRebootEnabled, setScheduledRebootEnabled] = useState<boolean>(false);
+  const [scheduledRebootTime, setScheduledRebootTime] = useState<string>('03:30');
+  const [gprsWatchdogEnabled, setGprsWatchdogEnabled] = useState<boolean>(true);
+  const [gprsWatchdogTimeoutMinutes, setGprsWatchdogTimeoutMinutes] = useState<number>(15);
+  const [isApplyingRebootConfig, setIsApplyingRebootConfig] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (rebootTargetId === 'all') {
+      const first = vehicles[0];
+      if (first?.settings) {
+        setScheduledRebootEnabled(Boolean(first.settings.scheduledRebootEnabled));
+        setScheduledRebootTime(first.settings.scheduledRebootTime || '03:30');
+        setGprsWatchdogEnabled(first.settings.gprsWatchdogEnabled !== false);
+        setGprsWatchdogTimeoutMinutes(first.settings.gprsWatchdogTimeoutMinutes || 15);
+      }
+    } else {
+      const v = vehicles.find(veh => veh.id === rebootTargetId);
+      if (v?.settings) {
+        setScheduledRebootEnabled(Boolean(v.settings.scheduledRebootEnabled));
+        setScheduledRebootTime(v.settings.scheduledRebootTime || '03:30');
+        setGprsWatchdogEnabled(v.settings.gprsWatchdogEnabled !== false);
+        setGprsWatchdogTimeoutMinutes(v.settings.gprsWatchdogTimeoutMinutes || 15);
+      }
+    }
+  }, [rebootTargetId, vehicles]);
+
+  const handleSaveRebootConfig = async () => {
+    setIsApplyingRebootConfig(true);
+    try {
+      const targetList = rebootTargetId === 'all' 
+        ? vehicles 
+        : vehicles.filter(v => v.id === rebootTargetId);
+
+      for (const v of targetList) {
+        const updatedVehicle: Vehicle = {
+          ...v,
+          settings: {
+            ...(v.settings || {}),
+            scheduledRebootEnabled,
+            scheduledRebootTime,
+            gprsWatchdogEnabled,
+            gprsWatchdogTimeoutMinutes
+          } as any
+        };
+        if (handleUpdateVehicle) {
+          handleUpdateVehicle(updatedVehicle);
+        }
+      }
+
+      if (showToast) {
+        showToast(`✅ Salvo: Reinício às ${scheduledRebootTime} (${scheduledRebootEnabled ? 'Ativo' : 'Desativado'}) | Watchdog ${gprsWatchdogTimeoutMinutes} min (${gprsWatchdogEnabled ? 'Ativo' : 'Desativado'})`);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsApplyingRebootConfig(false);
+    }
+  };
+
+  const handleTriggerImmediateReboot = (targetVehicleId: string) => {
+    const targets = targetVehicleId === 'all' 
+      ? vehicles 
+      : vehicles.filter(v => v.id === targetVehicleId);
+
+    targets.forEach(v => {
+      const identifier = v.name || v.trackerNumber || v.phoneNumber || 'Dispositivo';
+      const pwd = v.settings?.smsPassword || '123456';
+      const phoneVal = v.phoneNumber || v.trackerNumber || '';
+
+      if (triggerDualDispatch) {
+        triggerDualDispatch('Reiniciar Rastreador', `reset${pwd}`, phoneVal, identifier);
+      }
+    });
+
+    if (showToast) {
+      showToast(`🔄 Comando de reinício enviado para ${targets.length === 1 ? targets[0].name : `${targets.length} veículos`}!`);
+    }
+  };
+
   const tools = [
+    { id: 'reinicio_agenda', title: 'Reinício & Watchdog', icon: <RotateCcw className="w-8 h-8 text-indigo-500" /> },
     { id: 'bateria_sleep', title: 'Economia Bateria', icon: <BatteryCharging className="w-8 h-8 text-emerald-500" /> },
     { id: 'posicao', title: 'Posição', icon: <MapPin className="w-8 h-8 text-blue-500" /> },
     { id: 'controle', title: 'Controle', icon: <Sliders className="w-8 h-8 text-red-500" /> },
@@ -1254,7 +1336,256 @@ export default function TerminalTools({
         </div>
       )}
 
-      {activeTool && activeTool !== 'configuracao' && activeTool !== 'bateria_sleep' && (
+      {activeTool === 'reinicio_agenda' && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] backdrop-blur-sm p-3 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-500/20 rounded-xl border border-indigo-400/30 text-indigo-300">
+                  <RotateCcw className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+                    Reinício Programado & Watchdog GPRS
+                  </h3>
+                  <p className="text-xs text-indigo-200/80">
+                    Reinicialização em horário específico e recuperação automática por falta de conexão
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActiveTool(null)} 
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-grow">
+              
+              {/* Seletor de Veículo Alvo */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2 flex items-center justify-between">
+                  <span>1. Selecionar Veículo:</span>
+                  <span className="text-[11px] text-indigo-600 font-semibold">
+                    {rebootTargetId === 'all' ? 'Toda a frota' : 'Veículo individual'}
+                  </span>
+                </label>
+                <select
+                  value={rebootTargetId}
+                  onChange={(e) => setRebootTargetId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white font-medium"
+                >
+                  <option value="all">🚗 Toda a Frota ({vehicles.length} veículos)</option>
+                  {[...vehicles]
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map(v => (
+                      <option key={v.id} value={v.id}>
+                        🚗 {v.name || v.licensePlate} ({v.trackerNumber || v.phoneNumber || 'ID'})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* CARD 1: REINÍCIO PROGRAMADO POR HORÁRIO */}
+              <div className="border border-indigo-200 bg-indigo-50/40 rounded-2xl p-5 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-indigo-600 text-white rounded-lg shadow-sm">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-gray-900">
+                        Reinicialização Diária em Horário Específico
+                      </h4>
+                      <p className="text-xs text-gray-600">
+                        Dispara comando de reset automático para renovar sinal e limpar memória
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={scheduledRebootEnabled}
+                      onChange={(e) => setScheduledRebootEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+
+                {scheduledRebootEnabled && (
+                  <div className="space-y-3 pt-2 border-t border-indigo-100 animate-in fade-in">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Horário de Reinício Automático:
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="time"
+                          value={scheduledRebootTime}
+                          onChange={(e) => setScheduledRebootTime(e.target.value)}
+                          className="border border-gray-300 rounded-xl px-3 py-2 text-base font-mono font-bold bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none shadow-xs"
+                        />
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {['02:00', '03:30', '04:00', '05:00'].map(t => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setScheduledRebootTime(t)}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                scheduledRebootTime === t 
+                                  ? 'bg-indigo-600 text-white shadow-xs' 
+                                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white/90 p-3 rounded-xl border border-indigo-100 text-xs text-gray-600 space-y-1">
+                      <div className="flex items-center gap-1.5 text-indigo-700 font-semibold">
+                        <span>ℹ️</span>
+                        <span>Recomendação:</span>
+                      </div>
+                      <p>
+                        Horários de madrugada (entre <strong>02:00 e 05:00</strong>) são ideais para frotas, pois os veículos costumam estar estacionados e a rede celular tem menor tráfego.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CARD 2: WATCHDOG DE DESCONEXÃO GPRS (SEM SINAL) */}
+              <div className="border border-amber-200 bg-amber-50/40 rounded-2xl p-5 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-amber-600 text-white rounded-lg shadow-sm">
+                      <WifiOff className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-gray-900">
+                        Watchdog GPRS (Reiniciar caso fique sem conexão)
+                      </h4>
+                      <p className="text-xs text-gray-600">
+                        Recuperação automática caso o rastreador fique mudo ou congele a conexão
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={gprsWatchdogEnabled}
+                      onChange={(e) => setGprsWatchdogEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+
+                {gprsWatchdogEnabled && (
+                  <div className="space-y-3 pt-2 border-t border-amber-100 animate-in fade-in">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Tempo Máximo Sem Conexão GPRS Permitido:
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { min: 10, label: '10 minutos' },
+                          { min: 15, label: '15 minutos (Padrão)' },
+                          { min: 30, label: '30 minutos' },
+                          { min: 60, label: '1 hora' },
+                        ].map(opt => (
+                          <button
+                            key={opt.min}
+                            type="button"
+                            onClick={() => setGprsWatchdogTimeoutMinutes(opt.min)}
+                            className={`p-2.5 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
+                              gprsWatchdogTimeoutMinutes === opt.min
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                                : 'bg-white text-gray-700 border-gray-200 hover:bg-amber-50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-white/90 p-3 rounded-xl border border-amber-100 text-xs text-gray-600 space-y-1">
+                      <div className="flex items-center gap-1.5 text-amber-800 font-semibold">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Proteção Anti-Loop de Reinício:</span>
+                      </div>
+                      <p>
+                        Para evitar descarregar a bateria se o veículo estiver em subsolo sem sinal celular, o sistema aplica um intervalo de segurança de no mínimo <strong>20 minutos</strong> entre tentativas de reinício por watchdog.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CARD 3: REINÍCIO MANUAL IMEDIATO */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-left">
+                  <span className="font-bold text-xs text-gray-900 block">Deseja reiniciar agora para testar?</span>
+                  <span className="text-[11px] text-gray-500">Envia o comando de reset imediato via GPRS/Flespi e fila para o alvo selecionado.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTriggerImmediateReboot(rebootTargetId)}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Reiniciar Agora</span>
+                </button>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTool(null)}
+                className="px-4 py-2.5 text-gray-600 hover:text-gray-900 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleSaveRebootConfig();
+                  setActiveTool(null);
+                }}
+                disabled={isApplyingRebootConfig}
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isApplyingRebootConfig ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Salvar e Ativar Regras</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTool && activeTool !== 'configuracao' && activeTool !== 'bateria_sleep' && activeTool !== 'reinicio_agenda' && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto flex flex-col text-center p-6 sm:p-8">
             <div className="flex justify-center mb-6">
@@ -1513,6 +1844,18 @@ export default function TerminalTools({
                       className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 shadow-sm transition-all"
                     >
                       🔄 Reiniciar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedVehicleId) setRebootTargetId(selectedVehicleId);
+                        setActiveTool('reinicio_agenda');
+                      }}
+                      className="col-span-2 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer mt-1"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Agendar Horário & Watchdog Sem Conexão</span>
                     </button>
                   </div>
                 )}

@@ -75,6 +75,12 @@ export interface VehicleSettings {
   speedLimit?: number;
   smartSpeedMode?: boolean;
   detectedRoadSpeed?: number;
+  scheduledRebootEnabled?: boolean;
+  scheduledRebootTime?: string;
+  lastScheduledRebootDate?: string;
+  gprsWatchdogEnabled?: boolean;
+  gprsWatchdogTimeoutMinutes?: number;
+  lastWatchdogRebootTimestamp?: number;
 }
 
 export interface Geofence {

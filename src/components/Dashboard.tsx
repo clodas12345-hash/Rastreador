@@ -380,7 +380,7 @@ export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { v
                           }`}>
                             {vehicle.status === 'Offline' ? '🔴 Offline (Sem Internet/Sinal)' :
                              vehicle.status === 'Moving' ? '🚗 Em Movimento' :
-                             vehicle.status === 'IgnitionOn' ? '🟢 Ignição Ligada' :
+                             vehicle.status === 'IgnitionOn' ? '🟢 Ocioso (Ligado)' :
                              vehicle.status === 'IgnitionOff' ? '⚪ Desligado' :
                              vehicle.status === 'Stopped' ? '⚪ Parado' :
                              vehicle.status === 'NoBattery' ? 'Sem Bateria ⚠️' : vehicle.status}

@@ -197,7 +197,7 @@ function VehicleStatusLegend({ vehicles = [] }: { vehicles?: Vehicle[] }) {
     },
     {
       id: 'ignitionOn',
-      label: 'IgnitionOn',
+      label: 'Ocioso',
       sub: 'Motor ligado parado (0 km/h)',
       count: counts.ignitionOn,
       indicator: (
@@ -1173,7 +1173,7 @@ export default function FleetTracker({
         </div>
       )}
 
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 z-0" style={{ touchAction: 'pan-x pan-y' }}>
         <Map
           defaultCenter={fleetCenter}
           defaultZoom={13}
@@ -1566,7 +1566,7 @@ export default function FleetTracker({
                  currentSelected.status === 'Offline' ? '🔴 Sem Sinal (Offline)' :
                  (currentSelected.speed && currentSelected.speed > 0) ? '🟢 Em Movimento' :
                  currentSelected.status === 'Moving' ? '🟢 Em Movimento' :
-                 currentSelected.status === 'IgnitionOn' ? '🟢 Ignição Ligada' :
+                 currentSelected.status === 'IgnitionOn' ? '🟢 Ocioso (Ligado)' :
                  '⚪ Desligado (Conectado 🟢)'}
               </span>
             </div>

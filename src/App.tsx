@@ -476,7 +476,13 @@ export const DEFAULT_VEHICLE_SETTINGS: VehicleSettings = {
   economicalMode: 'realtime',
   speedLimit: 60,
   smartSpeedMode: true,
-  detectedRoadSpeed: 50
+  detectedRoadSpeed: 50,
+  scheduledRebootEnabled: false,
+  scheduledRebootTime: '03:30',
+  lastScheduledRebootDate: '',
+  gprsWatchdogEnabled: true,
+  gprsWatchdogTimeoutMinutes: 15,
+  lastWatchdogRebootTimestamp: 0
 };
 
 const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
@@ -2765,6 +2771,94 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       }
     };
   }, [setVehicles]);
+
+  // --- MONITOR DE REINICIALIZAÇÃO PROGRAMADA POR HORÁRIO & WATCHDOG GPRS ---
+  useEffect(() => {
+    const watchdogInterval = setInterval(() => {
+      const now = new Date();
+      const currentHours = String(now.getHours()).padStart(2, '0');
+      const currentMinutes = String(now.getMinutes()).padStart(2, '0');
+      const currentTimeStr = `${currentHours}:${currentMinutes}`;
+      const todayDateStr = now.toISOString().split('T')[0];
+      const nowMs = Date.now();
+
+      vehicles.forEach(v => {
+        // 1. REINÍCIO EM HORÁRIO ESPECÍFICO (Agendamento diário)
+        if (v.settings?.scheduledRebootEnabled && v.settings?.scheduledRebootTime) {
+          if (v.settings.scheduledRebootTime === currentTimeStr && v.settings.lastScheduledRebootDate !== todayDateStr) {
+            console.log(`[Agendamento de Reinício] Disparando reinício programado para ${v.name} (${currentTimeStr})...`);
+            const pwd = v.settings?.smsPassword || '123456';
+            const imei = v.trackerNumber || v.phoneNumber || '';
+            sendFlespiCommand(imei, `reset${pwd}`, v.name);
+
+            addNotification({
+              title: '🔄 Reinício Programado Executado',
+              message: `O rastreador de ${v.name} foi reiniciado automaticamente conforme o agendamento das ${currentTimeStr}.`,
+              type: 'command',
+              severity: 'info',
+              vehicleId: v.id,
+              vehicleName: v.name,
+              lat: v.lat,
+              lng: v.lng
+            });
+
+            handleUpdateVehicle({
+              ...v,
+              settings: {
+                ...(v.settings || {}),
+                lastScheduledRebootDate: todayDateStr
+              } as any
+            });
+          }
+        }
+
+        // 2. WATCHDOG GPRS: REINICIAR SE FICAR X MINUTOS SEM CONEXÃO
+        if (v.settings?.gprsWatchdogEnabled) {
+          const timeoutMinutes = Number(v.settings.gprsWatchdogTimeoutMinutes) || 15;
+          const timeoutMs = timeoutMinutes * 60 * 1000;
+          const lastTs = v.lastTelemetryTime ? (v.lastTelemetryTime > 1e11 ? v.lastTelemetryTime : v.lastTelemetryTime * 1000) : 0;
+
+          if (lastTs > 0) {
+            const elapsedMs = nowMs - lastTs;
+            if (elapsedMs >= timeoutMs) {
+              const lastRebootTs = v.settings.lastWatchdogRebootTimestamp || 0;
+              const cooldownMs = 20 * 60 * 1000; // Cooldown mínimo de 20 minutos entre tentativas de watchdog
+
+              if (nowMs - lastRebootTs >= cooldownMs) {
+                const elapsedMin = Math.round(elapsedMs / 60000);
+                console.log(`[Watchdog GPRS] ${v.name} está sem conexão há ${elapsedMin} min (limite: ${timeoutMinutes} min). Disparando reinício de recuperação...`);
+                
+                const pwd = v.settings?.smsPassword || '123456';
+                const imei = v.trackerNumber || v.phoneNumber || '';
+                sendFlespiCommand(imei, `reset${pwd}`, v.name);
+
+                addNotification({
+                  title: '⚠️ Watchdog GPRS: Reinício Automático',
+                  message: `${v.name} ficou ${elapsedMin} min sem sinal GPRS (limite: ${timeoutMinutes} min). Comando de reinício e redefinição de socket enviado automaticamente.`,
+                  type: 'command',
+                  severity: 'warning',
+                  vehicleId: v.id,
+                  vehicleName: v.name,
+                  lat: v.lat,
+                  lng: v.lng
+                });
+
+                handleUpdateVehicle({
+                  ...v,
+                  settings: {
+                    ...(v.settings || {}),
+                    lastWatchdogRebootTimestamp: nowMs
+                  } as any
+                });
+              }
+            }
+          }
+        }
+      });
+    }, 15000);
+
+    return () => clearInterval(watchdogInterval);
+  }, [vehicles]);
 
   const handleForceCommunication = async () => {
     setIsCommunicating(true);
