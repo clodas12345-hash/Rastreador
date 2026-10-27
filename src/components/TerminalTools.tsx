@@ -181,26 +181,28 @@ export default function TerminalTools({
   const [gprsWatchdogEnabled, setGprsWatchdogEnabled] = useState<boolean>(true);
   const [gprsWatchdogTimeoutMinutes, setGprsWatchdogTimeoutMinutes] = useState<number>(15);
   const [isApplyingRebootConfig, setIsApplyingRebootConfig] = useState<boolean>(false);
+  const hasLoadedRebootTargetRef = React.useRef<string | null>(null);
 
   useEffect(() => {
-    if (rebootTargetId === 'all') {
-      const first = vehicles[0];
-      if (first?.settings) {
-        setScheduledRebootEnabled(Boolean(first.settings.scheduledRebootEnabled));
-        setScheduledRebootTime(first.settings.scheduledRebootTime || '03:30');
-        setGprsWatchdogEnabled(first.settings.gprsWatchdogEnabled !== false);
-        setGprsWatchdogTimeoutMinutes(first.settings.gprsWatchdogTimeoutMinutes || 15);
-      }
-    } else {
-      const v = vehicles.find(veh => veh.id === rebootTargetId);
-      if (v?.settings) {
-        setScheduledRebootEnabled(Boolean(v.settings.scheduledRebootEnabled));
-        setScheduledRebootTime(v.settings.scheduledRebootTime || '03:30');
-        setGprsWatchdogEnabled(v.settings.gprsWatchdogEnabled !== false);
-        setGprsWatchdogTimeoutMinutes(v.settings.gprsWatchdogTimeoutMinutes || 15);
+    if (activeTool !== 'reinicio_agenda') {
+      hasLoadedRebootTargetRef.current = null;
+      return;
+    }
+
+    if (hasLoadedRebootTargetRef.current !== rebootTargetId) {
+      hasLoadedRebootTargetRef.current = rebootTargetId;
+      const targetVehicle = rebootTargetId === 'all'
+        ? vehicles[0]
+        : vehicles.find(v => v.id === rebootTargetId);
+
+      if (targetVehicle?.settings) {
+        setScheduledRebootEnabled(Boolean(targetVehicle.settings.scheduledRebootEnabled));
+        setScheduledRebootTime(targetVehicle.settings.scheduledRebootTime || '03:30');
+        setGprsWatchdogEnabled(targetVehicle.settings.gprsWatchdogEnabled !== false);
+        setGprsWatchdogTimeoutMinutes(targetVehicle.settings.gprsWatchdogTimeoutMinutes || 15);
       }
     }
-  }, [rebootTargetId, vehicles]);
+  }, [rebootTargetId, activeTool, vehicles]);
 
   const handleSaveRebootConfig = async () => {
     setIsApplyingRebootConfig(true);
@@ -1391,7 +1393,10 @@ export default function TerminalTools({
 
               {/* CARD 1: REINÍCIO PROGRAMADO POR HORÁRIO */}
               <div className="border border-indigo-200 bg-indigo-50/40 rounded-2xl p-5 space-y-4">
-                <div className="flex items-start justify-between gap-4">
+                <div 
+                  onClick={() => setScheduledRebootEnabled(prev => !prev)}
+                  className="flex items-start justify-between gap-4 cursor-pointer select-none"
+                >
                   <div className="flex items-center gap-2.5">
                     <div className="p-2 bg-indigo-600 text-white rounded-lg shadow-sm">
                       <Clock className="w-5 h-5" />
@@ -1406,19 +1411,36 @@ export default function TerminalTools({
                     </div>
                   </div>
 
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={scheduledRebootEnabled}
-                      onChange={(e) => setScheduledRebootEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                  </label>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      scheduledRebootEnabled ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {scheduledRebootEnabled ? 'ATIVO 🟢' : 'DESLIGADO ⚪'}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={scheduledRebootEnabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setScheduledRebootEnabled(prev => !prev);
+                      }}
+                      className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner ${
+                        scheduledRebootEnabled ? 'bg-indigo-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          scheduledRebootEnabled ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 {scheduledRebootEnabled && (
-                  <div className="space-y-3 pt-2 border-t border-indigo-100 animate-in fade-in">
+                  <div className="space-y-3 pt-3 border-t border-indigo-100 animate-in fade-in">
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
                         Horário de Reinício Automático:
@@ -1427,18 +1449,24 @@ export default function TerminalTools({
                         <input
                           type="time"
                           value={scheduledRebootTime}
-                          onChange={(e) => setScheduledRebootTime(e.target.value)}
-                          className="border border-gray-300 rounded-xl px-3 py-2 text-base font-mono font-bold bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none shadow-xs"
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setScheduledRebootTime(e.target.value);
+                          }}
+                          className="border border-indigo-300 rounded-xl px-3 py-2 text-base font-mono font-bold bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none shadow-xs"
                         />
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {['02:00', '03:30', '04:00', '05:00'].map(t => (
+                          {['02:00', '03:00', '03:30', '04:00', '05:00', '06:00'].map(t => (
                             <button
                               key={t}
                               type="button"
-                              onClick={() => setScheduledRebootTime(t)}
-                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setScheduledRebootTime(t);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                 scheduledRebootTime === t 
-                                  ? 'bg-indigo-600 text-white shadow-xs' 
+                                  ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-400' 
                                   : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
                               }`}
                             >
@@ -1464,7 +1492,10 @@ export default function TerminalTools({
 
               {/* CARD 2: WATCHDOG DE DESCONEXÃO GPRS (SEM SINAL) */}
               <div className="border border-amber-200 bg-amber-50/40 rounded-2xl p-5 space-y-4">
-                <div className="flex items-start justify-between gap-4">
+                <div 
+                  onClick={() => setGprsWatchdogEnabled(prev => !prev)}
+                  className="flex items-start justify-between gap-4 cursor-pointer select-none"
+                >
                   <div className="flex items-center gap-2.5">
                     <div className="p-2 bg-amber-600 text-white rounded-lg shadow-sm">
                       <WifiOff className="w-5 h-5" />
@@ -1479,19 +1510,36 @@ export default function TerminalTools({
                     </div>
                   </div>
 
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={gprsWatchdogEnabled}
-                      onChange={(e) => setGprsWatchdogEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
-                  </label>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      gprsWatchdogEnabled ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {gprsWatchdogEnabled ? 'ATIVO 🟢' : 'DESLIGADO ⚪'}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={gprsWatchdogEnabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setGprsWatchdogEnabled(prev => !prev);
+                      }}
+                      className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner ${
+                        gprsWatchdogEnabled ? 'bg-amber-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          gprsWatchdogEnabled ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 {gprsWatchdogEnabled && (
-                  <div className="space-y-3 pt-2 border-t border-amber-100 animate-in fade-in">
+                  <div className="space-y-3 pt-3 border-t border-amber-100 animate-in fade-in">
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
                         Tempo Máximo Sem Conexão GPRS Permitido:
@@ -1506,10 +1554,13 @@ export default function TerminalTools({
                           <button
                             key={opt.min}
                             type="button"
-                            onClick={() => setGprsWatchdogTimeoutMinutes(opt.min)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setGprsWatchdogTimeoutMinutes(opt.min);
+                            }}
                             className={`p-2.5 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
                               gprsWatchdogTimeoutMinutes === opt.min
-                                ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-400'
                                 : 'bg-white text-gray-700 border-gray-200 hover:bg-amber-50'
                             }`}
                           >
