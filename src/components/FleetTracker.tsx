@@ -427,6 +427,19 @@ function MapController({
   const prevFitTrigger = useRef<number>(fitTrigger);
   const prevValidVehiclesCount = useRef<number>(0);
 
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
   // Helper to fit bounds with padding and clamp maximum zoom
   const fitVehiclesBounds = useCallback((targetVehs: Vehicle[]) => {
     if (!map) return;
@@ -437,31 +450,61 @@ function MapController({
     });
 
     if (valid.length > 1) {
+      let maxDistKm = 0;
+      for (let i = 0; i < valid.length; i++) {
+        for (let j = i + 1; j < valid.length; j++) {
+          const d = getDistanceKm(Number(valid[i].lat), Number(valid[i].lng), Number(valid[j].lat), Number(valid[j].lng));
+          if (d > maxDistKm) maxDistKm = d;
+        }
+      }
+
       const bounds = new google.maps.LatLngBounds();
       valid.forEach(v => bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) }));
+      const center = bounds.getCenter();
 
       const executeFit = () => {
         try {
-          // Responsive padding ensuring all vehicles are completely visible on screen
-          map.fitBounds(bounds, { top: 110, bottom: 130, left: 80, right: 80 });
+          // Dynamic camera: aproximação inteligente e dinâmica de acordo com a distância real entre os veículos
+          if (maxDistKm < 5) {
+            map.panTo(center);
+            map.setZoom(15.8);
+            return;
+          } else if (maxDistKm < 12) {
+            map.panTo(center);
+            map.setZoom(15.2);
+            return;
+          } else if (maxDistKm < 22) {
+            map.panTo(center);
+            map.setZoom(14.6);
+            return;
+          } else if (maxDistKm < 40) {
+            map.panTo(center);
+            map.setZoom(14.0);
+            return;
+          }
 
-          // Clamp zoom to prevent excessive zoom-in if vehicles are close to each other
+          // Distâncias maiores: fitBounds com padding compacto para mobile sem afastar o mapa em excesso
+          map.fitBounds(bounds, { top: 50, bottom: 70, left: 25, right: 25 });
+
           const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
             const currentZoom = map.getZoom();
-            if (currentZoom !== undefined && currentZoom > 17) {
-              map.setZoom(17);
+            if (currentZoom !== undefined) {
+              if (currentZoom < 13.5 && maxDistKm < 60) {
+                map.setZoom(13.8);
+              } else if (currentZoom > 17) {
+                map.setZoom(17);
+              }
             }
           });
         } catch (e) {}
       };
 
       executeFit();
-      // Second pass for mobile/APK WebView to account for delayed container dimensions
-      const timer = setTimeout(executeFit, 250);
+      const timer = setTimeout(executeFit, 200);
       return () => clearTimeout(timer);
     } else if (valid.length === 1) {
       map.panTo({ lat: Number(valid[0].lat), lng: Number(valid[0].lng) });
-      map.setZoom(17);
+      map.setZoom(16.8);
     }
   }, [map]);
 
@@ -540,7 +583,13 @@ function MapController({
       if (isInitialFitNeeded || idsChanged || triggerFired || (countChanged && validVehicles.length > 0)) {
         hasFittedInitial.current = true;
         if (validVehicles.length > 0) {
-          fitVehiclesBounds(validVehicles);
+          const moving = isInitialFitNeeded ? validVehicles.find(v => v.status === 'Moving' || (v.speed || 0) >= 4) : null;
+          if (moving) {
+            map.panTo({ lat: Number(moving.lat), lng: Number(moving.lng) });
+            map.setZoom(16.5);
+          } else {
+            fitVehiclesBounds(validVehicles);
+          }
         }
       }
       return;
@@ -684,21 +733,14 @@ function MapCenterControls({
     }
 
     if (!isShowingAll) {
-      // Passo "Ver todos": Enquadra todos os veículos juntos na tela
-      if (validVehicles.length > 1) {
-        const bounds = new google.maps.LatLngBounds();
-        validVehicles.forEach(v => {
-          bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) });
-        });
-        map.fitBounds(bounds, { top: 110, bottom: 120, left: 70, right: 70 });
-      } else if (validVehicles.length === 1) {
-        map.setCenter({ lat: Number(validVehicles[0].lat), lng: Number(validVehicles[0].lng) });
-        map.setZoom(15);
+      // Passo "Ver todos": Auto-enquadra dinamicamente todos os veículos
+      if (onTriggerFit) {
+        onTriggerFit();
       }
       setIsShowingAll(true);
       onSelectVehicle(null);
     } else {
-      // Passo "Centralizar": Foca no próximo veículo da fila
+      // Passo "Centralizar": Foca no próximo veículo da fila com transição suave panTo
       if (validVehicles.length === 0) return;
 
       const nextIndex = (lastFocusedIndexRef.current + 1) % validVehicles.length;
@@ -707,8 +749,8 @@ function MapCenterControls({
 
       setIsShowingAll(false);
       if (target && Number(target.lat) && Number(target.lng)) {
-        map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
-        map.setZoom(17);
+        map.panTo({ lat: Number(target.lat), lng: Number(target.lng) });
+        map.setZoom(16.8);
         onSelectVehicle(target);
       }
     }
@@ -1006,6 +1048,11 @@ export default function FleetTracker({
       return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
     });
     if (valid.length === 0) return { lat: -23.5226, lng: -46.5590 };
+    // Prioriza veículo em movimento ou ignição ligada como centro inicial
+    const activeMoving = valid.find(v => v.status === 'Moving' || (v.speed || 0) >= 4 || v.status === 'IgnitionOn');
+    if (activeMoving) {
+      return { lat: Number(activeMoving.lat), lng: Number(activeMoving.lng) };
+    }
     const sumLat = valid.reduce((acc, v) => acc + Number(v.lat), 0);
     const sumLng = valid.reduce((acc, v) => acc + Number(v.lng), 0);
     return { lat: sumLat / valid.length, lng: sumLng / valid.length };
@@ -1176,7 +1223,7 @@ export default function FleetTracker({
       <div className="absolute inset-0 z-0" style={{ touchAction: 'pan-x pan-y' }}>
         <Map
           defaultCenter={fleetCenter}
-          defaultZoom={13}
+          defaultZoom={15}
           mapId="DEMO_MAP_ID"
           internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
           style={{width: '100%', height: '100%'}}
