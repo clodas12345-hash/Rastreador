@@ -2743,13 +2743,51 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       }
     };
 
+    // Sincroniza os nomes e identificadores reais configurados no Flespi / Payview
+    const syncFlespiDeviceNames = async () => {
+      try {
+        const res = await fetch(`https://flespi.io/gw/devices/all`, {
+          headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+        });
+        const dData = await res.json();
+        if (dData?.result && Array.isArray(dData.result)) {
+          setVehicles(prev => {
+            let changed = false;
+            const updated = prev.map(v => {
+              const matched = dData.result.find((d: any) => 
+                (d.configuration?.ident && String(d.configuration.ident).trim() === String(v.trackerNumber || '').trim()) ||
+                (d.id && String(d.id).trim() === String(v.trackerNumber || '').trim())
+              );
+              if (matched && matched.name && typeof matched.name === 'string' && matched.name.trim() !== '' && matched.name.trim() !== v.name) {
+                console.log(`[Flespi Name Sync] Atualizando nome do carro de "${v.name}" para o nome real do Flespi/Payview "${matched.name.trim()}"`);
+                changed = true;
+                return { ...v, name: matched.name.trim() };
+              }
+              return v;
+            });
+            if (changed) {
+              try {
+                localStorage.setItem('app_vehicles_cache', JSON.stringify(updated));
+              } catch (e) {}
+            }
+            return changed ? updated : prev;
+          });
+        }
+      } catch (e) {}
+    };
+
     // Run initial sync immediately
     fetchRealTimeFlespi();
+    syncFlespiDeviceNames();
 
     // Poll every 3 seconds for real-time live telemetry
     const fastInterval = setInterval(() => {
       fetchRealTimeFlespi();
     }, 3000);
+
+    const namesInterval = setInterval(() => {
+      syncFlespiDeviceNames();
+    }, 30000);
 
     // Instant refresh when user returns to or unlocks the app
     let appStateHandle: any = null;
@@ -2759,6 +2797,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           if (isActive) {
             console.log('[App Resume] App brought to foreground, fetching fresh telemetry immediately');
             fetchRealTimeFlespi();
+            syncFlespiDeviceNames();
           }
         });
       } catch (e) {}
@@ -2766,6 +2805,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
     return () => {
       clearInterval(fastInterval);
+      clearInterval(namesInterval);
       if (appStateHandle && typeof appStateHandle.then === 'function') {
         appStateHandle.then((h: any) => h.remove?.()).catch(() => {});
       }
