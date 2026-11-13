@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { VehicleIcon } from './VehicleIcon';
 import { AddressDisplay } from './AddressDisplay';
+import { getVehicleDynamicColor } from '../utils/vehicleColors';
 
 interface DadosModuleProps {
   vehicles: Vehicle[];
@@ -211,20 +212,26 @@ export default function DadosModule({ vehicles, onUpdateVehicle, onBackToMap }: 
                 <div className="p-4 sm:p-5 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm">
-                      <VehicleIcon iconType={vehicle.iconType} color={vehicle.color} size={28} />
+                      <VehicleIcon iconType={vehicle.iconType} color={getVehicleDynamicColor(vehicle)} size={28} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-gray-900 text-base">{vehicle.name}</h3>
-                        {isBlocked ? (
-                          <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">🔒 BLOQUEADO</span>
-                        ) : isMoving ? (
-                          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold animate-pulse">🟢 EM MOVIMENTO</span>
-                        ) : isOnline ? (
-                          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">🔵 LIGADO / ESTACIONADO</span>
-                        ) : (
-                          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold">⚪ OFFLINE</span>
-                        )}
+                        {(() => {
+                          const isOff = vehicle.status === 'Offline' || vehicle.status === 'NoBattery';
+                          const isLig = !isOff && (vehicle.status === 'Moving' || vehicle.status === 'IgnitionOn' || (vehicle.speed || 0) >= 4);
+
+                          if (isBlocked) {
+                            return <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">🔒 BLOQUEADO</span>;
+                          }
+                          if (isOff) {
+                            return <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">🔴 SEM SINAL DE INTERNET</span>;
+                          }
+                          if (isLig) {
+                            return <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">🔵 LIGADO {vehicle.speed && vehicle.speed >= 4 ? `(${Math.round(vehicle.speed)} km/h)` : ''}</span>;
+                          }
+                          return <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">🟢 COM SINAL DE INTERNET</span>;
+                        })()}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 mt-0.5">
                         <span className="font-mono font-semibold">{vehicle.licensePlate || 'Sem Placa'}</span>

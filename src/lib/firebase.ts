@@ -1,11 +1,11 @@
 import { initializeApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore, disableNetwork } from "firebase/firestore";
-import { getAuth, Auth } from "firebase/auth";
+import { getAuth, Auth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { setQuotaExceeded } from "../utils/firestoreQuota";
 import firebaseAppletConfig from "../../firebase-applet-config.json";
 
-export const isFirestoreEnabled = Capacitor.isNativePlatform();
+export const isFirestoreEnabled = true;
 
 let app: FirebaseApp | null = null;
 
@@ -28,8 +28,13 @@ function getFirebase() {
   return app;
 }
 
-export const db = getFirestore(getFirebase(), firebaseAppletConfig.firestoreDatabaseId || "(default)");
+export const db = getFirestore(getFirebase(), (firebaseAppletConfig as any).firestoreDatabaseId || "(default)");
 export const auth = getAuth(getFirebase());
+
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/contacts.readonly');
+
+export { signInWithPopup };
 
 // Disconnect Web Preview from Firestore database; keep only the native APK connected
 if (!isFirestoreEnabled) {

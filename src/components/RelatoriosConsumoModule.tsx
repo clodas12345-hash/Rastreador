@@ -531,13 +531,19 @@ export default function RelatoriosConsumoModule({
                         <td className="p-2.5 text-right font-semibold text-gray-700">{v.speed || 0} km/h</td>
                         <td className="p-2.5 text-right font-semibold text-gray-700">{v.externalVoltage ? `${v.externalVoltage.toFixed(1)}V` : '13.8V'}</td>
                         <td className="p-2.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            v.status === 'Moving' ? 'bg-emerald-100 text-emerald-800' :
-                            v.status === 'IgnitionOn' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {v.status}
-                          </span>
+                          {(() => {
+                            const isOff = v.status === 'Offline' || v.status === 'NoBattery';
+                            const isLig = !isOff && (v.status === 'Moving' || v.status === 'IgnitionOn' || (v.speed || 0) >= 4);
+                            return (
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isOff ? 'bg-red-100 text-red-800 border border-red-200' :
+                                isLig ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                                'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              }`}>
+                                {isOff ? '🔴 Sem Sinal' : isLig ? '🔵 Ligado' : '🟢 Com Sinal'}
+                              </span>
+                            );
+                          })()}
                         </td>
                       </tr>
                     ))}

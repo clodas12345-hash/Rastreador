@@ -8,6 +8,7 @@ import ShareTrackingModal from './ShareTrackingModal';
 import {Layers, Settings, X, Gauge, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Crosshair, MapPin, Info} from 'lucide-react';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed, determineRoadSpeedLimit, RoadSpeedInfo } from '../lib/geocoding';
 import { getRoadSnappedPath, generateCurvedSmoothPath } from '../lib/routeRoadSnapper';
+import { getVehicleDynamicColor, getVehicleColorStyles } from '../utils/vehicleColors';
 
 function RoadSpeedBadge({ vehicle }: { vehicle: Vehicle }) {
   const [speedInfo, setSpeedInfo] = useState<RoadSpeedInfo>(() => {
@@ -159,47 +160,31 @@ function VehicleStatusLegend({ vehicles = [] }: { vehicles?: Vehicle[] }) {
 
   // Compute live vehicle counts per state
   const counts = React.useMemo(() => {
-    let moving = 0;
-    let ignitionOn = 0;
-    let ignitionOff = 0;
+    let ligado = 0;
+    let comSinal = 0;
     let offline = 0;
     let blocked = 0;
 
     vehicles.forEach(v => {
       const isBlocked = Boolean(v.settings?.isBlocked);
       const isOff = v.status === 'Offline' || v.status === 'NoBattery';
-      const isMov = v.status === 'Moving' && (v.speed || 0) >= 4;
-      const isIgnOn = v.status === 'IgnitionOn' || (v.status === 'Moving' && (v.speed || 0) < 4);
+      const isLig = !isOff && (v.status === 'Moving' || v.status === 'IgnitionOn' || (v.speed || 0) >= 4);
 
       if (isBlocked) blocked++;
-      else if (isOff) offline++;
-      else if (isMov) moving++;
-      else if (isIgnOn) ignitionOn++;
-      else ignitionOff++;
+      if (isOff) offline++;
+      else if (isLig) ligado++;
+      else comSinal++;
     });
 
-    return { moving, ignitionOn, ignitionOff, offline, blocked };
+    return { ligado, comSinal, offline, blocked };
   }, [vehicles]);
 
   const legendItems = [
     {
-      id: 'moving',
-      label: 'Movendo',
-      sub: 'Em deslocamento (≥ 4 km/h)',
-      count: counts.moving,
-      indicator: (
-        <div className="relative flex items-center justify-center w-5 h-5 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
-          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 border-2 border-white shadow-sm ring-2 ring-green-400/50"></span>
-        </div>
-      ),
-      badgeClass: 'bg-green-500/20 text-green-400 border border-green-500/30'
-    },
-    {
-      id: 'ignitionOn',
-      label: 'Ocioso',
-      sub: 'Motor ligado parado (0 km/h)',
-      count: counts.ignitionOn,
+      id: 'comSinal',
+      label: 'Com Sinal de Internet (Verde)',
+      sub: 'Conectado / Desligado estacionado',
+      count: counts.comSinal,
       indicator: (
         <div className="flex items-center justify-center w-5 h-5 shrink-0">
           <span className="inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white shadow-sm ring-1 ring-emerald-400/40"></span>
@@ -208,21 +193,22 @@ function VehicleStatusLegend({ vehicles = [] }: { vehicles?: Vehicle[] }) {
       badgeClass: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
     },
     {
-      id: 'ignitionOff',
-      label: 'IgnitionOff',
-      sub: 'Estacionado / Desligado',
-      count: counts.ignitionOff,
+      id: 'ligado',
+      label: 'Ligado (Azul)',
+      sub: 'Motor ligado ou em deslocamento',
+      count: counts.ligado,
       indicator: (
-        <div className="flex items-center justify-center w-5 h-5 shrink-0">
-          <span className="inline-flex rounded-full h-3.5 w-3.5 bg-gray-400 border-2 border-white shadow-sm"></span>
+        <div className="relative flex items-center justify-center w-5 h-5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
+          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-blue-600 border-2 border-white shadow-sm ring-2 ring-blue-400/50"></span>
         </div>
       ),
-      badgeClass: 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+      badgeClass: 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
     },
     {
       id: 'offline',
-      label: 'Offline',
-      sub: 'Sem sinal GPRS ou bateria',
+      label: 'Sem Sinal de Internet (Vermelho)',
+      sub: 'Sem sinal GPRS ou sem bateria',
       count: counts.offline,
       indicator: (
         <div className="relative flex items-center justify-center w-5 h-5 shrink-0">
@@ -673,127 +659,106 @@ function MapCenterControls({
 }) {
   const map = useMap();
 
-  const validVehicles = vehicles.filter(v => {
-    const lat = Number(v.lat);
-    const lng = Number(v.lng);
-    return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
-  });
+  // Filtra apenas veículos com coordenadas válidas
+  const validVehicles = React.useMemo(() => {
+    return vehicles.filter(v => {
+      const lat = Number(v.lat);
+      const lng = Number(v.lng);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+  }, [vehicles]);
 
-  const selectedCount = (selectedVehicleIds || []).length;
-  const isMulti = selectedCount > 1;
-
-  const handleShowAll = () => {
+  const fitVehiclesBounds = useCallback((targetVehs: Vehicle[]) => {
     if (!map) return;
-    setIsShowingAll(true);
-    onSelectVehicle(null);
+    const valid = targetVehs.filter(v => {
+      const lat = Number(v.lat);
+      const lng = Number(v.lng);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
 
-    if (validVehicles.length > 1) {
+    if (valid.length > 1) {
       const bounds = new google.maps.LatLngBounds();
-      validVehicles.forEach(v => bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) }));
+      valid.forEach(v => bounds.extend({ lat: Number(v.lat), lng: Number(v.lng) }));
       map.fitBounds(bounds, { top: 70, bottom: 90, left: 35, right: 35 });
       google.maps.event.addListenerOnce(map, 'idle', () => {
         const z = map.getZoom();
         if (z !== undefined && z > 16.5) map.setZoom(16.5);
       });
-    } else if (validVehicles.length === 1) {
-      map.panTo({ lat: Number(validVehicles[0].lat), lng: Number(validVehicles[0].lng) });
+    } else if (valid.length === 1) {
+      map.panTo({ lat: Number(valid[0].lat), lng: Number(valid[0].lng) });
       map.setZoom(16.8);
     }
-
-    if (onTriggerFit) {
-      onTriggerFit();
-    }
-  };
-
-  const handleCenterVehicle = (target: Vehicle) => {
-    if (!map) return;
-    setIsShowingAll(false);
-    onSelectVehicle(target);
-
-    if (target && Number(target.lat) && Number(target.lng)) {
-      map.panTo({ lat: Number(target.lat), lng: Number(target.lng) });
-      map.setZoom(17);
-    }
-  };
+  }, [map]);
 
   if (validVehicles.length === 0) return null;
 
+  // Identifica se algum carro está atualmente em foco individual
+  const currentFocusedVehicle = !isShowingAll ? (
+    selectedVehicle || (
+      selectedVehicleIds && selectedVehicleIds.length === 1
+        ? validVehicles.find(v => v.id === selectedVehicleIds[0]) || null
+        : null
+    )
+  ) : null;
+
+  // Encontra o índice do carro atualmente focado (ou -1 se nenhum / todos)
+  const currentIdx = currentFocusedVehicle
+    ? validVehicles.findIndex(v => v.id === currentFocusedVehicle.id)
+    : -1;
+
+  // Ciclo exato: Carro 1 -> Carro 2 -> Centralizar os dois -> Carro 1...
+  // 1º passo: Se está em "todos" ou nenhum selecionado (currentIdx === -1), próximo clique mostra o 1º carro
+  // 2º passo: Se está em um carro intermediário (currentIdx < total - 1), próximo clique mostra o próximo carro
+  // 3º passo: Se está no último carro (currentIdx === total - 1), próximo clique centraliza todos/os dois
+  const isGoingToAll = validVehicles.length > 1 && currentIdx === validVehicles.length - 1;
+
+  const nextTargetVehicle: Vehicle = (() => {
+    if (validVehicles.length <= 1) return validVehicles[0];
+    if (currentIdx === -1) return validVehicles[0];
+    if (currentIdx < validVehicles.length - 1) return validVehicles[currentIdx + 1];
+    return validVehicles[0];
+  })();
+
+  const handleToggle = () => {
+    if (!map || validVehicles.length === 0) return;
+
+    if (isGoingToAll) {
+      // 3º Clique: Centraliza os dois / todos
+      setIsShowingAll(true);
+      onSelectVehicle(null);
+      fitVehiclesBounds(validVehicles);
+      if (onTriggerFit) onTriggerFit();
+    } else {
+      // 1º ou 2º Clique: Centraliza com precisão máxima no carro indicado
+      setIsShowingAll(false);
+      onSelectVehicle(nextTargetVehicle);
+      if (Number(nextTargetVehicle.lat) && Number(nextTargetVehicle.lng)) {
+        map.panTo({ lat: Number(nextTargetVehicle.lat), lng: Number(nextTargetVehicle.lng) });
+        map.setZoom(17);
+      }
+    }
+  };
+
+  const buttonIcon = isGoingToAll ? '🗺️' : '🎯';
+  const buttonLabel = isGoingToAll
+    ? (validVehicles.length === 2 ? 'Centralizar os dois' : `Ver Todos (${validVehicles.length})`)
+    : `Centralizar (${nextTargetVehicle.name})`;
+
   return (
-    <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-4 sm:right-6 z-20 pointer-events-auto flex items-center gap-1.5 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl shadow-2xl border border-slate-200/90 max-w-[calc(100vw-2rem)] overflow-x-auto scrollbar-none animate-in fade-in slide-in-from-bottom-2">
-      {/* Botão Ver Todos / Frota */}
+    <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-4 sm:right-6 z-20 pointer-events-auto flex items-center">
       <button
         type="button"
-        onClick={handleShowAll}
-        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap active:scale-95 ${
-          isShowingAll && (!selectedVehicle && (!selectedVehicleIds || selectedVehicleIds.length === 0))
-            ? 'bg-slate-900 text-white shadow-md'
-            : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-        }`}
-        title="Enquadrar todos os veículos da frota no mapa"
+        onClick={handleToggle}
+        className="bg-white/95 hover:bg-blue-50 text-gray-800 hover:text-blue-600 font-bold px-4 py-2.5 rounded-2xl shadow-xl border border-blue-200 backdrop-blur-md flex items-center gap-2 text-xs transition-all hover:scale-105 active:scale-95 group cursor-pointer"
+        title={isGoingToAll ? 'Enquadrar todos os veículos no mapa' : `Centralizar mapa em ${nextTargetVehicle.name}`}
       >
-        <span className="text-sm">🗺️</span>
-        <span className="font-extrabold">Ver Todos ({validVehicles.length})</span>
+        <span className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center text-xs text-blue-600 ring-1 ring-blue-200 shrink-0">
+          {buttonIcon}
+        </span>
+        <span className="font-extrabold text-xs text-gray-800 group-hover:text-blue-700 tracking-tight">
+          {buttonLabel}
+        </span>
       </button>
-
-      {/* Botão Auto-Ajustar quando multi-seleção ativa */}
-      {isMulti && (
-        <button
-          type="button"
-          onClick={() => {
-            if (onTriggerFit) onTriggerFit();
-          }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:scale-95"
-          title={`Enquadrar os ${selectedCount} veículos selecionados`}
-        >
-          <span>🎯</span>
-          <span>Ajustar ({selectedCount})</span>
-        </button>
-      )}
-
-      <div className="w-px h-5 bg-gray-200 shrink-0" />
-
-      {/* Botões individuais com nome e status exato de cada carro */}
-      {validVehicles.map(v => {
-        const isCurrentSelected = (selectedVehicle?.id === v.id) || (selectedVehicleIds && selectedVehicleIds.length === 1 && selectedVehicleIds[0] === v.id);
-        const isMoving = v.status === 'Moving' && (v.speed || 0) >= 4;
-        const isIgnOn = v.status === 'IgnitionOn';
-        const isOff = v.status === 'Offline' || v.status === 'NoBattery';
-        const isBlocked = Boolean(v.settings?.isBlocked);
-
-        return (
-          <button
-            key={v.id}
-            type="button"
-            onClick={() => handleCenterVehicle(v)}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap active:scale-95 ${
-              isCurrentSelected
-                ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-300'
-                : 'bg-white hover:bg-blue-50 text-gray-800 hover:text-blue-700 border border-gray-100'
-            }`}
-            title={`Centralizar mapa e acompanhar ${v.name} (${v.licensePlate || 'GPS'})`}
-          >
-            <span className="relative flex h-2 w-2 shrink-0">
-              {isMoving && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${
-                isBlocked ? 'bg-red-700' :
-                isOff ? 'bg-red-500' :
-                isMoving ? 'bg-emerald-500' :
-                isIgnOn ? 'bg-emerald-400' :
-                'bg-gray-400'
-              }`}></span>
-            </span>
-
-            <span>🎯</span>
-            <span className="font-extrabold">{v.name}</span>
-
-            {isCurrentSelected && (
-              <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded-md font-mono">
-                {isMoving ? `${Math.round(v.speed || 0)}km/h` : isIgnOn ? 'Ligado' : 'Foco'}
-              </span>
-            )}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -1376,9 +1341,9 @@ export default function FleetTracker({
               ? selectedVehicleIds.includes(v.id)
               : (selectedVehicle?.id === v.id);
             const isMultiSelected = Boolean(selectedVehicleIds && selectedVehicleIds.length > 1 && selectedVehicleIds.includes(v.id));
+            const vStyles = getVehicleColorStyles(v);
             const isMoving = v.status === 'Moving' && (v.speed || 0) >= 4;
             const pointerHeight = Math.max(0, (18 - mapZoom) * 8);
-            const statusColor = v.settings?.isBlocked ? 'bg-red-600' : v.status === 'Offline' || v.status === 'NoBattery' ? 'bg-red-600' : isMoving || v.status === 'IgnitionOn' ? 'bg-green-500' : 'bg-gray-400';
             const heading = typeof v.heading === 'number' ? v.heading : 0;
 
             return (
@@ -1413,7 +1378,10 @@ export default function FleetTracker({
                     className="absolute -top-3 w-6 h-6 flex items-center justify-center pointer-events-none transition-transform duration-500 z-20"
                     style={{ transform: `rotate(${heading}deg)` }}
                   >
-                    <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[9px] border-b-blue-600 drop-shadow-md animate-pulse" />
+                    <div 
+                      className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[9px] drop-shadow-md animate-pulse" 
+                      style={{ borderBottomColor: vStyles.hex }}
+                    />
                   </div>
                 )}
 
@@ -1422,22 +1390,19 @@ export default function FleetTracker({
                     isSelected ? 'ring-4 ring-blue-500/60 scale-110' : ''
                   } ${
                     v.settings?.isBlocked ? 'border-red-600 bg-red-50 text-red-600 animate-pulse' :
-                    v.status === 'Offline' || v.status === 'NoBattery' ? 'border-red-600 text-red-600 animate-pulse' :
-                    isMoving ? 'border-green-500 text-green-500 ring-2 ring-green-400/50' : 
-                    v.status === 'IgnitionOn' ? 'border-emerald-500 text-emerald-500' :
-                    'border-gray-400 text-gray-500'
+                    `${vStyles.borderClass} ${vStyles.ringClass} ring-2`
                   } ${v.photoUrl ? 'p-0.5' : 'p-2'}`}>
-                    <VehicleIcon iconType={v.iconType} color={v.color} size={v.photoUrl ? 40 : (isSelected ? 24 : 20)} photoUrl={v.photoUrl} className={v.photoUrl ? "border-none shadow-none" : ""} />
+                    <VehicleIcon iconType={v.iconType} color={vStyles.hex} size={v.photoUrl ? 40 : (isSelected ? 24 : 20)} photoUrl={v.photoUrl} className={v.photoUrl ? "border-none shadow-none" : ""} />
                   </div>
                   
                   {/* Dynamic Pointer shrinking on zoom */}
                   {pointerHeight > 0 && (
                     <div className="flex flex-col items-center justify-start pointer-events-none" style={{ marginTop: '-2px' }}>
                       <div 
-                        className={`w-1 ${statusColor} opacity-90`} 
+                        className={`w-1 ${vStyles.bgClass} opacity-90`} 
                         style={{ height: `${pointerHeight}px` }} 
                       />
-                      <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm`} style={{ marginTop: '-2px' }} />
+                      <div className={`w-2 h-2 rounded-full ${vStyles.bgClass} shadow-sm`} style={{ marginTop: '-2px' }} />
                     </div>
                   )}
                 </div>
@@ -1476,7 +1441,7 @@ export default function FleetTracker({
               <div className="flex items-center gap-2.5">
                 {!currentSelected.photoUrl && (
                   <div className="p-2 rounded-xl bg-blue-50 border border-blue-100 shadow-sm shrink-0">
-                    <VehicleIcon iconType={currentSelected.iconType} color={currentSelected.color} size={24} />
+                    <VehicleIcon iconType={currentSelected.iconType} color={getVehicleDynamicColor(currentSelected)} size={24} />
                   </div>
                 )}
                 <div className="min-w-0">
@@ -1632,17 +1597,16 @@ export default function FleetTracker({
             <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
               <span className="text-[10px] text-gray-500 font-semibold block mb-0.5">Status & Conexão</span>
               <span className={`font-bold text-xs ${
-                currentSelected.powerCut || currentSelected.status === 'NoBattery' ? 'text-red-600 animate-pulse' :
-                currentSelected.status === 'Offline' ? 'text-red-600' :
-                (currentSelected.speed && currentSelected.speed > 0) || currentSelected.status === 'Moving' || currentSelected.status === 'IgnitionOn' ? 'text-emerald-600' :
-                'text-gray-700'
+                currentSelected.powerCut || currentSelected.status === 'NoBattery' || currentSelected.status === 'Offline' ? 'text-red-600 animate-pulse' :
+                (currentSelected.speed && currentSelected.speed > 0) || currentSelected.status === 'Moving' || currentSelected.status === 'IgnitionOn' ? 'text-blue-600' :
+                'text-emerald-600'
               }`}>
                 {currentSelected.powerCut || currentSelected.status === 'NoBattery' ? '🔴 Corte de Energia (Sem 12V)' :
-                 currentSelected.status === 'Offline' ? '🔴 Sem Sinal (Offline)' :
-                 (currentSelected.speed && currentSelected.speed > 0) ? '🟢 Em Movimento' :
-                 currentSelected.status === 'Moving' ? '🟢 Em Movimento' :
-                 currentSelected.status === 'IgnitionOn' ? '🟢 Ocioso (Ligado)' :
-                 '⚪ Desligado (Conectado 🟢)'}
+                 currentSelected.status === 'Offline' ? '🔴 Sem Sinal de Internet (Offline)' :
+                 (currentSelected.speed && currentSelected.speed > 0) ? `🔵 Ligado em Movimento (${Math.round(currentSelected.speed)} km/h)` :
+                 currentSelected.status === 'Moving' ? '🔵 Ligado em Movimento' :
+                 currentSelected.status === 'IgnitionOn' ? '🔵 Ligado (Ocioso)' :
+                 '🟢 Com Sinal de Internet (Desligado)'}
               </span>
             </div>
 

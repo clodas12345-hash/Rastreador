@@ -3,11 +3,12 @@ import { Vehicle, Driver } from '../types';
 import { 
   User, Award, AlertTriangle, ShieldCheck, Phone, FileText, 
   Plus, Trash2, Edit3, ArrowLeft, Star, Zap, Gauge, Search,
-  CheckCircle2, Car, Sparkles, Sliders, BatteryCharging
+  CheckCircle2, Car, Sparkles, Sliders, BatteryCharging, X
 } from 'lucide-react';
-import { collection, doc } from 'firebase/firestore';
+import { doc, collection } from 'firebase/firestore';
 import { safeSetDoc, safeDeleteDoc, safeOnSnapshot } from '../utils/firestoreWrapper';
-import { db, cleanFirestoreData, isFirestoreEnabled } from '../lib/firebase';
+import { db, cleanFirestoreData, googleProvider, signInWithPopup, auth } from '../lib/firebase';
+import { fetchGoogleContacts, GoogleContact } from '../utils/googleContacts';
 
 interface MotoristasModuleProps {
   vehicles: Vehicle[];
@@ -26,6 +27,10 @@ export default function MotoristasModule({
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
+  const [isFetchingGoogle, setIsFetchingGoogle] = useState(false);
+  const [googleContacts, setGoogleContacts] = useState<GoogleContact[]>([]);
+  const [showGooglePicker, setShowGooglePicker] = useState(false);
+  const [googleSearch, setGoogleSearch] = useState('');
 
   // Form State
   const [formData, setFormData] = useState<{
@@ -156,6 +161,44 @@ export default function MotoristasModule({
       console.error('Error saving driver:', e);
       if (showToast) showToast('❌ Erro ao salvar dados do motorista.');
     }
+  };
+
+  const handleGoogleContactsImport = async () => {
+    setIsFetchingGoogle(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = (result as any)._tokenResponse?.oauthAccessToken || (result as any).credential?.accessToken;
+      
+      if (!credential) {
+        if (showToast) showToast('❌ Falha ao obter token do Google.');
+        return;
+      }
+      
+      const contacts = await fetchGoogleContacts(credential);
+      if (contacts.length === 0) {
+        if (showToast) showToast('ℹ️ Nenhum contato com telefone encontrado no Google.');
+      } else {
+        setGoogleContacts(contacts);
+        setShowGooglePicker(true);
+      }
+    } catch (error: any) {
+      console.error('Google Contacts Error:', error);
+      if (error.code !== 'auth/popup-closed-by-user') {
+        if (showToast) showToast('❌ Erro ao conectar com o Google Contacts.');
+      }
+    } finally {
+      setIsFetchingGoogle(false);
+    }
+  };
+
+  const selectGoogleContact = (c: GoogleContact) => {
+    setFormData(prev => ({
+      ...prev,
+      name: c.name || prev.name,
+      phoneNumber: c.phoneNumber || prev.phoneNumber
+    }));
+    setShowGooglePicker(false);
+    if (showToast) showToast(`✅ Dados de "${c.name}" importados!`);
   };
 
   const handleDeleteDriver = async (driverId: string, name: string) => {
@@ -476,7 +519,57 @@ export default function MotoristasModule({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Telefone / WhatsApp:</label>
+                  <label className="text-xs font-bold text-gray-700 block mb-1 flex justify-between items-center">
+                    <span>Telefone / WhatsApp:</span>
+                    <div className="flex gap-1.5 items-center">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const nav = navigator as any;
+                          if (nav.contacts && nav.contacts.select) {
+                            try {
+                              const props = ['name', 'tel'];
+                              const opts = {multiple: false};
+                              const contacts = await nav.contacts.select(props, opts);
+                              if (contacts && contacts.length > 0) {
+                                const contact = contacts[0];
+                                const name = contact.name && contact.name.length > 0 ? contact.name[0] : '';
+                                const tel = contact.tel && contact.tel.length > 0 ? contact.tel[0] : '';
+                                
+                                setFormData(prev => ({ 
+                                  ...prev, 
+                                  name: name || prev.name,
+                                  phoneNumber: tel || prev.phoneNumber 
+                                }));
+                                
+                                if (showToast) showToast('✅ Contato importado com sucesso!');
+                              }
+                            } catch (err: any) {
+                              console.error('Contact selection error:', err);
+                              if (err.name !== 'AbortError') {
+                                if (showToast) showToast('❌ Erro ao acessar a agenda do celular.');
+                              }
+                            }
+                          } else {
+                            if (showToast) showToast('⚠️ Agenda local não suportada. Use "Importar Google".');
+                          }
+                        }}
+                        className="text-[10px] text-blue-600 hover:text-blue-800 font-black px-2 py-1 bg-blue-50 rounded-lg transition-colors border border-blue-100 active:scale-95"
+                        title="Importar da Agenda Local (Celular)"
+                      >
+                        📱 Local
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isFetchingGoogle}
+                        onClick={handleGoogleContactsImport}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-black px-2 py-1 bg-indigo-50 rounded-lg transition-colors border border-indigo-100 active:scale-95 disabled:opacity-50"
+                        title="Importar do Google Contacts"
+                      >
+                        {isFetchingGoogle ? '⏳...' : '☁️ Google'}
+                      </button>
+                    </div>
+                  </label>
                   <input
                     type="text"
                     value={formData.phoneNumber}
@@ -591,6 +684,70 @@ export default function MotoristasModule({
               >
                 Salvar Motorista
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Google Contacts Picker Modal */}
+      {showGooglePicker && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full h-[80vh] flex flex-col overflow-hidden border border-gray-100">
+            <div className="p-5 bg-indigo-600 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-black flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-300" />
+                  Seus Contatos do Google
+                </h3>
+                <p className="text-[10px] text-indigo-100 font-bold opacity-80 uppercase tracking-widest">
+                  Selecione um motorista para importar
+                </p>
+              </div>
+              <button onClick={() => setShowGooglePicker(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-b border-gray-200">
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar na agenda do Google..."
+                  value={googleSearch}
+                  onChange={(e) => setGoogleSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {googleContacts
+                .filter(c => c.name.toLowerCase().includes(googleSearch.toLowerCase()) || c.phoneNumber.includes(googleSearch))
+                .map((contact, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => selectGoogleContact(contact)}
+                    className="w-full p-4 rounded-2xl hover:bg-indigo-50 transition-all flex items-center justify-between text-left group border border-transparent hover:border-indigo-100 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-sm">
+                        {contact.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">{contact.name}</div>
+                        <div className="text-[11px] text-gray-500 font-mono">{contact.phoneNumber}</div>
+                      </div>
+                    </div>
+                    <Plus className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 transition-colors" />
+                  </button>
+                ))}
+            </div>
+            
+            <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
+              <p className="text-[10px] text-gray-400 font-bold uppercase">
+                {googleContacts.length} contatos sincronizados
+              </p>
             </div>
           </div>
         </div>

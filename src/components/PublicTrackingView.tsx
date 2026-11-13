@@ -4,6 +4,7 @@ import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import { VehicleIcon } from './VehicleIcon';
 import { AddressDisplay } from './AddressDisplay';
 import { ShieldCheck, Clock, Navigation, MapPin, Gauge } from 'lucide-react';
+import { getVehicleColorStyles } from '../utils/vehicleColors';
 
 interface PublicTrackingViewProps {
   vehicle: Vehicle;
@@ -56,21 +57,27 @@ export default function PublicTrackingView({ vehicle, token }: PublicTrackingVie
           gestureHandling={'greedy'}
           disableDefaultUI={true}
         >
-          {vehicle.lat && vehicle.lng && (
-            <AdvancedMarker position={{ lat: Number(vehicle.lat), lng: Number(vehicle.lng) }}>
-              <div className="flex flex-col items-center select-none relative">
-                <div className="absolute -inset-3 rounded-full bg-emerald-500/30 animate-ping pointer-events-none" />
-                
-                <div className="p-2.5 rounded-full shadow-2xl bg-white border-4 border-emerald-500 text-emerald-600 relative z-10">
-                  <VehicleIcon iconType={vehicle.iconType} color={vehicle.color} size={28} photoUrl={vehicle.photoUrl} />
-                </div>
+          {vehicle.lat && vehicle.lng && (() => {
+            const vStyles = getVehicleColorStyles(vehicle);
+            const isOffline = vehicle.status === 'Offline' || vehicle.status === 'NoBattery';
+            const isLigado = !isOffline && (vehicle.speed > 0 || vehicle.status === 'Moving' || vehicle.status === 'IgnitionOn');
 
-                <div className="mt-1 bg-slate-900/90 backdrop-blur-md text-white px-2.5 py-0.5 rounded-full text-xs font-black shadow border border-slate-700 whitespace-nowrap">
-                  {vehicle.name} • {Math.round(vehicle.speed || 0)} km/h
+            return (
+              <AdvancedMarker position={{ lat: Number(vehicle.lat), lng: Number(vehicle.lng) }}>
+                <div className="flex flex-col items-center select-none relative">
+                  <div className={`absolute -inset-3 rounded-full ${isOffline ? 'bg-red-500/30' : isLigado ? 'bg-blue-500/30' : 'bg-emerald-500/30'} animate-ping pointer-events-none`} />
+                  
+                  <div className={`p-2.5 rounded-full shadow-2xl bg-white border-4 ${vStyles.borderClass} ${vStyles.textClass} relative z-10`}>
+                    <VehicleIcon iconType={vehicle.iconType} color={vStyles.hex} size={28} photoUrl={vehicle.photoUrl} />
+                  </div>
+
+                  <div className="mt-1 bg-slate-900/90 backdrop-blur-md text-white px-2.5 py-0.5 rounded-full text-xs font-black shadow border border-slate-700 whitespace-nowrap">
+                    {vehicle.name} • {Math.round(vehicle.speed || 0)} km/h
+                  </div>
                 </div>
-              </div>
-            </AdvancedMarker>
-          )}
+              </AdvancedMarker>
+            );
+          })()}
         </Map>
       </div>
 
@@ -79,16 +86,25 @@ export default function PublicTrackingView({ vehicle, token }: PublicTrackingVie
         <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
           <div className="bg-slate-800/80 p-2.5 rounded-2xl border border-slate-700">
             <span className="text-[10px] text-slate-400 font-bold block mb-0.5">Velocidade Atual</span>
-            <span className="text-base font-black font-mono text-emerald-400">
+            <span className="text-base font-black font-mono text-blue-400">
               {Math.round(vehicle.speed || 0)} km/h
             </span>
           </div>
 
           <div className="bg-slate-800/80 p-2.5 rounded-2xl border border-slate-700">
-            <span className="text-[10px] text-slate-400 font-bold block mb-0.5">Estado do Motor</span>
-            <span className={`text-xs font-extrabold ${vehicle.speed > 0 || vehicle.status === 'Moving' || vehicle.status === 'IgnitionOn' ? 'text-emerald-400' : 'text-slate-300'}`}>
-              {vehicle.speed > 0 || vehicle.status === 'Moving' ? '🟢 Em Movimento' : vehicle.status === 'IgnitionOn' ? '🟢 Ignição Ligada' : '⚪ Parado'}
-            </span>
+            <span className="text-[10px] text-slate-400 font-bold block mb-0.5">Estado do Veículo</span>
+            {(() => {
+              const isOffline = vehicle.status === 'Offline' || vehicle.status === 'NoBattery';
+              const isLigado = !isOffline && (vehicle.speed > 0 || vehicle.status === 'Moving' || vehicle.status === 'IgnitionOn');
+
+              return (
+                <span className={`text-xs font-extrabold ${isOffline ? 'text-red-400' : isLigado ? 'text-blue-400' : 'text-emerald-400'}`}>
+                  {isOffline ? '🔴 Sem Sinal de Internet' :
+                   isLigado ? (vehicle.speed > 0 || vehicle.status === 'Moving' ? '🔵 Ligado em Movimento' : '🔵 Ligado') :
+                   '🟢 Com Sinal de Internet'}
+                </span>
+              );
+            })()}
           </div>
         </div>
 

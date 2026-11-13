@@ -11,6 +11,11 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
+  // Direct endpoint for car browser / multimedia
+  app.get(["/multimidia", "/carro"], (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'public', 'multimidia.html'));
+  });
+
   // API endpoint to download standalone SPA zip
   app.get("/api/download-zip", async (req, res) => {
     try {

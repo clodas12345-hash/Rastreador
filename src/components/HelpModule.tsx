@@ -760,6 +760,30 @@ export default function HelpModule({
         '📡 **Transmissão Contínua:** Os módulos GPS e GSM integrados ao veículo transmitem telemetria contínua via GPRS e respondem instantaneamente a comandos SMS de bloqueio e rastreio.'
       ],
       commands: []
+    },
+    {
+      id: 'flespi-ip-setup',
+      category: 'manual',
+      title: '13. Configuração de Servidor IP/Porta Flespi & Guia SMS TK303G',
+      icon: <Radio className="w-5 h-5 text-emerald-600" />,
+      shortDesc: 'Dados do Servidor Flespi (185.213.2.30:36487) e sequência completa de comandos por SMS.',
+      details: [
+        '🌐 **Servidor Flespi Ativo (GKD Channel):** IP `185.213.2.30` | Porta `36487` | Protocolo `Coban (122)`',
+        '📲 **Sequência de Ativação do Rastreador TK303G:**',
+        '1️⃣ Resetar: `begin123456` ➔ Resposta: `begin ok!`',
+        '2️⃣ Fuso Horário: `time zone123456 -3` ➔ Resposta: `time ok`',
+        '3️⃣ APN Operadora (TIM): `apn123456 tim.br` e `up123456 tim tim` ➔ Resposta: `APN ok` / `user,password ok!`',
+        '4️⃣ Servidor IP & Porta: `adminip123456 185.213.2.30 36487` ➔ Resposta: `adminip ok!`',
+        '5️⃣ Ativar GPRS: `gprs123456` ➔ Resposta: `GPRS OK!`',
+        '6️⃣ Intervalo de Envio (FIX): `fix030s030m***n123456` (30s ligado, 30m parado)',
+        '7️⃣ Checar Conexão: `check123456` (Verificar se GPS e GPRS estão OK)'
+      ],
+      commands: [
+        { cmd: 'adminip123456 185.213.2.30 36487', label: 'Configurar IP e Porta Flespi no TK303G' },
+        { cmd: 'fix030s030m***n123456', label: 'Ativar envio contínuo (30s em movimento, 30m parado)' },
+        { cmd: 'tracker123456', label: 'Garantir modo rastreador (sair do modo escuta/monitor)' },
+        { cmd: 'check123456', label: 'Verificar status do GPS e GPRS no rastreador' }
+      ]
     }
   ];
 

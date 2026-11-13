@@ -3,6 +3,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Ba
 import { Vehicle } from '../types';
 import { ChevronDown, ChevronUp, Car, Activity, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Gauge, MapPin, ArrowLeft, LogOut } from 'lucide-react';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed, determineRoadSpeedLimit, RoadSpeedInfo } from '../lib/geocoding';
+import FlespiDiagnosticoIa from './FlespiDiagnosticoIa';
+import { getVehicleDynamicColor, getVehicleColorStyles } from '../utils/vehicleColors';
 
 function DashboardAddress({ lat, lng }: { lat: number; lng: number }) {
   const [address, setAddress] = useState<string>(() => getCachedAddress(lat, lng) || 'Consultando endereço real...');
@@ -115,11 +117,11 @@ export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { v
   const avgSpeed = totalVehicles > 0 ? (vehicles.reduce((acc, v) => acc + (v.speed || 0), 0) / totalVehicles).toFixed(1) : '0';
 
   const statusData = [
-    { name: 'Em Movimento / Ligado', value: movingVehicles },
-    { name: 'Parado / Desligado', value: stoppedVehicles },
-    { name: 'Offline / Alerta', value: maintenanceVehicles },
+    { name: 'Com Sinal de Internet (Verde)', value: stoppedVehicles },
+    { name: 'Ligado (Azul)', value: movingVehicles },
+    { name: 'Sem Sinal de Internet (Vermelho)', value: maintenanceVehicles },
   ];
-  const COLORS = ['#22c55e', '#64748b', '#ef4444'];
+  const COLORS = ['#16a34a', '#2563eb', '#dc2626'];
 
   
   const vehicleMileageData = vehicles.slice(0, 8).map(v => ({
@@ -170,6 +172,9 @@ export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { v
           </div>
         </div>
 
+        {/* Flespi & AI Diagnostic Widget */}
+        <FlespiDiagnosticoIa vehicles={vehicles} />
+
         {/* KPI Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div 
@@ -191,32 +196,32 @@ export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { v
           <div 
             onClick={() => setSelectedFilter('moving')}
             className={`p-5 rounded-2xl border transition-all cursor-pointer bg-white shadow-sm hover:shadow-md ${
-              selectedFilter === 'moving' ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-gray-200'
+              selectedFilter === 'moving' ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-gray-200'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Em Movimento / Ligado</span>
-              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><Zap className="w-5 h-5" /></div>
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Ligados</span>
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><Zap className="w-5 h-5" /></div>
             </div>
             <div className="mt-3 flex items-baseline justify-between">
-              <span className="text-3xl font-extrabold text-emerald-600">{movingVehicles}</span>
-              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Ignição Ligada 🟢</span>
+              <span className="text-3xl font-extrabold text-blue-600">{movingVehicles}</span>
+              <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">Azul • Ligado</span>
             </div>
           </div>
 
           <div 
             onClick={() => setSelectedFilter('stopped')}
             className={`p-5 rounded-2xl border transition-all cursor-pointer bg-white shadow-sm hover:shadow-md ${
-              selectedFilter === 'stopped' ? 'border-slate-500 ring-2 ring-slate-500/10' : 'border-gray-200'
+              selectedFilter === 'stopped' ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-gray-200'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Parados / Desligados</span>
-              <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl"><ShieldCheck className="w-5 h-5" /></div>
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Com Sinal de Internet</span>
+              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><Radio className="w-5 h-5" /></div>
             </div>
             <div className="mt-3 flex items-baseline justify-between">
-              <span className="text-3xl font-extrabold text-slate-700">{stoppedVehicles}</span>
-              <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">Conectados ⚪</span>
+              <span className="text-3xl font-extrabold text-emerald-600">{stoppedVehicles}</span>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Verde • Conectado</span>
             </div>
           </div>
 
@@ -227,12 +232,12 @@ export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { v
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Offline / Alertas</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Sem Sinal de Internet</span>
               <div className="p-2.5 bg-red-50 text-red-600 rounded-xl"><AlertTriangle className="w-5 h-5" /></div>
             </div>
             <div className="mt-3 flex items-baseline justify-between">
               <span className="text-3xl font-extrabold text-red-600">{maintenanceVehicles}</span>
-              <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">Sem Sinal 🔴</span>
+              <span className="text-xs font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-full">Vermelho • Sem Sinal</span>
             </div>
           </div>
         </div>
@@ -355,12 +360,17 @@ export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { v
                         tabIndex={0}
                       >
                         <div className="flex items-center gap-3">
-                          <div 
-                            className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-sm border border-gray-200 transition-colors"
-                            style={{ backgroundColor: (vehicle.color || '#3b82f6') + '20', color: vehicle.color || '#3b82f6' }}
-                          >
-                            🚗
-                          </div>
+                          {(() => {
+                            const dynColor = getVehicleDynamicColor(vehicle);
+                            return (
+                              <div 
+                                className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-sm border border-gray-200 transition-colors"
+                                style={{ backgroundColor: dynColor + '20', color: dynColor }}
+                              >
+                                🚗
+                              </div>
+                            );
+                          })()}
                           <div>
                             <h4 className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
                               {vehicle.name}
@@ -373,18 +383,22 @@ export default function Dashboard({ vehicles, onBackToMap, onShareVehicle }: { v
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            vehicle.status === 'Offline' ? 'bg-red-100 text-red-800' :
-                            vehicle.status === 'Moving' || vehicle.status === 'IgnitionOn' ? 'bg-emerald-100 text-emerald-800' :
-                            vehicle.status === 'Stopped' || vehicle.status === 'IgnitionOff' ? 'bg-slate-100 text-slate-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {vehicle.status === 'Offline' ? '🔴 Offline (Sem Internet/Sinal)' :
-                             vehicle.status === 'Moving' ? '🚗 Em Movimento' :
-                             vehicle.status === 'IgnitionOn' ? '🟢 Ocioso (Ligado)' :
-                             vehicle.status === 'IgnitionOff' ? '⚪ Desligado' :
-                             vehicle.status === 'Stopped' ? '⚪ Parado' :
-                             vehicle.status === 'NoBattery' ? 'Sem Bateria ⚠️' : vehicle.status}
-                          </span>
+                          {(() => {
+                            const isOffline = vehicle.status === 'Offline' || vehicle.status === 'NoBattery';
+                            const isLigado = !isOffline && (vehicle.status === 'Moving' || vehicle.status === 'IgnitionOn' || (vehicle.speed || 0) >= 4);
+
+                            return (
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                isOffline ? 'bg-red-100 text-red-800 border border-red-200' :
+                                isLigado ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                                'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              }`}>
+                                {isOffline ? '🔴 Sem Sinal de Internet' :
+                                 isLigado ? (vehicle.speed && vehicle.speed >= 4 ? `🔵 Ligado (${Math.round(vehicle.speed)} km/h)` : '🔵 Ligado') :
+                                 '🟢 Com Sinal de Internet'}
+                              </span>
+                            );
+                          })()}
                           <button
                             type="button"
                             onClick={(e) => toggleExpand(vehicle.id, e)}

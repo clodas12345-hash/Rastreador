@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect, useRef, useMemo} from 'react';
 import {APIProvider} from '@vis.gl/react-google-maps';
 import {Settings, HelpCircle, Wrench, Route as RouteIcon, LayoutDashboard, Database, Trash2, Bell, Radio, ArrowLeft, AlertTriangle, Target, ShieldCheck, ShieldAlert, X, Smartphone, CheckCircle2, Navigation} from 'lucide-react';
 import {Vehicle, VehicleSettings, SavedRoute, RoutePoint, AppNotification, Geofence} from './types';
@@ -19,9 +19,9 @@ import RegistradorModule from './components/RegistradorModule';
 import MotoristasModule from './components/MotoristasModule';
 import CaixaPretaModule from './components/CaixaPretaModule';
 import RelatoriosConsumoModule from './components/RelatoriosConsumoModule';
-import FloatingAI from './components/FloatingAI';
 import RouteManagerModal from './components/RouteManagerModal';
 import ShareTrackingModal from './components/ShareTrackingModal';
+import CarBrowserLinkModal from './components/CarBrowserLinkModal';
 import PermissoesModule from './components/PermissoesModule';
 import NotificationCenterModule from './components/NotificationCenterModule';
 import { Capacitor } from '@capacitor/core';
@@ -33,6 +33,7 @@ import {collection, doc} from 'firebase/firestore';
 import {safeUpdateDoc, safeAddDoc, safeDeleteDoc, safeSetDoc, safeOnSnapshot} from './utils/firestoreWrapper';
 import {db, handleFirestoreError, OperationType, cleanFirestoreData} from './lib/firebase';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed } from './lib/geocoding';
+import { getVehicleDynamicColor, getVehicleColorStyles } from './utils/vehicleColors';
 
 const FLESPI_TOKEN = 'DYX74VMw3KdUUbFwued9qa2ahQcAZcts9C7MVZ32gw2GEJSfgeCMk1Ww2oc1MofV';
 
@@ -490,7 +491,7 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     id: 'veh-onix-plus',
     name: 'Onix Plus',
     iconType: 'car',
-    color: '#2563eb',
+    color: '#16a34a',
     licensePlate: 'BRA-2E19',
     status: 'IgnitionOff',
     trackerNumber: '868166052523461',
@@ -514,7 +515,7 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     id: 'veh-peugeot-208',
     name: 'Peugeot 208',
     iconType: 'car',
-    color: '#059669',
+    color: '#16a34a',
     licensePlate: 'XYZ-8G54',
     status: 'IgnitionOff',
     trackerNumber: '868166057692857',
@@ -880,12 +881,13 @@ export default function App() {
 
           // 2. Create Channel
           await LocalNotifications.createChannel({
-            id: 'padrao',
-            name: 'Padrao',
-            description: 'Canal de notificacoes padrao',
+            id: 'high_priority_alerts',
+            name: 'Alertas de Urgência',
+            description: 'Notificações de alta prioridade para o rastreador',
             importance: 5,
             visibility: 1,
             vibration: true,
+            sound: 'default'
           });
         } catch (e) {}
       }
@@ -944,7 +946,7 @@ export default function App() {
           totalMileage,
           dailyMileage,
           iconType: data.iconType || 'car',
-          color: data.color || '#2563eb',
+          color: getVehicleDynamicColor(data),
           lat: lat,
           lng: lng,
           settings: {
@@ -1144,6 +1146,23 @@ export default function App() {
 }
 
 function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setActiveModule, vehicles: allVehicles, setVehicles, setEditingVehicle, editingVehicle, handleUpdateVehicle, handleDeleteVehicle}: any) {
+  const isCarBrowserMode = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get('mode') === 'carplay' ||
+      params.get('mode') === 'cockpit' ||
+      params.get('mode') === 'car' ||
+      params.get('car') === '1' ||
+      params.get('cockpit') === '1' ||
+      params.get('multimidia') === '1' ||
+      params.get('painel') === 'carro' ||
+      params.get('frota') === '1'
+    );
+  }, []);
+
+  const [showCarBrowserModal, setShowCarBrowserModal] = useState(false);
+
   const [sharedTrackingParams] = useState<{
     token: string;
     vehicleId: string;
@@ -1158,6 +1177,19 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   } | null>(() => {
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
+    // In car browser / multimídia mode, do NOT restrict to a single vehicle: track entire fleet!
+    if (
+      params.get('mode') === 'carplay' ||
+      params.get('mode') === 'cockpit' ||
+      params.get('mode') === 'car' ||
+      params.get('car') === '1' ||
+      params.get('cockpit') === '1' ||
+      params.get('multimidia') === '1' ||
+      params.get('painel') === 'carro' ||
+      params.get('frota') === '1'
+    ) {
+      return null;
+    }
     const trackToken = params.get('trackToken');
     const vehicleId = params.get('vehicleId');
     if (!trackToken && !vehicleId) return null;
@@ -1176,6 +1208,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   });
 
   const isPublicSingleView = Boolean(sharedTrackingParams);
+  const isPublicView = isPublicSingleView || isCarBrowserMode;
 
   // Filter vehicles strictly to the single shared vehicle when opened via a tracking link
   const vehicles: Vehicle[] = (() => {
@@ -1211,21 +1244,6 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [isCreatingGeofence, setIsCreatingGeofence] = useState(false);
   const [newGeofenceCenter, setNewGeofenceCenter] = useState<{lat: number, lng: number} | null>(null);
   const [sharingVehicle, setSharingVehicle] = useState<Vehicle | null>(null);
-
-  const [showFloatingAI, setShowFloatingAI] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('gkd_enable_floating_ai') === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
-
-  const toggleFloatingAI = (enable: boolean) => {
-    setShowFloatingAI(enable);
-    try {
-      localStorage.setItem('gkd_enable_floating_ai', enable ? 'true' : 'false');
-    } catch (e) {}
-  };
 
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [showBatteryOptimizationModal, setShowBatteryOptimizationModal] = useState(false);
@@ -1282,12 +1300,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   const [isCommunicating, setIsCommunicating] = useState(false);
   const [communicationSuccess, setCommunicationSuccess] = useState(false);
 
-  // Force Map view only for shared tracking links
+  // Force Map view only for shared tracking links or car browser mode
   useEffect(() => {
-    if (isPublicSingleView && activeModule !== 'rastreamento') {
+    if ((isPublicSingleView || isCarBrowserMode) && activeModule !== 'rastreamento') {
       setActiveModule('rastreamento');
     }
-  }, [isPublicSingleView, activeModule, setActiveModule]);
+  }, [isPublicSingleView, isCarBrowserMode, activeModule, setActiveModule]);
   const [recordingPoints, setRecordingPoints] = useState<RoutePoint[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [activeRoute, setActiveRoute] = useState<SavedRoute | null>(null);
@@ -1759,15 +1777,13 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           // Register High-Importance notification channel for Heads-Up / Alarm sounds
           try {
             await LocalNotifications.createChannel({
-              id: 'gkd_critical_alerts',
-              name: 'Alertas Críticos e Ignição GKD',
-              description: 'Notificações instantâneas de ignição, velocidade, cercas e emergência',
+              id: 'high_priority_alerts',
+              name: 'Alertas de Urgência',
+              description: 'Notificações de alta prioridade para o rastreador',
               importance: 5,
               visibility: 1,
               vibration: true,
-              lights: true,
-              lightColor: '#ef4444',
-              sound: 'alert.wav'
+              sound: 'default'
             });
           } catch (channelErr) {
             console.warn('Channel creation warning:', channelErr);
@@ -2044,12 +2060,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             title: newNotif.title,
             body: newNotif.message,
             id: Math.floor(Math.random() * 10000000),
-            channelId: 'gkd_critical_alerts',
+            channelId: 'high_priority_alerts',
             schedule: { 
               at: targetDate, 
               allowWhileIdle: true 
             },
-            sound: 'alert.wav',
+            sound: 'default',
             smallIcon: 'ic_stat_icon', // Small icon generated by build script
             largeIcon: 'ic_large_icon', // Full-color app icon on Android
             iconColor: '#2563EB',
@@ -2718,6 +2734,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 lastTelemetryTime: latestTs,
                 totalMileage: newTotalMileage,
                 dailyMileage: newDailyMileage,
+                color: getVehicleDynamicColor({ status: newStatus, speed: realSpeed }),
                 settings: newSettings
               };
               
@@ -3045,16 +3062,16 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
   return (
       <div className="h-[100dvh] font-sans flex overflow-hidden bg-gray-50 relative w-full max-w-[100vw]">
 
-      {/* Overlay Backdrop for Mobile - Hidden in public view */}
-      {!isPublicSingleView && sidebarOpen && (
+      {/* Overlay Backdrop for Mobile - Hidden in public or car mode */}
+      {!isPublicSingleView && !isCarBrowserMode && sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar Global - Hidden in public view */}
-      {!isPublicSingleView && (
+      {/* Sidebar Global - Hidden in public or car mode */}
+      {!isPublicSingleView && !isCarBrowserMode && (
         <div className={`
           fixed md:relative top-0 left-0 h-full z-50 md:z-40
           ${sidebarOpen ? 'translate-x-0 w-64 md:w-64 border-r border-gray-200' : '-translate-x-full w-64 md:w-0 md:translate-x-0 md:border-r-0'} 
@@ -3301,7 +3318,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         />
                       </div>
                       <div className="p-1.5 bg-white rounded-md shadow-sm border border-gray-100 flex-shrink-0">
-                        <VehicleIcon iconType={v.iconType} color={v.color} size={16} photoUrl={v.photoUrl} onClick={(e: any) => { e.stopPropagation(); if (v.photoUrl) setPhotoViewerUrl(v.photoUrl); }} />
+                        <VehicleIcon iconType={v.iconType} color={getVehicleDynamicColor(v)} size={16} photoUrl={v.photoUrl} onClick={(e: any) => { e.stopPropagation(); if (v.photoUrl) setPhotoViewerUrl(v.photoUrl); }} />
                       </div>
                       <span className="font-semibold text-sm text-gray-800 flex items-center gap-1.5">
                         {v.name}
@@ -3313,47 +3330,34 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${
-                        v.status === 'Moving' || v.status === 'IgnitionOn' ? 'bg-green-500' :
-                        v.status === 'Stopped' || v.status === 'IgnitionOff' ? 'bg-blue-500' :
-                        v.status === 'NoBattery' ? 'bg-red-600' :
-                        v.status === 'Offline' ? 'bg-gray-500' :
-                        'bg-orange-500'
+                      <div className={`w-2.5 h-2.5 rounded-full ${
+                        v.status === 'Offline' || v.status === 'NoBattery' ? 'bg-red-600 animate-pulse' :
+                        v.status === 'Moving' || v.status === 'IgnitionOn' ? 'bg-blue-600 animate-pulse' :
+                        'bg-emerald-500'
                       }`} title={
-                        v.status === 'IgnitionOn' || v.status === 'Moving' ? 'Ligado / Em Movimento' :
-                        v.status === 'IgnitionOff' || v.status === 'Stopped' ? 'Desligado / Parado' :
-                        v.status === 'NoBattery' ? 'Sem Bateria / Cortado' :
-                        v.status === 'Offline' ? 'Sem Sinal (Offline)' :
-                        'Manutenção'
+                        v.status === 'Offline' || v.status === 'NoBattery' ? 'Sem sinal de internet (Offline)' :
+                        v.status === 'Moving' || v.status === 'IgnitionOn' ? 'Ligado' :
+                        'Com sinal de internet (Desligado)'
                       } />
                     </div>
                   </div>
                   <div className="flex justify-between items-end">
                     <div className="flex flex-col gap-1 items-start">
                       <span className="text-xs text-gray-500 font-mono bg-gray-200 px-1.5 py-0.5 rounded">{v.licensePlate || 'Sem placa'}</span>
-                      {v.powerCut || v.status === 'NoBattery' ? (
+                      {v.powerCut || v.status === 'NoBattery' || v.status === 'Offline' ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-100 text-red-700 border border-red-200 animate-pulse flex items-center gap-1">
-                          ⚡ Corte de Energia
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
+                          🔴 Sem Sinal de Internet
                         </span>
-                      ) : v.status === 'Offline' ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 border border-gray-200 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
-                          🔴 Sem Sinal
-                        </span>
-                      ) : (v.speed && v.speed > 0) || v.status === 'Moving' ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                          🟢 Em Movimento
-                        </span>
-                      ) : v.status === 'IgnitionOn' ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          🟢 Ignição Ligada
+                      ) : (v.speed && v.speed > 0) || v.status === 'Moving' || v.status === 'IgnitionOn' ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+                          🔵 Ligado {v.speed && v.speed >= 4 ? `(${Math.round(v.speed)} km/h)` : ''}
                         </span>
                       ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1" title="Veículo desligado, rastreador conectado com sinal GPS">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1" title="Veículo desligado, rastreador conectado com sinal de internet">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          ⚪ Desligado (Conectado)
+                          🟢 Com Sinal de Internet
                         </span>
                       )}
                     </div>
@@ -3413,7 +3417,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         )}
         {/* Main Content Area */}
         <div className="flex-grow flex flex-col overflow-hidden relative min-w-0">
-          {!isPublicSingleView && (
+          {!isPublicSingleView && !isCarBrowserMode && (
             <header className="bg-white border-b px-3 sm:px-4 py-2 sm:py-2.5 flex justify-between items-center z-10 shadow-sm shrink-0">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {/* Menu Hamburger Toggle */}
@@ -3471,6 +3475,17 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 <span className="hidden sm:inline">Linha do Tempo</span>
               </button>
 
+              {/* Navegador do Carro / Multimídia Quick Header Button */}
+              <button
+                type="button"
+                onClick={() => setShowCarBrowserModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer border border-slate-700"
+                title="Link Público para o Navegador do Carro / Multimídia"
+              >
+                <span>🚗</span>
+                <span className="hidden sm:inline">Link do Carro</span>
+              </button>
+
               {/* Notification Bell Icon */}
               <div className="relative shrink-0">
                 <button
@@ -3494,6 +3509,96 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           )}
           
           <main className="flex-grow flex flex-col overflow-hidden relative">
+            {/* HUD Bar exclusivo para Navegador do Carro / Multimídia */}
+            {isCarBrowserMode && (
+              <div className="absolute top-3 left-3 right-3 z-30 pointer-events-auto flex items-center justify-between gap-2 bg-slate-900/90 backdrop-blur-xl px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl shadow-2xl border border-slate-700/80 text-white animate-fadeIn">
+                {/* Left: Brand & Live Indicator */}
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-lg">
+                    🚗
+                  </div>
+                  <div className="hidden min-[500px]:flex flex-col">
+                    <span className="text-xs font-black tracking-tight text-white flex items-center gap-1.5">
+                      GKD Mobility <span className="text-[10px] text-blue-400 font-semibold">| Multimídia do Carro</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Ao Vivo • Rastreando Frota
+                    </span>
+                  </div>
+                </div>
+
+                {/* Center: Car Quick Switcher for in-dash touchscreen */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {vehicles.map((v) => {
+                    const isFocused = selectedVehicle?.id === v.id;
+                    const speed = Math.round(v.speed || 0);
+                    const isOffline = v.status === 'Offline' || v.status === 'NoBattery';
+                    const isLigado = !isOffline && (v.status === 'Moving' || v.status === 'IgnitionOn' || speed >= 4);
+
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => handleSelectVehicle(v)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+                          isFocused 
+                            ? 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-400/50 scale-105' 
+                            : 'bg-slate-800/80 text-slate-200 hover:bg-slate-700 hover:text-white border border-slate-700'
+                        }`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full ${isOffline ? 'bg-red-500 animate-pulse' : isLigado ? 'bg-blue-500 animate-pulse' : 'bg-emerald-400'}`} />
+                        <span>{v.name}</span>
+                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                          isFocused 
+                            ? 'bg-blue-700 text-white' 
+                            : isOffline 
+                            ? 'bg-red-900/60 text-red-300' 
+                            : isLigado 
+                            ? 'bg-blue-900/60 text-blue-300' 
+                            : 'bg-emerald-900/60 text-emerald-300'
+                        }`}>
+                          {isOffline ? 'Sem Sinal' : isLigado ? (speed >= 4 ? `${speed} km/h` : 'Ligado') : 'Com Sinal'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSelectVehicle(null);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                      !selectedVehicle ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                    }`}
+                    title="Enquadrar todos os carros no mapa"
+                  >
+                    <span>🗺️</span>
+                    <span className="hidden sm:inline">Ambos</span>
+                  </button>
+                </div>
+
+                {/* Right: Fullscreen Toggle */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen().catch(() => {});
+                      } else {
+                        document.exitFullscreen().catch(() => {});
+                      }
+                    }}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors border border-slate-700 text-xs font-bold cursor-pointer"
+                    title="Alternar Tela Cheia na Central Multimídia"
+                  >
+                    <span className="hidden sm:inline mr-1 text-[11px]">Tela Cheia</span> ⛶
+                  </button>
+                </div>
+              </div>
+            )}
+
             {flespiError && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[9000] bg-red-600 text-white px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-fadeIn">
                 <AlertTriangle className="w-5 h-5" />
@@ -3510,7 +3615,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 selectedVehicleIds={selectedVehicleIds}
                 onSelectVehicleIds={setSelectedVehicleIds}
                 onMarkerClick={(v) => handleSelectVehicle(v)}
-                onMarkerDoubleClick={(v) => !isPublicSingleView && openModal(v, v.settings?.isBlocked ? 'emergency' : 'details')}
+                onMarkerDoubleClick={(v) => !isPublicView && openModal(v, v.settings?.isBlocked ? 'emergency' : 'details')}
                 onSelectVehicle={(v) => handleSelectVehicle(v)}
                 onUpdateVehicle={(updated) => handleUpdateVehicle(updated)}
                 onMapClick={() => { setSidebarOpen(false); handleSelectVehicle(null); }} 
@@ -3540,7 +3645,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                   setIsCreatingGeofence(false);
                 }}
                 onShareVehicle={(v) => setSharingVehicle(v)}
-                isPublicView={isPublicSingleView}
+                isPublicView={isPublicView}
               />
             )}
             {activeModule === 'dashboard' && <Dashboard vehicles={vehicles} onBackToMap={() => setActiveModule('rastreamento')} onShareVehicle={(v) => setSharingVehicle(v)} />}
@@ -3553,8 +3658,6 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 showToast={showToast} 
                 addNotification={addNotification}
                 onBackToMap={() => setActiveModule('rastreamento')}
-                showFloatingAI={showFloatingAI}
-                onToggleFloatingAI={toggleFloatingAI}
                 triggerDualDispatch={(commandName, smsCommand, phoneNumber, vehicleName) => {
                   setDualDispatchData({
                     isOpen: true,
@@ -3903,18 +4006,21 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">Cor do Ícone no Mapa</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Cor Base / Personalizada</label>
                         <div className="flex items-center gap-2">
                           <input 
                             type="color" 
-                            value={editingVehicle.color || '#3b82f6'} 
+                            value={editingVehicle.color || '#16a34a'} 
                             onChange={e => setEditingVehicle({...editingVehicle, color: e.target.value})} 
                             className="w-10 h-10 rounded-lg border border-gray-300 p-0.5 cursor-pointer shrink-0" 
                           />
                           <span className="text-xs font-mono uppercase text-gray-600 bg-gray-100 px-2 py-1.5 rounded border border-gray-200">
-                            {editingVehicle.color || '#3b82f6'}
+                            {editingVehicle.color || '#16a34a'}
                           </span>
                         </div>
+                        <p className="text-[10px] text-gray-500 mt-1">
+                          🟢 Verde com sinal de internet • 🔵 Azul ligado • 🔴 Vermelho sem internet
+                        </p>
                       </div>
                     </div>
 
@@ -5349,14 +5455,15 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           />
         )}
 
-        {/* Floating AI Assistant Copilot - Exibida apenas quando ativada nas Configurações */}
-        {!isPublicSingleView && showFloatingAI && (
-          <FloatingAI 
-            vehicles={vehicles} 
-            onSelectModule={(mod) => setActiveModule(mod)} 
-            onSelectVehicle={(v) => setSelectedVehicle(v)} 
+        {/* Modal do Link para Navegador do Carro / Multimídia */}
+        {showCarBrowserModal && (
+          <CarBrowserLinkModal
+            isOpen={showCarBrowserModal}
+            onClose={() => setShowCarBrowserModal(false)}
+            showToast={showToast}
           />
         )}
+
       </div>
   );
 }
