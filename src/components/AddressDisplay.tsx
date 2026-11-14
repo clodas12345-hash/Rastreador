@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getRealAddress, getCachedAddress } from '../lib/geocoding';
 
-export function AddressDisplay({ lat, lng }: { lat: number; lng: number }) {
+export function AddressDisplay({ lat, lng, multiline = false }: { lat: number; lng: number; multiline?: boolean }) {
   const [address, setAddress] = useState<string>(() => getCachedAddress(lat, lng) || 'Consultando endereço real...');
   const [loading, setLoading] = useState(!getCachedAddress(lat, lng));
 
@@ -35,7 +35,10 @@ export function AddressDisplay({ lat, lng }: { lat: number; lng: number }) {
       {loading ? (
         <span className="text-gray-400 italic text-[11px] animate-pulse">Buscando endereço exato...</span>
       ) : (
-        <span className="truncate font-medium text-[11px] leading-tight text-gray-800" title={address}>
+        <span
+          className={`${multiline ? 'whitespace-normal break-words' : 'truncate'} font-medium text-[11px] leading-snug text-gray-800`}
+          title={address}
+        >
           {address}
         </span>
       )}

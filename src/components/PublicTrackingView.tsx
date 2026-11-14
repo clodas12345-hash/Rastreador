@@ -65,14 +65,27 @@ export default function PublicTrackingView({ vehicle, token }: PublicTrackingVie
             return (
               <AdvancedMarker position={{ lat: Number(vehicle.lat), lng: Number(vehicle.lng) }}>
                 <div className="flex flex-col items-center select-none relative">
-                  <div className={`absolute -inset-3 rounded-full ${isOffline ? 'bg-red-500/30' : isLigado ? 'bg-blue-500/30' : 'bg-emerald-500/30'} animate-ping pointer-events-none`} />
-                  
-                  <div className={`p-2.5 rounded-full shadow-2xl bg-white border-4 ${vStyles.borderClass} ${vStyles.textClass} relative z-10`}>
-                    <VehicleIcon iconType={vehicle.iconType} color={vStyles.hex} size={28} photoUrl={vehicle.photoUrl} />
+                  <div className="absolute bottom-full mb-1.5 bg-slate-900/95 backdrop-blur-md text-white px-2.5 py-0.5 rounded-full text-xs font-black shadow-lg border border-slate-700 whitespace-nowrap pointer-events-none">
+                    {vehicle.name} • {Math.round(vehicle.speed || 0)} km/h
                   </div>
 
-                  <div className="mt-1 bg-slate-900/90 backdrop-blur-md text-white px-2.5 py-0.5 rounded-full text-xs font-black shadow border border-slate-700 whitespace-nowrap">
-                    {vehicle.name} • {Math.round(vehicle.speed || 0)} km/h
+                  <div className="relative flex items-center justify-center">
+                    <div className={`absolute -inset-2 rounded-full ${isOffline ? 'bg-red-500/30' : isLigado ? 'bg-blue-500/30' : 'bg-emerald-500/30'} animate-ping pointer-events-none`} />
+                    <div className={`p-2 rounded-full shadow-2xl bg-white border-4 ${vStyles.borderClass} ${vStyles.textClass} relative z-10`}>
+                      <VehicleIcon iconType={vehicle.iconType} color={vStyles.hex} size={26} photoUrl={vehicle.photoUrl} />
+                    </div>
+                  </div>
+
+                  {/* Pin tip + exact GPS ground dot */}
+                  <div className="flex flex-col items-center pointer-events-none -mt-0.5 z-10">
+                    <div
+                      className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[9px]"
+                      style={{ borderTopColor: vStyles.hex }}
+                    />
+                    <span
+                      className="w-2.5 h-2.5 rounded-full border-2 border-white shadow-md -mt-0.5"
+                      style={{ backgroundColor: vStyles.hex }}
+                    />
                   </div>
                 </div>
               </AdvancedMarker>
@@ -109,8 +122,17 @@ export default function PublicTrackingView({ vehicle, token }: PublicTrackingVie
         </div>
 
         <div className="bg-slate-800/80 p-2.5 rounded-2xl border border-slate-700 text-xs">
-          <span className="text-[10px] text-slate-400 font-bold block mb-0.5">Endereço Aproximado em Tempo Real</span>
-          <AddressDisplay lat={vehicle.lat} lng={vehicle.lng} />
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <span className="text-[10px] text-slate-400 font-bold">Endereço Exato em Tempo Real</span>
+            {vehicle.lat && vehicle.lng && (
+              <span className="text-[10px] font-mono text-slate-400">
+                {Number(vehicle.lat).toFixed(6)}, {Number(vehicle.lng).toFixed(6)}
+              </span>
+            )}
+          </div>
+          <div className="bg-white/95 rounded-lg p-1.5">
+            <AddressDisplay lat={vehicle.lat} lng={vehicle.lng} multiline />
+          </div>
         </div>
       </div>
     </div>

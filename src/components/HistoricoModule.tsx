@@ -811,6 +811,83 @@ export default function HistoricoModule({
     return monthlyBreakdownData.filter(g => g.monthKey === selectedMonthFilter);
   }, [monthlyBreakdownData, selectedMonthFilter]);
 
+  const routeSummary = useMemo(() => {
+    if (!report) return null;
+
+    const pts = report.points || [];
+    let calculatedDistanceKm = 0;
+    let calculatedMovingMs = 0;
+    let firstTs = 0;
+    let lastTs = 0;
+    let validSpeedSum = 0;
+    let validSpeedCount = 0;
+
+    for (let i = 0; i < pts.length; i++) {
+      const pt = pts[i];
+      const ts = parsePtTimestamp(pt.timestamp);
+      if (ts > 0) {
+        if (firstTs === 0 || ts < firstTs) firstTs = ts;
+        if (ts > lastTs) lastTs = ts;
+      }
+
+      if (typeof pt.speed === 'number' && pt.speed > 0) {
+        validSpeedSum += pt.speed;
+        validSpeedCount++;
+      }
+
+      if (i > 0) {
+        const prev = pts[i - 1];
+        const segDist = calculateDistanceKm(prev.lat, prev.lng, pt.lat, pt.lng);
+        if (segDist > 0.001 && segDist <= 15) {
+          calculatedDistanceKm += segDist;
+        }
+        const prevTs = parsePtTimestamp(prev.timestamp);
+        if (ts > 0 && prevTs > 0 && ts >= prevTs) {
+          const deltaMs = ts - prevTs;
+          if (deltaMs < 1000 * 60 * 60 && ((pt.speed || 0) >= 3 || (prev.speed || 0) >= 3 || segDist > 0.005)) {
+            calculatedMovingMs += deltaMs;
+          }
+        }
+      }
+    }
+
+    const totalDistanceKm = calculatedDistanceKm > 0
+      ? Number(calculatedDistanceKm.toFixed(1))
+      : Number((report.distanceKm || 0).toFixed(1));
+
+    const movingDurationMs = report.stats?.movingTimeMs && report.stats.movingTimeMs > 0
+      ? report.stats.movingTimeMs
+      : calculatedMovingMs;
+
+    const totalSpanMs = (firstTs > 0 && lastTs > firstTs)
+      ? (lastTs - firstTs)
+      : ((report.stats?.movingTimeMs || 0) + (report.stats?.idleTimeMs || 0) + (report.stats?.stoppedTimeMs || 0));
+
+    const effectiveDurationMs = totalSpanMs > 0 ? totalSpanMs : movingDurationMs;
+
+    let avgSpeedKmh = 0;
+    if (movingDurationMs > 0 && totalDistanceKm > 0) {
+      avgSpeedKmh = Number((totalDistanceKm / (movingDurationMs / 3600000)).toFixed(1));
+    } else if (effectiveDurationMs > 0 && totalDistanceKm > 0) {
+      avgSpeedKmh = Number((totalDistanceKm / (effectiveDurationMs / 3600000)).toFixed(1));
+    } else if (report.stats?.avgSpeed) {
+      avgSpeedKmh = Number(report.stats.avgSpeed.toFixed(1));
+    } else if (validSpeedCount > 0) {
+      avgSpeedKmh = Number((validSpeedSum / validSpeedCount).toFixed(1));
+    }
+
+    const maxAllowed = report.stats?.maxSpeed && report.stats.maxSpeed > 0 ? report.stats.maxSpeed : 140;
+    avgSpeedKmh = Math.min(avgSpeedKmh, maxAllowed);
+
+    return {
+      totalDistanceKm,
+      totalDurationMs: effectiveDurationMs,
+      movingDurationMs,
+      avgSpeedKmh,
+      pointsCount: pts.length
+    };
+  }, [report]);
+
   const handleExportPDF = (mode: 'total' | 'diario' = 'total') => {
     if (!report) return;
     setShowPdfOptionsModal(false);
@@ -1903,6 +1980,71 @@ export default function HistoricoModule({
                 )}
               </div>
             </div>
+
+            {/* RESUMO FINAL DA ROTA SELECIONADA (SUMMARY VIEW) */}
+            {routeSummary && (
+              <div className="px-5 pb-5">
+                <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-5 shadow-lg border border-slate-700/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-white/10">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-blue-500/20 border border-blue-400/30 rounded-xl text-blue-300">
+                        <Navigation className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-base text-white">Resumo da Rota Selecionada</h4>
+                        <p className="text-xs text-slate-300">
+                          {report.vehicleName} • {report.name} ({routeSummary.pointsCount} pontos analisados)
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono bg-white/10 border border-white/15 px-3 py-1 rounded-full text-slate-200 self-start sm:self-auto">
+                      Síntese do Percurso
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-white/10 backdrop-blur-xs rounded-xl p-4 border border-white/10 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs text-slate-300 font-semibold mb-1.5">
+                        <span>Distância Total</span>
+                        <MapIcon className="w-4 h-4 text-blue-400" />
+                      </div>
+                      <div className="text-2xl sm:text-3xl font-black text-white font-mono">
+                        {routeSummary.totalDistanceKm} <span className="text-sm font-bold text-blue-300">km</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 mt-1">
+                        Total percorrido na rota selecionada
+                      </span>
+                    </div>
+
+                    <div className="bg-white/10 backdrop-blur-xs rounded-xl p-4 border border-white/10 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs text-slate-300 font-semibold mb-1.5">
+                        <span>Duração da Rota</span>
+                        <Clock className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div className="text-2xl sm:text-3xl font-black text-white font-mono">
+                        {formatDuration(routeSummary.totalDurationMs)}
+                      </div>
+                      <span className="text-[11px] text-emerald-300/90 mt-1">
+                        Em movimento: {formatDuration(routeSummary.movingDurationMs)}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/10 backdrop-blur-xs rounded-xl p-4 border border-white/10 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs text-slate-300 font-semibold mb-1.5">
+                        <span>Velocidade Média</span>
+                        <Gauge className="w-4 h-4 text-amber-400" />
+                      </div>
+                      <div className="text-2xl sm:text-3xl font-black text-white font-mono">
+                        {routeSummary.avgSpeedKmh} <span className="text-sm font-bold text-amber-300">km/h</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 mt-1">
+                        Máxima registrada: {report.stats?.maxSpeed || 0} km/h
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -496,8 +496,8 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     status: 'IgnitionOff',
     trackerNumber: '868166052523461',
     phoneNumber: '+55 11 98765-4321',
-    lat: -23.514971,
-    lng: -46.548199,
+    lat: -23.512503,
+    lng: -46.519462,
     speed: 0,
     fuel: 85,
     sharpTurns: 0,
@@ -520,8 +520,8 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     status: 'IgnitionOff',
     trackerNumber: '868166057692857',
     phoneNumber: '+55 11 97654-3210',
-    lat: -23.530248,
-    lng: -46.569785,
+    lat: -23.553282,
+    lng: -46.65841,
     speed: 0,
     fuel: 90,
     sharpTurns: 0,
@@ -964,15 +964,23 @@ export default function App() {
           if (localV) {
             const effectiveTotalMileage = Math.max(Number(remoteV.totalMileage) || 0, Number(localV.totalMileage) || 0);
             const effectiveDailyMileage = Math.max(Number(remoteV.dailyMileage) || 0, Number(localV.dailyMileage) || 0);
+            const localHasNewerTelemetry =
+              Boolean(localV.lastTelemetryTime) &&
+              (!remoteV.lastTelemetryTime || localV.lastTelemetryTime >= remoteV.lastTelemetryTime);
             return {
               ...remoteV,
+              lat: localHasNewerTelemetry && localV.lat ? localV.lat : remoteV.lat,
+              lng: localHasNewerTelemetry && localV.lng ? localV.lng : remoteV.lng,
+              heading: localHasNewerTelemetry && localV.heading !== undefined ? localV.heading : remoteV.heading,
+              lastTelemetryTime: localHasNewerTelemetry ? localV.lastTelemetryTime : remoteV.lastTelemetryTime,
               totalMileage: effectiveTotalMileage,
               dailyMileage: effectiveDailyMileage,
               speed: localV.speed !== undefined && localV.status !== 'Offline' ? localV.speed : remoteV.speed,
               status: localV.status || remoteV.status,
               batteryLevel: localV.batteryLevel !== undefined ? localV.batteryLevel : remoteV.batteryLevel,
               externalVoltage: localV.externalVoltage !== undefined ? localV.externalVoltage : remoteV.externalVoltage,
-              satellites: localV.satellites || remoteV.satellites
+              satellites: localV.satellites || remoteV.satellites,
+              hdop: localV.hdop !== undefined ? localV.hdop : remoteV.hdop
             };
           }
           return remoteV;
@@ -2514,13 +2522,17 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               flespiMileageKm = flespiMileageRaw > 500000 ? flespiMileageRaw / 1000 : flespiMileageRaw;
             }
 
-            // Compute real distance increment if vehicle moved (com filtro otimizado para rastreadores reais)
+            // Compute raw coordinate displacement unconditionally so exact GPS position is always tracked
+            const hasValidRealCoords = typeof realLat === 'number' && typeof realLng === 'number' && !isNaN(realLat) && !isNaN(realLng) && realLat !== 0 && realLng !== 0;
+            const rawPositionDeltaKm = (hasValidRealCoords && v.lat && v.lng)
+              ? calculateDistanceKm(v.lat, v.lng, realLat, realLng)
+              : 0;
+
+            // Compute real distance increment for odometer only during real movement
             let deltaKm = 0;
-            if (v.lat && v.lng && (v.lat !== realLat || v.lng !== realLng)) {
-              const dist = calculateDistanceKm(v.lat, v.lng, realLat, realLng);
-              // Accumulate distance if displacement is >= 3 meters (0.003km) and <= 15km, and vehicle is moving, ignition is on, or status indicates movement/activity
-              if (dist >= 0.003 && dist <= 15 && (realSpeed >= 1 || newStatus === 'Moving' || newStatus === 'IgnitionOn' || ignition)) {
-                deltaKm = dist;
+            if (hasValidRealCoords && v.lat && v.lng && (v.lat !== realLat || v.lng !== realLng)) {
+              if (rawPositionDeltaKm >= 0.003 && rawPositionDeltaKm <= 15 && (realSpeed >= 1 || newStatus === 'Moving' || newStatus === 'IgnitionOn' || ignition)) {
+                deltaKm = rawPositionDeltaKm;
               }
             }
 
@@ -2674,24 +2686,23 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               : (deltaKm > 0.001 ? calculateBearing(v.lat, v.lng, realLat, realLng) : (v.heading || 0));
 
             const isMoving = realSpeed >= 4 && ignition;
-            const driftThresholdKm = 0.02; // 20 metros de trava para evitar "carro dançando" no mapa
-            const isSignificantMove = deltaKm > driftThresholdKm;
-            
-            // Filtro de Drift: Se a ignição está desligada e não há movimento expressivo (> 20m), mantém a posição estável sem drift
-            const isDrift = !ignition && !isSignificantMove;
-
-            const hasCoordinatesChanged = (v.lat !== realLat || v.lng !== realLng) && !isDrift;
+            // Filtro leve apenas para micro-ruído estacionário (< 3m) após primeira leitura ao vivo;
+            // caso contrário, sempre atualiza a coordenada exata vinda do GPS/Flespi.
+            const isMicroJitterOnly = Boolean(v.lastTelemetryTime) && !ignition && rawPositionDeltaKm > 0 && rawPositionDeltaKm <= 0.003;
+            const hasCoordinatesChanged = hasValidRealCoords && (v.lat !== realLat || v.lng !== realLng) && !isMicroJitterOnly;
 
             if (
               hasCoordinatesChanged ||
               v.speed !== realSpeed ||
               v.status !== newStatus ||
               v.satellites !== realSatellites ||
+              v.hdop !== realHdop ||
               v.batteryLevel !== batteryLevel ||
               v.externalVoltage !== externalVoltage ||
               v.powerCut !== isPowerCut ||
               v.heading !== realHeading ||
-              (deltaKm > 0 && !isDrift)
+              v.lastTelemetryTime !== latestTs ||
+              deltaKm > 0
             ) {
               anyChanged = true;
               
@@ -2721,11 +2732,11 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               
               const updatedV = {
                 ...v,
-                lat: isDrift ? v.lat : realLat,
-                lng: isDrift ? v.lng : realLng,
+                lat: isMicroJitterOnly ? v.lat : realLat,
+                lng: isMicroJitterOnly ? v.lng : realLng,
                 speed: realSpeed,
                 status: newStatus,
-                heading: isDrift ? v.heading : realHeading,
+                heading: isMicroJitterOnly ? v.heading : realHeading,
                 satellites: realSatellites,
                 hdop: realHdop,
                 batteryLevel: batteryLevel ?? v.batteryLevel,

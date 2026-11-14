@@ -560,7 +560,7 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
         if (isNewTarget) {
           hasFittedInitial.current = true;
           map.setCenter({ lat: Number(target.lat), lng: Number(target.lng) });
-          map.setZoom(17);
+          map.setZoom(18.5);
           prevSelectedId.current = target.id;
         } else {
           map.panTo({ lat: Number(target.lat), lng: Number(target.lng) });
@@ -729,12 +729,12 @@ function MapCenterControls({
       fitVehiclesBounds(validVehicles);
       if (onTriggerFit) onTriggerFit();
     } else {
-      // 1º ou 2º Clique: Centraliza com precisão máxima no carro indicado
+      // 1º ou 2º Clique: Centraliza com precisão máxima (nível de rua) no carro indicado
       setIsShowingAll(false);
       onSelectVehicle(nextTargetVehicle);
       if (Number(nextTargetVehicle.lat) && Number(nextTargetVehicle.lng)) {
         map.panTo({ lat: Number(nextTargetVehicle.lat), lng: Number(nextTargetVehicle.lng) });
-        map.setZoom(17);
+        map.setZoom(18.5);
       }
     }
   };
@@ -1096,22 +1096,51 @@ export default function FleetTracker({
 
       {/* Top Banner when tracking a single selected vehicle dynamically */}
       {!activeRoute && currentSelected && (!selectedVehicleIds || selectedVehicleIds.length <= 1) && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-lg border border-blue-200 flex items-center gap-2.5 text-xs font-semibold pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600"></span>
-          </span>
-          <span className="text-gray-700">
-            Seguindo <strong className="text-blue-700">{currentSelected.name}</strong>
-          </span>
-          {currentSelected.status === 'Moving' && currentSelected.speed >= 10 ? (
-            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
-              {Math.round(currentSelected.speed)} km/h
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[92vw] bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-lg border border-blue-200 flex flex-col items-center gap-1 text-xs font-semibold pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2 flex-wrap justify-center">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600"></span>
             </span>
-          ) : (
-            <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[11px] font-semibold">
-              {currentSelected.status === 'Moving' ? `${Math.round(currentSelected.speed)} km/h` : currentSelected.status === 'IgnitionOn' ? 'Parado (Ligado)' : currentSelected.status === 'Stopped' ? 'Bloqueado' : 'Desligado'}
+            <span className="text-gray-700">
+              Seguindo <strong className="text-blue-700">{currentSelected.name}</strong>
             </span>
+            {currentSelected.status === 'Moving' && currentSelected.speed >= 10 ? (
+              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
+                {Math.round(currentSelected.speed)} km/h
+              </span>
+            ) : (
+              <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[11px] font-semibold">
+                {currentSelected.status === 'Moving' ? `${Math.round(currentSelected.speed)} km/h` : currentSelected.status === 'IgnitionOn' ? 'Parado (Ligado)' : currentSelected.status === 'Stopped' ? 'Bloqueado' : 'Desligado'}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (map && Number(currentSelected.lat) && Number(currentSelected.lng)) {
+                  map.panTo({ lat: Number(currentSelected.lat), lng: Number(currentSelected.lng) });
+                  map.setZoom(19.5);
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+              title="Aproximar ao nível máximo da rua e número"
+            >
+              <Crosshair className="w-3 h-3" />
+              <span>Local Exato</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePopupVehicleId(activePopupVehicleId === currentSelected.id ? null : currentSelected.id)}
+              className="bg-slate-800 hover:bg-slate-700 text-white px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors cursor-pointer"
+            >
+              {activePopupVehicleId === currentSelected.id ? 'Ocultar Ficha' : 'Ver Endereço'}
+            </button>
+          </div>
+          {Number(currentSelected.lat) !== 0 && Number(currentSelected.lng) !== 0 && (
+            <div className="flex items-center gap-1.5 text-[10px] text-gray-600 max-w-full">
+              <MapPin className="w-3 h-3 text-blue-600 shrink-0" />
+              <AddressDisplay lat={currentSelected.lat} lng={currentSelected.lng} />
+            </div>
           )}
         </div>
       )}
@@ -1333,9 +1362,9 @@ export default function FleetTracker({
 
           {/* Vehicle Markers */}
           {vehicles.map((v, index) => {
-            const overlapCount = vehicles.filter((other, i) => i < index && Math.abs(other.lat - v.lat) < 0.00005 && Math.abs(other.lng - v.lng) < 0.00005).length;
-            const jitterLat = overlapCount > 0 ? v.lat + (overlapCount * 0.0002) : v.lat;
-            const jitterLng = overlapCount > 0 ? v.lng + (overlapCount * 0.0002) : v.lng;
+            const overlapCount = vehicles.filter((other, i) => i < index && Math.abs(other.lat - v.lat) < 0.000015 && Math.abs(other.lng - v.lng) < 0.000015).length;
+            const jitterLat = overlapCount > 0 ? v.lat + (overlapCount * 0.00008) : v.lat;
+            const jitterLng = overlapCount > 0 ? v.lng + (overlapCount * 0.00008) : v.lng;
             
             const isSelected = (selectedVehicleIds && selectedVehicleIds.length > 0)
               ? selectedVehicleIds.includes(v.id)
@@ -1343,7 +1372,7 @@ export default function FleetTracker({
             const isMultiSelected = Boolean(selectedVehicleIds && selectedVehicleIds.length > 1 && selectedVehicleIds.includes(v.id));
             const vStyles = getVehicleColorStyles(v);
             const isMoving = v.status === 'Moving' && (v.speed || 0) >= 4;
-            const pointerHeight = Math.max(0, (18 - mapZoom) * 8);
+            const pointerHeight = mapZoom < 18 ? Math.max(4, Math.min(28, (18 - mapZoom) * 4)) : 0;
             const heading = typeof v.heading === 'number' ? v.heading : 0;
 
             return (
@@ -1364,51 +1393,8 @@ export default function FleetTracker({
                   else onMarkerClick(v);
                 }}
               >
-                {/* Dynamic Radar Pulse / Follow Effect when Centered/Selected */}
-                {isSelected && (
-                  <>
-                    <div className="absolute -inset-4 rounded-full bg-blue-500/25 animate-ping pointer-events-none z-0" />
-                    <div className="absolute -inset-2 rounded-full bg-blue-400/30 animate-pulse pointer-events-none z-0" />
-                  </>
-                )}
-
-                {/* Dynamic Heading / Direction Arrow Cone when Moving or has Heading */}
-                {heading !== undefined && heading !== null && (isMoving || isSelected) && (
-                  <div 
-                    className="absolute -top-3 w-6 h-6 flex items-center justify-center pointer-events-none transition-transform duration-500 z-20"
-                    style={{ transform: `rotate(${heading}deg)` }}
-                  >
-                    <div 
-                      className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[9px] drop-shadow-md animate-pulse" 
-                      style={{ borderBottomColor: vStyles.hex }}
-                    />
-                  </div>
-                )}
-
-                <div className="flex flex-col items-center justify-end relative z-10">
-                  <div className={`rounded-full shadow-lg bg-white border-[3px] flex items-center justify-center relative z-10 transition-all duration-300 ${
-                    isSelected ? 'ring-4 ring-blue-500/60 scale-110' : ''
-                  } ${
-                    v.settings?.isBlocked ? 'border-red-600 bg-red-50 text-red-600 animate-pulse' :
-                    `${vStyles.borderClass} ${vStyles.ringClass} ring-2`
-                  } ${v.photoUrl ? 'p-0.5' : 'p-2'}`}>
-                    <VehicleIcon iconType={v.iconType} color={vStyles.hex} size={v.photoUrl ? 40 : (isSelected ? 24 : 20)} photoUrl={v.photoUrl} className={v.photoUrl ? "border-none shadow-none" : ""} />
-                  </div>
-                  
-                  {/* Dynamic Pointer shrinking on zoom */}
-                  {pointerHeight > 0 && (
-                    <div className="flex flex-col items-center justify-start pointer-events-none" style={{ marginTop: '-2px' }}>
-                      <div 
-                        className={`w-1 ${vStyles.bgClass} opacity-90`} 
-                        style={{ height: `${pointerHeight}px` }} 
-                      />
-                      <div className={`w-2 h-2 rounded-full ${vStyles.bgClass} shadow-sm`} style={{ marginTop: '-2px' }} />
-                    </div>
-                  )}
-                </div>
-                
-                {/* Dynamic Vehicle Label & Speed Indicator */}
-                <div className="flex flex-col items-center absolute bottom-full mb-1 pointer-events-none">
+                {/* Dynamic Vehicle Label & Speed Indicator (positioned cleanly above marker) */}
+                <div className="flex flex-col items-center absolute bottom-full mb-1.5 pointer-events-none z-20">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap transition-all flex items-center gap-1 ${
                     isSelected 
                       ? 'bg-blue-600 text-white ring-2 ring-white scale-105' 
@@ -1418,6 +1404,57 @@ export default function FleetTracker({
                     <span>{v.settings?.isBlocked ? `🔒 [BLOQUEADO] ${v.name}` : v.name}</span>
                     {isMoving && v.speed >= 10 ? ` • ${Math.round(v.speed)} km/h` : ''}
                   </span>
+                </div>
+
+                {/* Vehicle Circle Badge + Heading Cone */}
+                <div className="relative flex flex-col items-center justify-end z-10">
+                  {isSelected && (
+                    <div className="absolute -inset-2 rounded-full bg-blue-400/30 animate-pulse pointer-events-none z-0" />
+                  )}
+
+                  {heading !== undefined && heading !== null && (isMoving || isSelected) && (
+                    <div 
+                      className="absolute -top-3 w-6 h-6 flex items-center justify-center pointer-events-none transition-transform duration-500 z-20"
+                      style={{ transform: `rotate(${heading}deg)` }}
+                    >
+                      <div 
+                        className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[9px] drop-shadow-md animate-pulse" 
+                        style={{ borderBottomColor: vStyles.hex }}
+                      />
+                    </div>
+                  )}
+
+                  <div className={`rounded-full shadow-lg bg-white border-[3px] flex items-center justify-center relative z-10 transition-all duration-300 ${
+                    isSelected ? 'ring-4 ring-blue-500/60 scale-105' : ''
+                  } ${
+                    v.settings?.isBlocked ? 'border-red-600 bg-red-50 text-red-600 animate-pulse' :
+                    `${vStyles.borderClass} ${vStyles.ringClass} ring-2`
+                  } ${v.photoUrl ? 'p-0.5' : 'p-2'}`}>
+                    <VehicleIcon iconType={v.iconType} color={vStyles.hex} size={v.photoUrl ? 38 : (isSelected ? 22 : 19)} photoUrl={v.photoUrl} className={v.photoUrl ? "border-none shadow-none" : ""} />
+                  </div>
+                </div>
+
+                {/* Exact Pinpoint Tip & Ground Target Dot anchored directly on (lat, lng) */}
+                <div className="flex flex-col items-center justify-start pointer-events-none relative z-10 -mt-0.5">
+                  {pointerHeight > 0 && (
+                    <div
+                      className={`w-0.5 ${vStyles.bgClass} opacity-90`}
+                      style={{ height: `${pointerHeight}px` }}
+                    />
+                  )}
+                  <div
+                    className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[7px]"
+                    style={{ borderTopColor: vStyles.hex }}
+                  />
+                  <div className="relative flex items-center justify-center -mt-0.5">
+                    {isSelected && (
+                      <span className="absolute w-5 h-5 rounded-full bg-blue-500/40 animate-ping" />
+                    )}
+                    <span
+                      className="w-2.5 h-2.5 rounded-full border-2 border-white shadow-md relative z-10"
+                      style={{ backgroundColor: vStyles.hex }}
+                    />
+                  </div>
                 </div>
               </div>
             </AdvancedMarker>
@@ -1697,10 +1734,43 @@ export default function FleetTracker({
             </div>
           </div>
 
-          {/* Real Address */}
-          <div className="bg-gray-50 p-2 rounded-xl border border-gray-100 mb-2.5 shrink-0">
-            <span className="text-[10px] text-gray-500 font-semibold block mb-0.5">Endereço em Tempo Real</span>
-            <AddressDisplay lat={currentSelected.lat} lng={currentSelected.lng} />
+          {/* Real Address & Exact Coordinates */}
+          <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 mb-2.5 shrink-0 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] text-gray-500 font-semibold">Endereço Exato em Tempo Real</span>
+              {currentSelected.lat && currentSelected.lng && (
+                <span className="text-[10px] font-mono text-gray-500 font-semibold">
+                  {Number(currentSelected.lat).toFixed(6)}, {Number(currentSelected.lng).toFixed(6)}
+                </span>
+              )}
+            </div>
+            <AddressDisplay lat={currentSelected.lat} lng={currentSelected.lng} multiline />
+            {Number(currentSelected.lat) !== 0 && Number(currentSelected.lng) !== 0 && (
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (map) {
+                      map.panTo({ lat: Number(currentSelected.lat), lng: Number(currentSelected.lng) });
+                      map.setZoom(19.5);
+                    }
+                  }}
+                  className="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Crosshair className="w-3 h-3" />
+                  <span>Zoom Exato (Rua)</span>
+                </button>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${currentSelected.lat},${currentSelected.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 py-1.5 px-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 transition-colors"
+                >
+                  <MapPin className="w-3 h-3 text-red-600" />
+                  <span>Abrir Pino Maps ↗</span>
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Bottom info */}
