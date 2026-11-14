@@ -1482,13 +1482,13 @@ export default function TerminalTools({
                       </div>
                     </div>
 
-                    <div className="bg-white/90 p-3 rounded-xl border border-amber-100 text-xs text-gray-600 space-y-1">
+                    <div className="bg-white/90 p-3 rounded-xl border border-amber-100 text-xs text-gray-600 space-y-1.5">
                       <div className="flex items-center gap-1.5 text-amber-800 font-semibold">
                         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>Proteção Anti-Loop de Reinício:</span>
+                        <span>Proteção Anti-Loop &amp; Modo Estacionado:</span>
                       </div>
                       <p>
-                        Para evitar descarregar a bateria se o veículo estiver em subsolo sem sinal celular, o sistema aplica um intervalo de segurança de no mínimo <strong>20 minutos</strong> entre tentativas de reinício por watchdog.
+                        O tempo configurado ({gprsWatchdogTimeoutMinutes} min) vale quando o veículo está com a <strong>ignição ligada</strong>. Quando estacionado em repouso (envio normal a cada 30 min), o Watchdog só atua se houver queda real de conexão por mais de 45 min, com intervalo mínimo de <strong>20 minutos</strong> entre reinícios.
                       </p>
                     </div>
                   </div>

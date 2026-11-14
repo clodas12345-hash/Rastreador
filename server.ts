@@ -5,9 +5,26 @@ import JSZip from "jszip";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
+function resolvePort(): number {
+  const portFlagIdx = process.argv.findIndex((a) => a === '--port' || a.startsWith('--port='));
+  if (portFlagIdx !== -1) {
+    const arg = process.argv[portFlagIdx];
+    const val = arg.includes('=') ? arg.split('=')[1] : process.argv[portFlagIdx + 1];
+    const parsed = Number(val);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  const envPort = Number(process.env.PORT);
+  const nginxPort = Number(process.env.NGINX_PORT);
+  if (process.env.NODE_ENV !== "production") {
+    if (envPort > 0 && envPort !== nginxPort) return envPort;
+    return Number(process.env.DEFAULT_APP_PORT) || 3000;
+  }
+  return envPort > 0 ? envPort : 3000;
+}
+
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = resolvePort();
 
   app.use(express.json({ limit: '50mb' }));
 

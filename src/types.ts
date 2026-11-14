@@ -117,6 +117,7 @@ export interface Vehicle {
   externalVoltage?: number; // em Volts
   powerCut?: boolean; // Verdadeiro se a alimentação principal 12V foi cortada/desconectada
   lastTelemetryTime?: number; // Timestamp da última telemetria recebida
+  flespiConnected?: boolean; // Estado de conexão TCP/socket em tempo real no Flespi
   heading?: number; // Ângulo de direção em graus (0 - 360)
   insideGeofences?: string[]; // IDs das cercas onde o veículo está
   commandQueue?: Array<{ id: string; name: string; timestamp: string }>;

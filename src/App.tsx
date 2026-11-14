@@ -980,7 +980,8 @@ export default function App() {
               batteryLevel: localV.batteryLevel !== undefined ? localV.batteryLevel : remoteV.batteryLevel,
               externalVoltage: localV.externalVoltage !== undefined ? localV.externalVoltage : remoteV.externalVoltage,
               satellites: localV.satellites || remoteV.satellites,
-              hdop: localV.hdop !== undefined ? localV.hdop : remoteV.hdop
+              hdop: localV.hdop !== undefined ? localV.hdop : remoteV.hdop,
+              flespiConnected: localV.flespiConnected !== undefined ? localV.flespiConnected : remoteV.flespiConnected
             };
           }
           return remoteV;
@@ -2691,6 +2692,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             const isMicroJitterOnly = Boolean(v.lastTelemetryTime) && !ignition && rawPositionDeltaKm > 0 && rawPositionDeltaKm <= 0.003;
             const hasCoordinatesChanged = hasValidRealCoords && (v.lat !== realLat || v.lng !== realLng) && !isMicroJitterOnly;
 
+            const flespiConnected = Boolean(device.connected);
+
             if (
               hasCoordinatesChanged ||
               v.speed !== realSpeed ||
@@ -2702,6 +2705,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               v.powerCut !== isPowerCut ||
               v.heading !== realHeading ||
               v.lastTelemetryTime !== latestTs ||
+              v.flespiConnected !== flespiConnected ||
               deltaKm > 0
             ) {
               anyChanged = true;
@@ -2743,6 +2747,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                 externalVoltage: externalVoltage ?? v.externalVoltage,
                 powerCut: isPowerCut,
                 lastTelemetryTime: latestTs,
+                flespiConnected,
                 totalMileage: newTotalMileage,
                 dailyMileage: newDailyMileage,
                 color: getVehicleDynamicColor({ status: newStatus, speed: realSpeed }),
@@ -2880,10 +2885,20 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           }
         }
 
-        // 2. WATCHDOG GPRS: REINICIAR SE FICAR X MINUTOS SEM CONEXÃO
+        // 2. WATCHDOG GPRS: REINICIAR SE FICAR X MINUTOS SEM CONEXÃO REAL
         if (v.settings?.gprsWatchdogEnabled) {
-          const timeoutMinutes = Number(v.settings.gprsWatchdogTimeoutMinutes) || 15;
-          const timeoutMs = timeoutMinutes * 60 * 1000;
+          const configuredTimeoutMin = Number(v.settings.gprsWatchdogTimeoutMinutes) || 15;
+          const isParked = v.status === 'IgnitionOff' || v.status === 'Stopped';
+          // Se o veículo está estacionado e o rastreador segue conectado no Flespi,
+          // não dispara alerta falso (aparelhos estacionados enviam apenas a cada 30 min / 1h).
+          if (isParked && v.flespiConnected) {
+            return;
+          }
+
+          // Quando estacionado/desconectado, respeita o ciclo mínimo de repouso de 45 min
+          // para não confundir hibernação normal (30 min) com queda de sinal.
+          const effectiveTimeoutMin = isParked ? Math.max(configuredTimeoutMin, 45) : configuredTimeoutMin;
+          const timeoutMs = effectiveTimeoutMin * 60 * 1000;
           const lastTs = v.lastTelemetryTime ? (v.lastTelemetryTime > 1e11 ? v.lastTelemetryTime : v.lastTelemetryTime * 1000) : 0;
 
           if (lastTs > 0) {
@@ -2894,7 +2909,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
               if (nowMs - lastRebootTs >= cooldownMs) {
                 const elapsedMin = Math.round(elapsedMs / 60000);
-                console.log(`[Watchdog GPRS] ${v.name} está sem conexão há ${elapsedMin} min (limite: ${timeoutMinutes} min). Disparando reinício de recuperação...`);
+                console.log(`[Watchdog GPRS] ${v.name} está sem conexão há ${elapsedMin} min (limite efetivo: ${effectiveTimeoutMin} min). Disparando reinício de recuperação...`);
                 
                 const pwd = v.settings?.smsPassword || '123456';
                 const imei = v.trackerNumber || v.phoneNumber || '';
@@ -2902,7 +2917,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
                 addNotification({
                   title: '⚠️ Watchdog GPRS: Reinício Automático',
-                  message: `${v.name} ficou ${elapsedMin} min sem sinal GPRS (limite: ${timeoutMinutes} min). Comando de reinício e redefinição de socket enviado automaticamente.`,
+                  message: `${v.name} ficou ${elapsedMin} min sem sinal GPRS (limite: ${effectiveTimeoutMin} min). Comando de reinício e redefinição de socket enviado automaticamente.`,
                   type: 'command',
                   severity: 'warning',
                   vehicleId: v.id,
