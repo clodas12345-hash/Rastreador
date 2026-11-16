@@ -57,6 +57,9 @@ export default function ShareTrackingModal({
       v: String(vehicle.id || ''),
       imei: String(vehicle.trackerNumber || '')
     });
+    if (vehicle.photoUrl) {
+      carParams.set('photo', vehicle.photoUrl);
+    }
     if (regenCounter > 0) {
       carParams.set('r', token);
     }

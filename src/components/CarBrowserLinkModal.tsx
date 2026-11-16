@@ -80,6 +80,9 @@ export default function CarBrowserLinkModal({
         v: String(v.id || ''),
         imei: String(v.trackerNumber || '')
       });
+      if (v.photoUrl) {
+        params.set('photo', v.photoUrl);
+      }
       if (nonce) params.set('r', nonce);
       return `${cleanOrigin}/?${params.toString()}`;
     },

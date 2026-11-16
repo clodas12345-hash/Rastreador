@@ -222,19 +222,107 @@
   <script>
     const FLESPI_TOKEN = 'DYX74VMw3KdUUbFwued9qa2ahQcAZcts9C7MVZ32gw2GEJSfgeCMk1Ww2oc1MofV';
 
-    // Vehicles definition
-    const allVehicles = [
-      { id: 'peugeot-208', name: 'Peugeot 208', imei: '868166057692857', lat: -23.553282, lng: -46.65841, speed: 0, status: 'IgnitionOff' },
-      { id: 'onix-plus', name: 'Onix Plus', imei: '868166052523461', lat: -23.512503, lng: -46.519462, speed: 0, status: 'IgnitionOff' }
+    // Vehicles definition with default high-quality vehicle photos
+    let allVehicles = [
+      { 
+        id: 'peugeot-208', 
+        name: 'Peugeot 208', 
+        imei: '868166057692857', 
+        lat: -23.553282, 
+        lng: -46.65841, 
+        speed: 0, 
+        status: 'IgnitionOff',
+        photoUrl: 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?w=300&auto=format&fit=crop&q=80',
+        licensePlate: 'SWU-4D27'
+      },
+      { 
+        id: 'onix-plus', 
+        name: 'Onix Plus', 
+        imei: '868166052523461', 
+        lat: -23.512503, 
+        lng: -46.519462, 
+        speed: 0, 
+        status: 'IgnitionOff',
+        photoUrl: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=300&auto=format&fit=crop&q=80',
+        licensePlate: 'TDD-5I76'
+      }
     ];
+
+    // Load locally cached photos from localStorage if available
+    try {
+      const cachedPhotos = JSON.parse(localStorage.getItem('gkd_multimidia_photos') || '{}');
+      if (cachedPhotos && typeof cachedPhotos === 'object') {
+        allVehicles = allVehicles.map(v => ({
+          ...v,
+          photoUrl: cachedPhotos[v.id] || cachedPhotos[v.imei] || v.photoUrl
+        }));
+      }
+    } catch {}
 
     const urlParams = new URLSearchParams(window.location.search);
     const paramImei = urlParams.get('imei');
     const paramV = urlParams.get('v') || urlParams.get('vehicleId');
-    const singleMatched = (paramImei || paramV)
-      ? allVehicles.filter(v => (paramImei && v.imei === paramImei) || (paramV && (v.id === paramV || paramV.includes(v.id))))
-      : [];
-    const vehicles = singleMatched.length > 0 ? singleMatched : allVehicles;
+    const paramPhoto = urlParams.get('photo') || urlParams.get('p') || urlParams.get('photoUrl');
+
+    if (paramPhoto && (paramV || paramImei)) {
+      allVehicles = allVehicles.map(v => {
+        if ((paramV && (v.id === paramV || paramV.includes(v.id))) || (paramImei && v.imei === paramImei)) {
+          return { ...v, photoUrl: paramPhoto };
+        }
+        return v;
+      });
+      try {
+        const currentCache = JSON.parse(localStorage.getItem('gkd_multimidia_photos') || '{}');
+        if (paramV) currentCache[paramV] = paramPhoto;
+        if (paramImei) currentCache[paramImei] = paramPhoto;
+        localStorage.setItem('gkd_multimidia_photos', JSON.stringify(currentCache));
+      } catch {}
+    }
+    
+    let vehicles = allVehicles;
+    function filterVehicles() {
+      const singleMatched = (paramImei || paramV)
+        ? allVehicles.filter(v => (paramImei && v.imei === paramImei) || (paramV && (v.id === paramV || paramV.includes(v.id))))
+        : [];
+      vehicles = singleMatched.length > 0 ? singleMatched : allVehicles;
+    }
+    filterVehicles();
+
+    // Fetch synced fleet profiles (/api/fleet-sync) to get latest phone-uploaded photos
+    async function syncRemoteFleetPhotos() {
+      try {
+        const res = await fetch('/api/fleet-sync');
+        if (res.ok) {
+          const data = await res.json();
+          const remoteList = Array.isArray(data?.vehicles) ? data.vehicles : [];
+          if (remoteList.length > 0) {
+            const photoCache = {};
+            allVehicles = allVehicles.map(v => {
+              const match = remoteList.find(r => (r.id && r.id === v.id) || (r.trackerNumber && v.imei && String(r.trackerNumber) === String(v.imei)));
+              if (match) {
+                const updatedPhoto = match.photoUrl || v.photoUrl;
+                photoCache[v.id] = updatedPhoto;
+                photoCache[v.imei] = updatedPhoto;
+                return {
+                  ...v,
+                  name: match.name || v.name,
+                  licensePlate: match.licensePlate || v.licensePlate,
+                  photoUrl: updatedPhoto
+                };
+              }
+              photoCache[v.id] = v.photoUrl;
+              photoCache[v.imei] = v.photoUrl;
+              return v;
+            });
+            try {
+              localStorage.setItem('gkd_multimidia_photos', JSON.stringify(photoCache));
+            } catch {}
+            filterVehicles();
+            updateVehiclesUI();
+          }
+        }
+      } catch {}
+    }
 
     let cycleStep = 0; // 0 = Car 1, 1 = Car 2, 2 = Centralizar os dois
     let map;
@@ -253,16 +341,22 @@
 
       updateVehiclesUI();
       pollFlespiTelemetry();
+      syncRemoteFleetPhotos();
       setInterval(pollFlespiTelemetry, 3500);
+      setInterval(syncRemoteFleetPhotos, 10000);
     }
 
-    function createCustomIcon(name, speed, isMoving) {
+    function createCustomIcon(v, speed, isMoving) {
+      const contentHtml = v.photoUrl
+        ? `<img src="${v.photoUrl}" alt="${v.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+        : `<span style="font-size: 22px;">🚘</span>`;
+
       const iconHtml = `
         <div class="vehicle-marker">
-          <div class="marker-bubble ${isMoving ? 'moving' : ''}">
-            <span style="font-size: 22px;">🚘</span>
+          <div class="marker-bubble ${isMoving ? 'moving' : ''}" style="width:44px;height:44px;border-radius:50%;overflow:hidden;border:3px solid ${isMoving ? '#10b981' : '#2563eb'};background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(0,0,0,0.4);">
+            ${contentHtml}
           </div>
-          <div class="marker-label">${name} (${speed} km/h)</div>
+          <div class="marker-label">${v.name} (${speed} km/h)</div>
         </div>
       `;
       return L.divIcon({
@@ -277,7 +371,7 @@
       // Update markers on map
       vehicles.forEach(v => {
         const isMoving = v.speed >= 4;
-        const icon = createCustomIcon(v.name, Math.round(v.speed), isMoving);
+        const icon = createCustomIcon(v, Math.round(v.speed), isMoving);
         if (markers[v.id]) {
           markers[v.id].setLatLng([v.lat, v.lng]);
           markers[v.id].setIcon(icon);
