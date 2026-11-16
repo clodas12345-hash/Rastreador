@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Vehicle } from '../types';
-import { X, Share2, MessageSquare, Phone, Copy, Check, Clock, Link as LinkIcon, ShieldCheck } from 'lucide-react';
+import { X, Share2, MessageSquare, Phone, Copy, Check, Clock, Link as LinkIcon, ShieldCheck, RefreshCw } from 'lucide-react';
 import { doc } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
@@ -9,6 +9,7 @@ import { safeSetDoc } from '../utils/firestoreWrapper';
 import { db, cleanFirestoreData } from '../lib/firebase';
 import { PUBLIC_APP_URL } from '../config';
 import { getVehicleDynamicColor } from '../utils/vehicleColors';
+import { shortenUrl } from '../utils/urlShortener';
 
 interface ShareTrackingModalProps {
   vehicle: Vehicle;
@@ -27,36 +28,71 @@ export default function ShareTrackingModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<'individual' | 'car'>('individual');
 
-  const { token, publicTrackingUrl, carBrowserUrl } = React.useMemo(() => {
-    const t = `tr_${vehicle.id}_${Date.now().toString(36)}`;
-    
-    // CRITICAL: If on a native platform (APK), origin is 'http://localhost' which cannot be shared.
-    // We use the known PUBLIC_APP_URL instead.
-    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    const origin = (typeof window !== 'undefined' && !isLocalhost) ? window.location.origin : PUBLIC_APP_URL;
+  const [regenCounter, setRegenCounter] = useState(0);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  const token = React.useMemo(() => {
+    const rand = Math.random().toString(36).substring(2, 7);
+    return rand.padEnd(5, '0');
+  }, [vehicle.id, regenCounter]);
+
+  const { rawTrackingUrl, rawCarBrowserUrl } = React.useMemo(() => {
+    // CRITICAL: Never share localhost (APK) or private ais-dev- preview URLs externally.
+    // Always use PUBLIC_APP_URL when running in dev preview or native container.
+    const isPrivateOrLocal =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('ais-dev-'));
+    const origin = (typeof window !== 'undefined' && !isPrivateOrLocal) ? window.location.origin : PUBLIC_APP_URL;
     const cleanOrigin = origin.replace(/\/+$/, '');
-    const cleanPath = (typeof window !== 'undefined' && !isLocalhost) ? (window.location.pathname || '/') : '/';
-    const baseUrl = `${cleanOrigin}${cleanPath.startsWith('/') ? cleanPath : '/' + cleanPath}`.replace(/\/+$/, '') + '/';
-    
+
     const params = new URLSearchParams({
-      trackToken: t,
+      trackToken: token,
       vehicleId: String(vehicle.id || ''),
-      imei: String(vehicle.trackerNumber || ''),
-      vName: String(vehicle.name || 'Veículo'),
-      vPlate: String(vehicle.licensePlate || ''),
-      vColor: getVehicleDynamicColor(vehicle),
-      vIcon: String(vehicle.iconType || 'car'),
-      vLat: String(vehicle.lat || -23.514971),
-      vLng: String(vehicle.lng || -46.548199),
-      expH: String(expirationHours)
+      imei: String(vehicle.trackerNumber || '')
     });
-    
+
+    const carParams = new URLSearchParams({
+      v: String(vehicle.id || ''),
+      imei: String(vehicle.trackerNumber || ''),
+      vName: String(vehicle.name || ''),
+      vPlate: String(vehicle.licensePlate || '')
+    });
+    if (regenCounter > 0) {
+      carParams.set('r', token);
+    }
+
     return {
-      token: t,
-      publicTrackingUrl: `${baseUrl}?${params.toString()}`,
-      carBrowserUrl: `${cleanOrigin}/?mode=carplay`
+      rawTrackingUrl: `${cleanOrigin}/?${params.toString()}`,
+      rawCarBrowserUrl: `${cleanOrigin}/?${carParams.toString()}`
     };
-  }, [vehicle.id, expirationHours]);
+  }, [token, vehicle.id, vehicle.trackerNumber, vehicle.name, vehicle.licensePlate, regenCounter]);
+
+  const [publicTrackingUrl, setPublicTrackingUrl] = useState<string>(rawTrackingUrl);
+  const [carBrowserUrl, setCarBrowserUrl] = useState<string>(rawCarBrowserUrl);
+
+  React.useEffect(() => {
+    let active = true;
+    const force = regenCounter > 0;
+    Promise.all([
+      shortenUrl(rawTrackingUrl, { forceRefresh: force }).then((u) => {
+        if (active && u) setPublicTrackingUrl(u);
+      }),
+      shortenUrl(rawCarBrowserUrl, { forceRefresh: force }).then((u) => {
+        if (active && u) setCarBrowserUrl(u);
+      })
+    ]).finally(() => {
+      if (active) setIsRegenerating(false);
+    });
+    return () => { active = false; };
+  }, [rawTrackingUrl, rawCarBrowserUrl, regenCounter]);
+
+  const handleRecreateLink = () => {
+    setIsRegenerating(true);
+    setRegenCounter((c) => c + 1);
+    if (showToast) showToast('🔄 Recriando novo link...');
+  };
 
   const activeUrl = activeTab === 'car' ? carBrowserUrl : publicTrackingUrl;
 
@@ -66,11 +102,9 @@ export default function ShareTrackingModal({
 
   const getFormattedMessage = () => {
     if (activeTab === 'car') {
-      return `🚗 *Link de Rastreamento para Navegador do Carro / Multimídia*\n\n` +
-        `Abra este link no navegador da central multimídia ou tablet do carro para acompanhar todos os veículos da frota em tempo real, sem expiração e sem login:\n\n` +
-        `${carBrowserUrl}\n\n` +
-        `• Acompanha Peugeot 208 e Onix Plus simultaneamente\n` +
-        `• Alternância rápida de foco e modo tela cheia`;
+      return `🚗 *Link Permanente — ${vehicle.name} (${vehicle.licensePlate || 'Rastreamento'})*\n\n` +
+        `Abra este link no navegador do carro, celular ou central multimídia para acompanhar o *${vehicle.name}* em tempo real, sem expiração e sem login:\n\n` +
+        `${carBrowserUrl}`;
     }
     return `🚗 Acompanhe o veículo ${vehicle.name} em tempo real no mapa:\n\n` +
       `Veículo: ${vehicle.name} (${vehicle.licensePlate || 'GRA-2026'})\n` +
@@ -79,7 +113,7 @@ export default function ShareTrackingModal({
       `⏳ Válido por ${expirationHours} hora(s).`;
   };
 
-  const handleSaveTokenToCloud = async () => {
+  const handleSaveTokenToCloud = React.useCallback(async () => {
     if (activeTab === 'car') return; // Car browser link needs no temporary token
     const expMs = Date.now() + (parseInt(expirationHours, 10) * 3600 * 1000);
     const trackingSession = {
@@ -99,13 +133,15 @@ export default function ShareTrackingModal({
     };
 
     try {
-      safeSetDoc(doc(db, 'tracking_links', token), cleanFirestoreData(trackingSession)).catch(err => {
-        console.warn('Silent cloud save fail:', err);
-      });
+      await safeSetDoc(doc(db, 'tracking_links', token), cleanFirestoreData(trackingSession));
     } catch (e) {
       console.warn('Tracking link cloud save warning:', e);
     }
-  };
+  }, [activeTab, expirationHours, token, vehicle]);
+
+  React.useEffect(() => {
+    handleSaveTokenToCloud();
+  }, [handleSaveTokenToCloud]);
 
   const handleSendWhatsApp = async () => {
     setIsGenerating(true);
@@ -306,7 +342,7 @@ export default function ShareTrackingModal({
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 leading-snug">
-                Link público permanente para acompanhar Peugeot 208 e Onix Plus na mesma tela.
+                Link público permanente e exclusivo do <strong>{vehicle.name}</strong>, sem expiração e sem senha.
               </p>
             </div>
 
@@ -322,6 +358,15 @@ export default function ShareTrackingModal({
                   value={carBrowserUrl}
                   className="bg-transparent text-[11px] font-mono font-bold text-blue-700 flex-1 outline-none px-2 truncate select-all"
                 />
+                <button
+                  type="button"
+                  onClick={handleRecreateLink}
+                  disabled={isRegenerating}
+                  className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                  title="Recriar novo link"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                </button>
                 <button
                   type="button"
                   onClick={handleCopyLink}
@@ -415,6 +460,15 @@ export default function ShareTrackingModal({
                   value={publicTrackingUrl}
                   className="bg-transparent text-[11px] font-mono font-medium text-gray-600 flex-1 outline-none px-2 truncate select-all"
                 />
+                <button
+                  type="button"
+                  onClick={handleRecreateLink}
+                  disabled={isRegenerating}
+                  className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                  title="Recriar novo link"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                </button>
                 <button
                   type="button"
                   onClick={handleCopyLink}

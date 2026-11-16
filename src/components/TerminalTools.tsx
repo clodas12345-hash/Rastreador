@@ -6,11 +6,12 @@ import {
   MapPin, Sliders, Lock, Target, Settings, Route, FileText, MoreHorizontal, X, Save, 
   Wrench, Gauge, Bell, Cpu, Volume2, VolumeX, Mic, MicOff, Disc, Download, Phone, 
   PhoneOff, PhoneCall, MessageSquare, ArrowLeft, Battery, BatteryCharging, Zap, Sparkles, 
-  CheckCircle2, Copy, Send, Check, ShieldCheck, RotateCcw, Clock, WifiOff, AlertTriangle
+  CheckCircle2, Copy, Send, Check, ShieldCheck, RotateCcw, Clock, WifiOff, AlertTriangle, Info
 } from 'lucide-react';
 import { playAlarmSound, stopAlarmSound, isAlarmPlaying, unlockAudio, playAmbientNoise, playDtmfTone, playRingbackTone, startRingbackLoop, stopRingbackLoop } from '../lib/audioService';
 
 import { Vehicle } from '../types';
+import VehicleStatusLegendModal from './VehicleStatusLegendModal';
 interface TerminalToolsProps {
   setActiveModule?: (module: string) => void;
   onOpenRouteManager?: () => void;
@@ -51,6 +52,7 @@ export default function TerminalTools({
   const [statusMessage, setStatusMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
+  const [showLegendModal, setShowLegendModal] = useState(false);
   const [listenModalOpen, setListenModalOpen] = useState(false);
   const [listenTimer, setListenTimer] = useState(0);
   const [isTestingSound, setIsTestingSound] = useState(false);
@@ -768,6 +770,19 @@ export default function TerminalTools({
                   </div>
                 </div>
               ))}
+              <button
+                type="button"
+                onClick={() => setShowLegendModal(true)}
+                className="bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-800 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all flex items-start gap-4 group text-left md:col-span-2"
+              >
+                <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg shrink-0">
+                  <Info className="w-8 h-8 text-emerald-400" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-white group-hover:text-blue-300 transition-colors">Legenda de Status do Mapa</h4>
+                  <p className="text-xs text-slate-400 mt-1">Visualize as cores, indicadores de sinal e contagem ao vivo dos veículos no mapa.</p>
+                </div>
+              </button>
             </div>
           </div>
         </div>
@@ -2537,6 +2552,11 @@ export default function TerminalTools({
           </div>
         </div>
       )}
+      <VehicleStatusLegendModal
+        isOpen={showLegendModal}
+        onClose={() => setShowLegendModal(false)}
+        vehicles={vehicles}
+      />
     </div>
   );
 }

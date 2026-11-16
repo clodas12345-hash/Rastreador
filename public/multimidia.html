@@ -223,18 +223,29 @@
     const FLESPI_TOKEN = 'DYX74VMw3KdUUbFwued9qa2ahQcAZcts9C7MVZ32gw2GEJSfgeCMk1Ww2oc1MofV';
 
     // Vehicles definition
-    const vehicles = [
-      { id: 'peugeot-208', name: 'Peugeot 208', imei: '868204068340798', lat: -23.514971, lng: -46.548199, speed: 0, status: 'IgnitionOff' },
-      { id: 'onix-plus', name: 'Onix Plus', imei: '868204068340799', lat: -23.5226, lng: -46.5590, speed: 0, status: 'IgnitionOff' }
+    const allVehicles = [
+      { id: 'peugeot-208', name: 'Peugeot 208', imei: '868166057692857', lat: -23.553282, lng: -46.65841, speed: 0, status: 'IgnitionOff' },
+      { id: 'onix-plus', name: 'Onix Plus', imei: '868166052523461', lat: -23.512503, lng: -46.519462, speed: 0, status: 'IgnitionOff' }
     ];
 
-    let cycleStep = 0; // 0 = Peugeot 208, 1 = Onix Plus, 2 = Centralizar os dois
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramImei = urlParams.get('imei');
+    const paramV = urlParams.get('v') || urlParams.get('vehicleId');
+    const singleMatched = (paramImei || paramV)
+      ? allVehicles.filter(v => (paramImei && v.imei === paramImei) || (paramV && (v.id === paramV || paramV.includes(v.id))))
+      : [];
+    const vehicles = singleMatched.length > 0 ? singleMatched : allVehicles;
+
+    let cycleStep = 0; // 0 = Car 1, 1 = Car 2, 2 = Centralizar os dois
     let map;
     let markers = {};
 
     function initMap() {
+      const initialLat = vehicles[0] ? vehicles[0].lat : -23.518;
+      const initialLng = vehicles[0] ? vehicles[0].lng : -46.553;
+      const initialZoom = vehicles.length === 1 ? 16 : 14;
       // Dark / Night navigation tiles ideal for in-car dashboard
-      map = L.map('map', { zoomControl: false }).setView([-23.518, -46.553], 14);
+      map = L.map('map', { zoomControl: false }).setView([initialLat, initialLng], initialZoom);
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap, © CARTO'
@@ -286,20 +297,24 @@
           <span>${v.name}</span>
           <span class="speed-badge">${Math.round(v.speed)} km/h</span>
         </button>
-      `).join('') + `
+      `).join('') + (vehicles.length > 1 ? `
         <button class="car-pill" onclick="fitAll()">
           <span>🗺️</span> <span>Ambos</span>
         </button>
-      `;
+      ` : '');
 
       updateCenterButtonLabel();
     }
 
     function updateCenterButtonLabel() {
       const lbl = document.getElementById('lblCenter');
+      if (vehicles.length === 1) {
+        lbl.innerText = `Centralizar (${vehicles[0].name})`;
+        return;
+      }
       if (cycleStep === 0) {
         lbl.innerText = `Centralizar (${vehicles[0].name})`;
-      } else if (cycleStep === 1) {
+      } else if (cycleStep === 1 && vehicles[1]) {
         lbl.innerText = `Centralizar (${vehicles[1].name})`;
       } else {
         lbl.innerText = 'Centralizar os dois';
@@ -307,11 +322,15 @@
     }
 
     function cycleCenter() {
+      if (vehicles.length === 1) {
+        focusVehicle(vehicles[0].id);
+        return;
+      }
       if (cycleStep === 0) {
         // Focus Car 1
         focusVehicle(vehicles[0].id);
         cycleStep = 1;
-      } else if (cycleStep === 1) {
+      } else if (cycleStep === 1 && vehicles[1]) {
         // Focus Car 2
         focusVehicle(vehicles[1].id);
         cycleStep = 2;

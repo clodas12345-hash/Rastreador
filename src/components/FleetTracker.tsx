@@ -1,11 +1,12 @@
-import {AdvancedMarker, Map, useMap} from '@vis.gl/react-google-maps';
+import {AdvancedMarker, Map, useMap, useApiLoadingStatus, APILoadingStatus} from '@vis.gl/react-google-maps';
 import React, {useEffect, useRef, useState, useCallback} from 'react';
 import {Vehicle, SavedRoute, RoutePoint, Geofence} from '../types';
 import {VehicleIcon} from './VehicleIcon';
 import GeofenceLayer from './GeofenceLayer';
 import {AddressDisplay} from './AddressDisplay';
 import ShareTrackingModal from './ShareTrackingModal';
-import {Layers, Settings, X, Gauge, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Crosshair, MapPin, Info} from 'lucide-react';
+import FallbackLeafletMap from './FallbackLeafletMap';
+import {Layers, Settings, X, Gauge, Zap, ShieldCheck, AlertTriangle, Radio, Navigation, Crosshair, MapPin} from 'lucide-react';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed, determineRoadSpeedLimit, RoadSpeedInfo } from '../lib/geocoding';
 import { getRoadSnappedPath, generateCurvedSmoothPath } from '../lib/routeRoadSnapper';
 import { getVehicleDynamicColor, getVehicleColorStyles } from '../utils/vehicleColors';
@@ -155,152 +156,6 @@ function MapTypeSelector() {
   );
 }
 
-function VehicleStatusLegend({ vehicles = [] }: { vehicles?: Vehicle[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  // Compute live vehicle counts per state
-  const counts = React.useMemo(() => {
-    let ligado = 0;
-    let comSinal = 0;
-    let offline = 0;
-    let blocked = 0;
-
-    vehicles.forEach(v => {
-      const isBlocked = Boolean(v.settings?.isBlocked);
-      const isOff = v.status === 'Offline' || v.status === 'NoBattery';
-      const isLig = !isOff && (v.status === 'Moving' || v.status === 'IgnitionOn' || (v.speed || 0) >= 4);
-
-      if (isBlocked) blocked++;
-      if (isOff) offline++;
-      else if (isLig) ligado++;
-      else comSinal++;
-    });
-
-    return { ligado, comSinal, offline, blocked };
-  }, [vehicles]);
-
-  const legendItems = [
-    {
-      id: 'comSinal',
-      label: 'Com Sinal de Internet (Verde)',
-      sub: 'Conectado / Desligado estacionado',
-      count: counts.comSinal,
-      indicator: (
-        <div className="flex items-center justify-center w-5 h-5 shrink-0">
-          <span className="inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white shadow-sm ring-1 ring-emerald-400/40"></span>
-        </div>
-      ),
-      badgeClass: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-    },
-    {
-      id: 'ligado',
-      label: 'Ligado (Azul)',
-      sub: 'Motor ligado ou em deslocamento',
-      count: counts.ligado,
-      indicator: (
-        <div className="relative flex items-center justify-center w-5 h-5 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
-          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-blue-600 border-2 border-white shadow-sm ring-2 ring-blue-400/50"></span>
-        </div>
-      ),
-      badgeClass: 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-    },
-    {
-      id: 'offline',
-      label: 'Sem Sinal de Internet (Vermelho)',
-      sub: 'Sem sinal GPRS ou sem bateria',
-      count: counts.offline,
-      indicator: (
-        <div className="relative flex items-center justify-center w-5 h-5 shrink-0">
-          <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-50"></span>
-          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-red-600 border-2 border-white shadow-sm"></span>
-        </div>
-      ),
-      badgeClass: 'bg-red-500/20 text-red-400 border border-red-500/30'
-    },
-    {
-      id: 'blocked',
-      label: 'Bloqueado',
-      sub: 'Corte de combustível ativo',
-      count: counts.blocked,
-      indicator: (
-        <div className="flex items-center justify-center w-5 h-5 shrink-0">
-          <span className="inline-flex rounded-full h-3.5 w-3.5 bg-red-700 border-2 border-white shadow-sm ring-2 ring-red-500/50 flex items-center justify-center text-[8px] font-black text-white">
-            ✕
-          </span>
-        </div>
-      ),
-      badgeClass: 'bg-red-700/20 text-red-300 border border-red-700/30'
-    }
-  ];
-
-  return (
-    <div className="absolute top-4 left-4 z-20 pointer-events-auto">
-      {!isOpen ? (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="bg-slate-900/90 hover:bg-slate-800 text-white px-3 py-2 rounded-xl shadow-xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2 text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer group"
-          title="Ver legenda explicativa das cores e status dos veículos"
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span className="text-slate-200 group-hover:text-white font-bold">Legenda</span>
-          <Info className="w-3.5 h-3.5 text-blue-400" />
-        </button>
-      ) : (
-        <div className="bg-slate-900/95 backdrop-blur-xl text-white rounded-2xl shadow-2xl border border-slate-700/90 p-3.5 w-64 sm:w-72 flex flex-col gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
-          {/* Header */}
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400">
-                <Info className="w-3.5 h-3.5" />
-              </div>
-              <div>
-                <h4 className="font-extrabold text-xs text-white leading-tight">Legenda de Status</h4>
-                <p className="text-[10px] text-slate-400">Cores dos veículos no mapa</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer text-xs font-bold"
-              title="Fechar legenda"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* List of Statuses */}
-          <div className="flex flex-col gap-1.5">
-            {legendItems.map(item => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-2.5 p-1.5 rounded-xl hover:bg-slate-800/60 transition-colors"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  {item.indicator}
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-bold text-slate-100 truncate">{item.label}</span>
-                    <span className="text-[10px] text-slate-400 truncate">{item.sub}</span>
-                  </div>
-                </div>
-                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md shrink-0 ${item.badgeClass}`}>
-                  {item.count}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Note about selected vehicles */}
-          <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2 text-[10px] text-slate-400">
-            <div className="w-3 h-3 rounded-full bg-blue-500 border border-white ring-2 ring-blue-400/60 shrink-0"></div>
-            <span>Borda azul pulsante indica veículo em foco</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function MapPolyline({
   path,
@@ -856,6 +711,26 @@ export default function FleetTracker({
   const lastClickMapRef = useRef<{ [id: string]: number }>({});
   const singleClickTimerRef = useRef<{ [id: string]: any }>({});
   const map = useMap();
+  const apiStatus = useApiLoadingStatus();
+  const [useFallbackMap, setUseFallbackMap] = useState(false);
+
+  useEffect(() => {
+    if (apiStatus === APILoadingStatus.FAILED || apiStatus === APILoadingStatus.AUTH_FAILURE) {
+      setUseFallbackMap(true);
+      return;
+    }
+    if (map) {
+      setUseFallbackMap(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (!map) {
+        setUseFallbackMap(true);
+      }
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [apiStatus, map]);
+
   const [activePopupVehicleId, setActivePopupVehicleId] = useState<string | null>(null);
   const [activeStopIndex, setActiveStopIndex] = useState<number | null>(null);
   const [showOnlyStops, setShowOnlyStops] = useState(false);
@@ -1096,7 +971,7 @@ export default function FleetTracker({
 
       {/* Top Banner when tracking a single selected vehicle dynamically */}
       {!activeRoute && currentSelected && (!selectedVehicleIds || selectedVehicleIds.length <= 1) && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[92vw] bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-lg border border-blue-200 flex flex-col items-center gap-1 text-xs font-semibold pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute top-3 left-3 right-16 sm:top-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:max-w-xl z-20 bg-white/95 backdrop-blur-md px-3 sm:px-3.5 py-2 rounded-2xl shadow-lg border border-blue-200 flex flex-col items-center gap-1 text-xs font-semibold pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center gap-2 flex-wrap justify-center">
             <span className="relative flex h-2.5 w-2.5 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -1242,6 +1117,18 @@ export default function FleetTracker({
         </div>
       )}
 
+      {useFallbackMap ? (
+        <FallbackLeafletMap
+          vehicles={vehicles}
+          selectedVehicle={selectedVehicle}
+          onSelectVehicle={(v) => {
+            if (v) setIsShowingAll(false);
+            else setIsShowingAll(true);
+            if (onSelectVehicle) onSelectVehicle(v as any);
+            else if (v) onMarkerClick(v);
+          }}
+        />
+      ) : (
       <div className="absolute inset-0 z-0" style={{ touchAction: 'pan-x pan-y' }}>
         <Map
           defaultCenter={fleetCenter}
@@ -1260,7 +1147,6 @@ export default function FleetTracker({
           disableDefaultUI={true}
           clickableIcons={false}
         >
-          <VehicleStatusLegend vehicles={vehicles} />
           <MapTypeSelector />
           <ZoomTracker onZoomChange={setMapZoom} />
           <UserLocationMarker vehicles={vehicles} onUpdateVehicle={onUpdateVehicle} />
@@ -1360,8 +1246,8 @@ export default function FleetTracker({
             </AdvancedMarker>
           )}
 
-          {/* Vehicle Markers */}
-          {vehicles.map((v, index) => {
+          {/* Vehicle Markers (Hidden when viewing history / activeRoute) */}
+          {!activeRoute && vehicles.map((v, index) => {
             const overlapCount = vehicles.filter((other, i) => i < index && Math.abs(other.lat - v.lat) < 0.000015 && Math.abs(other.lng - v.lng) < 0.000015).length;
             const jitterLat = overlapCount > 0 ? v.lat + (overlapCount * 0.00008) : v.lat;
             const jitterLng = overlapCount > 0 ? v.lng + (overlapCount * 0.00008) : v.lng;
@@ -1462,6 +1348,7 @@ export default function FleetTracker({
           })}
         </Map>
       </div>
+      )}
 
       {/* Floating Selected Vehicle Telemetry Card (Apenas no 2º clique) */}
       {currentSelected && activePopupVehicleId === currentSelected.id && (

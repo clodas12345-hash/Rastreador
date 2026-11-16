@@ -33,6 +33,60 @@ async function startServer() {
     res.sendFile(path.join(process.cwd(), 'public', 'multimidia.html'));
   });
 
+  // URL shortener proxy endpoint (cache + is.gd -> tinyurl fallback)
+  const shortUrlCache = new Map<string, string>();
+  app.get("/api/shorten", async (req, res) => {
+    const targetUrl = String(req.query.url || '').trim();
+    const forceFresh = req.query.fresh === '1' || req.query.force === '1';
+    if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {
+      return res.status(400).json({ error: 'Invalid URL' });
+    }
+    const cached = !forceFresh ? shortUrlCache.get(targetUrl) : undefined;
+    if (cached) {
+      return res.json({ shortUrl: cached, shortened: true });
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const isGdRes = await fetch(
+        `https://is.gd/create.php?format=simple&url=${encodeURIComponent(targetUrl)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+      if (isGdRes.ok) {
+        const text = (await isGdRes.text()).trim();
+        if (text.startsWith('https://is.gd/') || text.startsWith('http://is.gd/')) {
+          shortUrlCache.set(targetUrl, text);
+          return res.json({ shortUrl: text, shortened: true });
+        }
+      }
+    } catch (e) {
+      // fallback below
+    }
+
+    try {
+      const controller2 = new AbortController();
+      const timeout2 = setTimeout(() => controller2.abort(), 5000);
+      const tinyRes = await fetch(
+        `https://tinyurl.com/api-create.php?url=${encodeURIComponent(targetUrl)}`,
+        { signal: controller2.signal }
+      );
+      clearTimeout(timeout2);
+      if (tinyRes.ok) {
+        const text = (await tinyRes.text()).trim();
+        if (text.startsWith('https://tinyurl.com/') || text.startsWith('http://tinyurl.com/')) {
+          shortUrlCache.set(targetUrl, text);
+          return res.json({ shortUrl: text, shortened: true });
+        }
+      }
+    } catch (e) {
+      // fallback to original
+    }
+
+    return res.json({ shortUrl: targetUrl, shortened: false });
+  });
+
   // API endpoint to download standalone SPA zip
   app.get("/api/download-zip", async (req, res) => {
     try {
