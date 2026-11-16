@@ -35,7 +35,13 @@ async function startServer() {
 
   // URL shortener proxy endpoint (cache + is.gd -> tinyurl fallback)
   const shortUrlCache = new Map<string, string>();
+  app.options("/api/shorten", (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.sendStatus(204);
+  });
   app.get("/api/shorten", async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const targetUrl = String(req.query.url || '').trim();
     const forceFresh = req.query.fresh === '1' || req.query.force === '1';
     if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {

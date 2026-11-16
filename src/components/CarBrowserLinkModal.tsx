@@ -78,9 +78,7 @@ export default function CarBrowserLinkModal({
       if (!v) return `${cleanOrigin}/?mode=carplay`;
       const params = new URLSearchParams({
         v: String(v.id || ''),
-        imei: String(v.trackerNumber || ''),
-        vName: String(v.name || ''),
-        vPlate: String(v.licensePlate || '')
+        imei: String(v.trackerNumber || '')
       });
       if (nonce) params.set('r', nonce);
       return `${cleanOrigin}/?${params.toString()}`;
@@ -532,7 +530,7 @@ export default function CarBrowserLinkModal({
                   {selectedVehicle ? selectedVehicle.name : 'Todos os Carros'}
                 </span>
               </span>
-              <span className="text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+              <span className="text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full max-w-[175px] sm:max-w-[230px] truncate block">
                 {activeUrl.replace(/^https?:\/\//, '')}
               </span>
             </div>

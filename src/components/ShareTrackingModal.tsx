@@ -55,9 +55,7 @@ export default function ShareTrackingModal({
 
     const carParams = new URLSearchParams({
       v: String(vehicle.id || ''),
-      imei: String(vehicle.trackerNumber || ''),
-      vName: String(vehicle.name || ''),
-      vPlate: String(vehicle.licensePlate || '')
+      imei: String(vehicle.trackerNumber || '')
     });
     if (regenCounter > 0) {
       carParams.set('r', token);
