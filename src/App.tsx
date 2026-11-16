@@ -26,9 +26,10 @@ import PermissoesModule from './components/PermissoesModule';
 import NotificationCenterModule from './components/NotificationCenterModule';
 import IntervaloReportModule from './components/IntervaloReportModule';
 import VehicleStatusLegendModal from './components/VehicleStatusLegendModal';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
+import { PUBLIC_APP_URL } from './config';
 
 
 import {collection, doc} from 'firebase/firestore';
@@ -1048,6 +1049,112 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Cross-device sync helper for vehicle photos, plates, and names
+  const resolveSyncApiBase = () => {
+    if (typeof window === 'undefined') return '';
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return PUBLIC_APP_URL.replace(/\/+$/, '');
+    }
+    return '';
+  };
+
+  const pushFleetProfilesToServer = async (list: Vehicle[]) => {
+    try {
+      const payload = list
+        .filter((v) => v && (v.photoUrl || v.licensePlate || v.name))
+        .map((v) => ({
+          id: v.id,
+          trackerNumber: v.trackerNumber || '',
+          name: v.name,
+          licensePlate: v.licensePlate || '',
+          photoUrl: v.photoUrl || '',
+          iconType: v.iconType || 'car',
+          color: v.color || '#16a34a'
+        }));
+      if (payload.length === 0) return;
+
+      const apiBase = resolveSyncApiBase();
+      const url = `${apiBase}/api/fleet-sync`;
+      if (Capacitor.isNativePlatform()) {
+        await CapacitorHttp.post({
+          url,
+          headers: { 'Content-Type': 'application/json' },
+          data: { vehicles: payload }
+        });
+      } else {
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vehicles: payload })
+        });
+      }
+    } catch {}
+  };
+
+  // On boot: push local photos/plates if present, and pull any synced photos/plates from server
+  useEffect(() => {
+    let active = true;
+    const syncOnBoot = async () => {
+      try {
+        const hasLocalMedia = vehicles.some((v) => Boolean(v.photoUrl));
+        if (hasLocalMedia) {
+          await pushFleetProfilesToServer(vehicles);
+        }
+
+        const apiBase = resolveSyncApiBase();
+        const url = `${apiBase}/api/fleet-sync`;
+        let remoteList: any[] = [];
+        if (Capacitor.isNativePlatform()) {
+          const res = await CapacitorHttp.get({ url });
+          remoteList = Array.isArray(res.data?.vehicles) ? res.data.vehicles : [];
+        } else {
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            remoteList = Array.isArray(data?.vehicles) ? data.vehicles : [];
+          }
+        }
+
+        if (!active || remoteList.length === 0) return;
+        setVehicles((prev) => {
+          let changed = false;
+          const next = prev.map((localV) => {
+            const match = remoteList.find(
+              (r) =>
+                (r.id && r.id === localV.id) ||
+                (r.trackerNumber && localV.trackerNumber && String(r.trackerNumber) === String(localV.trackerNumber))
+            );
+            if (!match) return localV;
+            const nextPhoto = localV.photoUrl || match.photoUrl || '';
+            const nextPlate =
+              localV.licensePlate && localV.licensePlate !== 'BRA-2E19' && localV.licensePlate !== 'XYZ-8G54'
+                ? localV.licensePlate
+                : match.licensePlate || localV.licensePlate;
+            if (nextPhoto !== (localV.photoUrl || '') || nextPlate !== localV.licensePlate) {
+              changed = true;
+              return {
+                ...localV,
+                photoUrl: nextPhoto || undefined,
+                licensePlate: nextPlate
+              };
+            }
+            return localV;
+          });
+          if (changed) {
+            try {
+              localStorage.setItem('app_vehicles_cache', JSON.stringify(next));
+            } catch {}
+            return next;
+          }
+          return prev;
+        });
+      } catch {}
+    };
+    syncOnBoot();
+    return () => { active = false; };
+  }, []);
+
   const handleUpdateVehicle = async (updatedVehicle: Vehicle, onSuccess?: (saved: Vehicle) => void) => {
     console.log('handleUpdateVehicle called with:', updatedVehicle);
     const validName = updatedVehicle.name && updatedVehicle.name.trim() ? updatedVehicle.name.trim() : 'Veículo Cadastrado';
@@ -1066,6 +1173,7 @@ export default function App() {
       try {
         localStorage.setItem('app_vehicles_cache', JSON.stringify(next));
       } catch (e) {}
+      pushFleetProfilesToServer(next);
       return next;
     });
 

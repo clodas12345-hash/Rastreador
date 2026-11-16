@@ -93,6 +93,54 @@ async function startServer() {
     return res.json({ shortUrl: targetUrl, shortened: false });
   });
 
+  // Cross-device fleet metadata sync (photos, plates, names) for multimedia/public browsers
+  const FLEET_SYNC_FILE = path.join('/tmp', 'gkd-fleet-sync.json');
+  let syncedFleetProfiles: Record<string, any> = {};
+  try {
+    if (fs.existsSync(FLEET_SYNC_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(FLEET_SYNC_FILE, 'utf8'));
+      if (parsed && typeof parsed === 'object') syncedFleetProfiles = parsed;
+    }
+  } catch {}
+
+  app.options("/api/fleet-sync", (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(204);
+  });
+
+  app.get("/api/fleet-sync", (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ vehicles: Object.values(syncedFleetProfiles) });
+  });
+
+  app.post("/api/fleet-sync", (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const incoming = Array.isArray(req.body?.vehicles) ? req.body.vehicles : [];
+    incoming.forEach((v: any) => {
+      if (!v || (!v.id && !v.trackerNumber)) return;
+      const key = String(v.id || v.trackerNumber);
+      const prev = syncedFleetProfiles[key] || {};
+      syncedFleetProfiles[key] = {
+        ...prev,
+        id: String(v.id || prev.id || key),
+        trackerNumber: String(v.trackerNumber || prev.trackerNumber || ''),
+        name: String(v.name || prev.name || ''),
+        licensePlate: String(v.licensePlate || prev.licensePlate || ''),
+        photoUrl: typeof v.photoUrl === 'string' && v.photoUrl.length > 0 ? v.photoUrl : (prev.photoUrl || ''),
+        iconType: v.iconType || prev.iconType || 'car',
+        color: v.color || prev.color || '#16a34a',
+        updatedAt: Date.now()
+      };
+    });
+    try {
+      fs.writeFileSync(FLEET_SYNC_FILE, JSON.stringify(syncedFleetProfiles), 'utf8');
+    } catch {}
+    return res.json({ ok: true, count: Object.keys(syncedFleetProfiles).length });
+  });
+
   // API endpoint to download standalone SPA zip
   app.get("/api/download-zip", async (req, res) => {
     try {
