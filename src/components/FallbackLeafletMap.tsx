@@ -85,12 +85,14 @@ export default function FallbackLeafletMap({
         mapRef.current = map;
         setReady(true);
 
-        // Fit all vehicles initially if multiple
-        if (vehicles.length > 1) {
-          const validPts = vehicles
-            .filter((v) => Number(v.lat) && Number(v.lng))
-            .map((v) => [Number(v.lat), Number(v.lng)]);
-          if (validPts.length > 1) {
+        // Fit all vehicles initially
+        const validPts = vehicles
+          .filter((v) => Number(v.lat) && Number(v.lng))
+          .map((v) => [Number(v.lat), Number(v.lng)]);
+        if (validPts.length > 0) {
+          if (validPts.length === 1) {
+            map.setView(validPts[0], 16);
+          } else {
             map.fitBounds(L.latLngBounds(validPts).pad(0.25));
           }
         }

@@ -394,13 +394,7 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
       if (isInitialFitNeeded || idsChanged || triggerFired || (countChanged && validVehicles.length > 0)) {
         hasFittedInitial.current = true;
         if (validVehicles.length > 0) {
-          const moving = isInitialFitNeeded ? validVehicles.find(v => v.status === 'Moving' || (v.speed || 0) >= 4) : null;
-          if (moving) {
-            map.panTo({ lat: Number(moving.lat), lng: Number(moving.lng) });
-            map.setZoom(16.5);
-          } else {
-            fitVehiclesBounds(validVehicles);
-          }
+          fitVehiclesBounds(validVehicles);
         }
       }
       return;
