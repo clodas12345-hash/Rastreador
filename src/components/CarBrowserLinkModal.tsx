@@ -5,6 +5,7 @@ import { Share } from '@capacitor/share';
 import { Browser } from '@capacitor/browser';
 import { PUBLIC_APP_URL } from '../config';
 import { shortenUrl } from '../utils/urlShortener';
+import { fetchActiveLinks, registerActiveLinks } from '../utils/linkManager';
 import { Vehicle } from '../types';
 
 interface CarBrowserLinkModalProps {
@@ -41,6 +42,52 @@ export default function CarBrowserLinkModal({
   const [isShortening, setIsShortening] = useState<boolean>(false);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [nonces, setNonces] = useState<Record<string, string>>(loadSavedNonces);
+  const [noncesReady, setNoncesReady] = useState<boolean>(false);
+
+  // Sync active tokens with server when modal opens so every target always has an active registered token
+  useEffect(() => {
+    if (!isOpen) {
+      setNoncesReady(false);
+      return;
+    }
+    let active = true;
+    const syncTokens = async () => {
+      const serverLinks = await fetchActiveLinks();
+      if (!active) return;
+
+      const nextNonces: Record<string, string> = { ...loadSavedNonces() };
+      const toRegister: Array<{ targetId: string; imei?: string; token: string }> = [];
+
+      const ensureTarget = (idKey: string, imei?: string) => {
+        const remoteToken = serverLinks[idKey]?.token;
+        if (remoteToken) {
+          nextNonces[idKey] = remoteToken;
+        } else {
+          const token = nextNonces[idKey] || Math.random().toString(36).substring(2, 7).padEnd(5, '0');
+          nextNonces[idKey] = token;
+          toRegister.push({ targetId: idKey, imei, token });
+        }
+      };
+
+      ensureTarget('all');
+      vehicles.forEach((v) => ensureTarget(v.id, v.trackerNumber || ''));
+
+      if (toRegister.length > 0) {
+        await registerActiveLinks(toRegister, { onlyIfMissing: true });
+      }
+      if (!active) return;
+
+      try {
+        localStorage.setItem(NONCES_STORAGE_KEY, JSON.stringify(nextNonces));
+      } catch {}
+      setNonces(nextNonces);
+      setNoncesReady(true);
+    };
+    syncTokens();
+    return () => {
+      active = false;
+    };
+  }, [isOpen, vehicles]);
 
   // Sync selectedTargetId if vehicles list loads or changes
   useEffect(() => {
@@ -100,9 +147,9 @@ export default function CarBrowserLinkModal({
     return map;
   }, [buildRawTargetUrl, vehicles, nonces]);
 
-  // Shorten all target URLs in parallel when modal opens
+  // Shorten all target URLs in parallel once tokens are synced
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !noncesReady) return;
     let active = true;
     setIsShortening(true);
 
@@ -128,10 +175,10 @@ export default function CarBrowserLinkModal({
     return () => {
       active = false;
     };
-  }, [isOpen, rawTargets]);
+  }, [isOpen, noncesReady, rawTargets]);
 
   const handleRecreateLink = async (idKey: string, label?: string) => {
-    const freshNonce = Math.random().toString(36).substring(2, 7);
+    const freshNonce = Math.random().toString(36).substring(2, 7).padEnd(5, '0');
     const nextNonces = { ...nonces, [idKey]: freshNonce };
     setNonces(nextNonces);
     try {
@@ -139,6 +186,15 @@ export default function CarBrowserLinkModal({
     } catch (e) {}
 
     setRegeneratingId(idKey);
+    const targetVeh = idKey === 'all' ? null : vehicles.find((v) => v.id === idKey);
+    await registerActiveLinks([
+      {
+        targetId: idKey,
+        imei: targetVeh?.trackerNumber || '',
+        token: freshNonce
+      }
+    ]);
+
     const nextRaw = buildRawTargetUrl(idKey, nextNonces);
     try {
       const shortened = await shortenUrl(nextRaw, { forceRefresh: true });
@@ -146,8 +202,8 @@ export default function CarBrowserLinkModal({
       if (showToast) {
         showToast(
           label
-            ? `🔄 Novo link criado para "${label}"!`
-            : '🔄 Novo link criado com sucesso!'
+            ? `🔒 Novo link criado para "${label}"! O link antigo foi desativado.`
+            : '🔒 Novo link criado! O link antigo foi desativado.'
         );
       }
     } finally {
@@ -156,13 +212,23 @@ export default function CarBrowserLinkModal({
   };
 
   const handleRecreateAllLinks = async () => {
-    const baseNonce = Math.random().toString(36).substring(2, 6);
+    const baseNonce = Math.random().toString(36).substring(2, 6).padEnd(4, '0');
+    const allToken = `${baseNonce}a`;
     const nextNonces: Record<string, string> = {
       ...nonces,
-      all: `${baseNonce}a`
+      all: allToken
     };
+    const registrations: Array<{ targetId: string; imei?: string; token: string }> = [
+      { targetId: 'all', token: allToken }
+    ];
     vehicles.forEach((v, idx) => {
-      nextNonces[v.id] = `${baseNonce}${idx}`;
+      const tok = `${baseNonce}${idx}`;
+      nextNonces[v.id] = tok;
+      registrations.push({
+        targetId: v.id,
+        imei: v.trackerNumber || '',
+        token: tok
+      });
     });
     setNonces(nextNonces);
     try {
@@ -172,6 +238,7 @@ export default function CarBrowserLinkModal({
     setRegeneratingId('__all__');
     setIsShortening(true);
     try {
+      await registerActiveLinks(registrations);
       const ids = ['all', ...vehicles.map((v) => v.id)];
       const results = await Promise.all(
         ids.map(async (id) => {
@@ -185,7 +252,7 @@ export default function CarBrowserLinkModal({
         nextMap[id] = url;
       });
       setShortUrls(nextMap);
-      if (showToast) showToast('🔄 Todos os links foram recriados com sucesso!');
+      if (showToast) showToast('🔒 Todos os links foram recriados! Os links antigos foram desativados.');
     } finally {
       setRegeneratingId(null);
       setIsShortening(false);
@@ -200,9 +267,10 @@ export default function CarBrowserLinkModal({
     rawTargets[selectedTargetId] ||
     rawTargets.all;
 
-  const directHtmlHref = selectedVehicle?.trackerNumber
-    ? `/multimidia?imei=${encodeURIComponent(String(selectedVehicle.trackerNumber))}`
-    : '/multimidia';
+  const selectedNonce = nonces[selectedTargetId] || '';
+  const directHtmlHref = selectedVehicle
+    ? `/multimidia?v=${encodeURIComponent(String(selectedVehicle.id))}&imei=${encodeURIComponent(String(selectedVehicle.trackerNumber || ''))}${selectedNonce ? `&r=${encodeURIComponent(selectedNonce)}` : ''}`
+    : `/multimidia${selectedNonce ? `?r=${encodeURIComponent(selectedNonce)}` : ''}`;
 
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&format=svg&data=${encodeURIComponent(
     activeUrl

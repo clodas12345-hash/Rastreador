@@ -10,6 +10,7 @@ import { db, cleanFirestoreData } from '../lib/firebase';
 import { PUBLIC_APP_URL } from '../config';
 import { getVehicleDynamicColor } from '../utils/vehicleColors';
 import { shortenUrl } from '../utils/urlShortener';
+import { registerActiveLinks } from '../utils/linkManager';
 
 interface ShareTrackingModalProps {
   vehicle: Vehicle;
@@ -55,23 +56,40 @@ export default function ShareTrackingModal({
 
     const carParams = new URLSearchParams({
       v: String(vehicle.id || ''),
-      imei: String(vehicle.trackerNumber || '')
+      imei: String(vehicle.trackerNumber || ''),
+      r: token
     });
     if (vehicle.photoUrl) {
       carParams.set('photo', vehicle.photoUrl);
-    }
-    if (regenCounter > 0) {
-      carParams.set('r', token);
     }
 
     return {
       rawTrackingUrl: `${cleanOrigin}/?${params.toString()}`,
       rawCarBrowserUrl: `${cleanOrigin}/?${carParams.toString()}`
     };
-  }, [token, vehicle.id, vehicle.trackerNumber, vehicle.name, vehicle.licensePlate, regenCounter]);
+  }, [token, vehicle.id, vehicle.trackerNumber, vehicle.photoUrl]);
 
   const [publicTrackingUrl, setPublicTrackingUrl] = useState<string>(rawTrackingUrl);
   const [carBrowserUrl, setCarBrowserUrl] = useState<string>(rawCarBrowserUrl);
+
+  // Register this token on server so any previously generated links for this car are deactivated
+  React.useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('car_link_nonces_v1') || '{}');
+      if (saved && typeof saved === 'object') {
+        saved[vehicle.id] = token;
+        localStorage.setItem('car_link_nonces_v1', JSON.stringify(saved));
+      }
+    } catch {}
+
+    registerActiveLinks([
+      {
+        targetId: String(vehicle.id || ''),
+        imei: String(vehicle.trackerNumber || ''),
+        token
+      }
+    ]);
+  }, [vehicle.id, vehicle.trackerNumber, token]);
 
   React.useEffect(() => {
     let active = true;
@@ -92,7 +110,7 @@ export default function ShareTrackingModal({
   const handleRecreateLink = () => {
     setIsRegenerating(true);
     setRegenCounter((c) => c + 1);
-    if (showToast) showToast('🔄 Recriando novo link...');
+    if (showToast) showToast('🔒 Novo link gerado! O link antigo deste carro foi desativado.');
   };
 
   const activeUrl = activeTab === 'car' ? carBrowserUrl : publicTrackingUrl;

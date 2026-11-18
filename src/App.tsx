@@ -37,6 +37,7 @@ import {safeUpdateDoc, safeAddDoc, safeDeleteDoc, safeSetDoc, safeGetDoc, safeOn
 import {db, handleFirestoreError, OperationType, cleanFirestoreData} from './lib/firebase';
 import { getRealAddress, getCachedAddress, getRealRoadSpeedLimit, getCachedRoadSpeed } from './lib/geocoding';
 import { getVehicleDynamicColor, getVehicleColorStyles } from './utils/vehicleColors';
+import { validateActiveLink } from './utils/linkManager';
 
 const FLESPI_TOKEN = 'DYX74VMw3KdUUbFwued9qa2ahQcAZcts9C7MVZ32gw2GEJSfgeCMk1Ww2oc1MofV';
 
@@ -1062,13 +1063,15 @@ export default function App() {
   const pushFleetProfilesToServer = async (list: Vehicle[]) => {
     try {
       const payload = list
-        .filter((v) => v && (v.photoUrl || v.licensePlate || v.name))
+        .filter((v) => v && (v.photoUrl || v.licensePlate || v.name || v.settings?.isBlocked))
         .map((v) => ({
           id: v.id,
           trackerNumber: v.trackerNumber || '',
           name: v.name,
           licensePlate: v.licensePlate || '',
           photoUrl: v.photoUrl || '',
+          isBlocked: Boolean(v.settings?.isBlocked),
+          settings: v.settings || {},
           iconType: v.iconType || 'car',
           color: v.color || '#16a34a'
         }));
@@ -1092,12 +1095,12 @@ export default function App() {
     } catch {}
   };
 
-  // On boot: push local photos/plates if present, and pull any synced photos/plates from server
+  // On boot: push local profiles if present, and pull any synced profiles from server
   useEffect(() => {
     let active = true;
     const syncOnBoot = async () => {
       try {
-        const hasLocalMedia = vehicles.some((v) => Boolean(v.photoUrl));
+        const hasLocalMedia = vehicles.some((v) => Boolean(v.photoUrl) || Boolean(v.settings?.isBlocked));
         if (hasLocalMedia) {
           await pushFleetProfilesToServer(vehicles);
         }
@@ -1131,12 +1134,26 @@ export default function App() {
               localV.licensePlate && localV.licensePlate !== 'BRA-2E19' && localV.licensePlate !== 'XYZ-8G54'
                 ? localV.licensePlate
                 : match.licensePlate || localV.licensePlate;
-            if (nextPhoto !== (localV.photoUrl || '') || nextPlate !== localV.licensePlate) {
+            const remoteBlocked = match.isBlocked !== undefined ? Boolean(match.isBlocked) : Boolean(match.settings?.isBlocked);
+            const localBlocked = Boolean(localV.settings?.isBlocked);
+            const nextBlocked = remoteBlocked || localBlocked;
+
+            const nextSettings = {
+              ...(localV.settings || {}),
+              isBlocked: nextBlocked
+            };
+
+            if (
+              nextPhoto !== (localV.photoUrl || '') ||
+              nextPlate !== localV.licensePlate ||
+              nextBlocked !== localBlocked
+            ) {
               changed = true;
               return {
                 ...localV,
                 photoUrl: nextPhoto || undefined,
-                licensePlate: nextPlate
+                licensePlate: nextPlate,
+                settings: nextSettings
               };
             }
             return localV;
@@ -1406,6 +1423,63 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
   const isPublicSingleView = Boolean(sharedTrackingParams);
   const isPublicView = isPublicSingleView || isCarBrowserMode;
+
+  const [linkAccessState, setLinkAccessState] = useState<'allowed' | 'checking' | 'revoked'>(() =>
+    isPublicView ? 'checking' : 'allowed'
+  );
+  const linkAccessRef = useRef(linkAccessState);
+  linkAccessRef.current = linkAccessState;
+
+  useEffect(() => {
+    if (!isPublicView) {
+      setLinkAccessState('allowed');
+      return;
+    }
+
+    let active = true;
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const targetId = isCarBrowserMode
+      ? 'all'
+      : (sharedTrackingParams?.vehicleId || params.get('v') || params.get('vehicleId') || '');
+    const imei = isCarBrowserMode
+      ? ''
+      : (sharedTrackingParams?.imei || params.get('imei') || '');
+    const token =
+      params.get('r') ||
+      sharedTrackingParams?.token ||
+      params.get('t') ||
+      params.get('trackToken') ||
+      '';
+
+    const verifyAccess = async () => {
+      const res = await validateActiveLink({ targetId, imei, token });
+      if (!active) return;
+      if (!res.valid) {
+        setLinkAccessState('revoked');
+        linkAccessRef.current = 'revoked';
+      } else if (linkAccessRef.current !== 'revoked') {
+        setLinkAccessState('allowed');
+        linkAccessRef.current = 'allowed';
+      }
+    };
+
+    verifyAccess();
+    const checkInterval = setInterval(verifyAccess, 8000);
+    const onFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        verifyAccess();
+      }
+    };
+    window.addEventListener('focus', onFocusOrVisible);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+
+    return () => {
+      active = false;
+      clearInterval(checkInterval);
+      window.removeEventListener('focus', onFocusOrVisible);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
+    };
+  }, [isPublicView, isCarBrowserMode, sharedTrackingParams?.vehicleId, sharedTrackingParams?.imei, sharedTrackingParams?.token]);
 
   // Filter vehicles strictly to the single shared vehicle when opened via a tracking link
   const vehicles: Vehicle[] = (() => {
@@ -2590,9 +2664,14 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     });
   }, [vehicles, geofences]);
 
-  // Real-time Flespi telemetry polling (runs every 3 seconds)
+  // Real-time Flespi telemetry polling (runs every 3 seconds when link access is allowed)
   useEffect(() => {
+    if (isPublicView && linkAccessState !== 'allowed') {
+      return;
+    }
+
     const fetchRealTimeFlespi = async () => {
+      if (isPublicView && linkAccessRef.current !== 'allowed') return;
       try {
         const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ignition.status,io.ignition,din.1,acc,input.1,input.2,io.1,io.2,ignition,engine.status,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code`, {
           headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
@@ -2833,16 +2912,30 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             if (v.status && v.status !== newStatus) {
               if ((v.status === 'IgnitionOff' || v.status === 'Offline') && (newStatus === 'IgnitionOn' || newStatus === 'Moving')) {
                 if (isAlarmAllowed(v, 'acc', v.settings?.accNotify !== false)) {
-                  addNotification({
-                    title: '🔑 Ignição Ligada',
-                    message: `O veículo ${v.name} deu partida / ligou a ignição.`,
-                    type: 'command',
-                    severity: 'info',
-                    vehicleId: v.id,
-                    vehicleName: v.name,
-                    lat: realLat,
-                    lng: realLng
-                  });
+                  const isBlocked = Boolean(v.settings?.isBlocked);
+                  if (isBlocked) {
+                    addNotification({
+                      title: '🚨 TENTATIVA DE PARTIDA COM CARRO BLOQUEADO!',
+                      message: `ALERTA DE SEGURANÇA: O veículo ${v.name} tentou dar partida / ligar a ignição, mas o motor encontra-se BLOQUEADO por segurança!`,
+                      type: 'system',
+                      severity: 'critical',
+                      vehicleId: v.id,
+                      vehicleName: v.name,
+                      lat: realLat,
+                      lng: realLng
+                    });
+                  } else {
+                    addNotification({
+                      title: '🔑 Ignição Ligada',
+                      message: `O veículo ${v.name} deu partida / ligou a ignição.`,
+                      type: 'command',
+                      severity: 'info',
+                      vehicleId: v.id,
+                      vehicleName: v.name,
+                      lat: realLat,
+                      lng: realLng
+                    });
+                  }
                 }
               } else if ((v.status === 'IgnitionOn' || v.status === 'Moving') && newStatus === 'IgnitionOff') {
                 if (isAlarmAllowed(v, 'acc', v.settings?.accNotify !== false)) {
@@ -3074,10 +3167,11 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         appStateHandle.then((h: any) => h.remove?.()).catch(() => {});
       }
     };
-  }, [setVehicles]);
+  }, [setVehicles, isPublicView, linkAccessState]);
 
   // --- MONITOR DE REINICIALIZAÇÃO PROGRAMADA POR HORÁRIO & WATCHDOG GPRS ---
   useEffect(() => {
+    if (isPublicView) return;
     const watchdogInterval = setInterval(() => {
       const now = new Date();
       const currentHours = String(now.getHours()).padStart(2, '0');
@@ -3316,6 +3410,41 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     setShowDeleteConfirm(false);
   };
   
+  if (isPublicView && linkAccessState === 'checking') {
+    return (
+      <div className="fixed inset-0 w-full h-full bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center mb-4 animate-pulse">
+          <Radio className="w-7 h-7 text-blue-400" />
+        </div>
+        <h2 className="text-lg font-extrabold tracking-tight">Verificando acesso do link...</h2>
+        <p className="text-xs text-slate-400 mt-1.5 max-w-xs">
+          Confirmando autorização antes de conectar aos veículos.
+        </p>
+      </div>
+    );
+  }
+
+  if (isPublicView && linkAccessState === 'revoked') {
+    return (
+      <div className="fixed inset-0 w-full h-full bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-sm w-full bg-slate-900/90 border border-red-500/40 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-3xl">
+            🔒
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-white tracking-tight">Link Desativado</h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Este link antigo foi desativado porque um novo link de visualização foi gerado.
+            </p>
+            <p className="text-xs text-red-300 font-semibold bg-red-950/60 border border-red-800/50 rounded-xl px-3 py-2">
+              A conexão com os veículos não é mais permitida através deste link. Solicite o novo link ao administrador.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
       <div className="fixed inset-0 w-full h-full font-sans flex overflow-hidden bg-gray-50 max-w-[100vw]">
 

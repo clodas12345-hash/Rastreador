@@ -130,6 +130,8 @@ async function startServer() {
         name: String(v.name || prev.name || ''),
         licensePlate: String(v.licensePlate || prev.licensePlate || ''),
         photoUrl: typeof v.photoUrl === 'string' && v.photoUrl.length > 0 ? v.photoUrl : (prev.photoUrl || ''),
+        isBlocked: v.isBlocked !== undefined ? Boolean(v.isBlocked) : (prev.isBlocked || false),
+        settings: v.settings || prev.settings || {},
         iconType: v.iconType || prev.iconType || 'car',
         color: v.color || prev.color || '#16a34a',
         updatedAt: Date.now()
@@ -139,6 +141,87 @@ async function startServer() {
       fs.writeFileSync(FLEET_SYNC_FILE, JSON.stringify(syncedFleetProfiles), 'utf8');
     } catch {}
     return res.json({ ok: true, count: Object.keys(syncedFleetProfiles).length });
+  });
+
+  // Active share/car-browser link registry: generating a new link invalidates previous links for that target
+  const ACTIVE_LINKS_FILE = path.join('/tmp', 'gkd-active-links.json');
+  let activeLinkTokens: Record<string, { token: string; imei?: string; updatedAt: number }> = {};
+  try {
+    if (fs.existsSync(ACTIVE_LINKS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(ACTIVE_LINKS_FILE, 'utf8'));
+      if (parsed && typeof parsed === 'object') activeLinkTokens = parsed;
+    }
+  } catch {}
+
+  app.options(["/api/links/active", "/api/links/register", "/api/links/validate"], (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(204);
+  });
+
+  app.get("/api/links/active", (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ links: activeLinkTokens });
+  });
+
+  app.post("/api/links/register", (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    const onlyIfMissing = Boolean(req.body?.onlyIfMissing);
+    const items = Array.isArray(req.body?.links)
+      ? req.body.links
+      : (req.body?.targetId && req.body?.token ? [req.body] : []);
+
+    let updated = 0;
+    items.forEach((item: any) => {
+      const targetId = String(item?.targetId || '').trim();
+      const token = String(item?.token || '').trim();
+      const imei = item?.imei ? String(item.imei).trim() : '';
+      if (!targetId || !token) return;
+      if (onlyIfMissing && activeLinkTokens[targetId]?.token) return;
+
+      activeLinkTokens[targetId] = {
+        token,
+        ...(imei ? { imei } : {}),
+        updatedAt: Date.now()
+      };
+      updated++;
+    });
+
+    if (updated > 0) {
+      try {
+        fs.writeFileSync(ACTIVE_LINKS_FILE, JSON.stringify(activeLinkTokens), 'utf8');
+      } catch {}
+    }
+
+    return res.json({ ok: true, updated, links: activeLinkTokens });
+  });
+
+  app.get("/api/links/validate", (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    const targetId = String(req.query.targetId || '').trim();
+    const imei = String(req.query.imei || '').trim();
+    const token = String(req.query.token || '').trim();
+
+    let record = targetId ? activeLinkTokens[targetId] : undefined;
+    if (!record && imei) {
+      record = Object.values(activeLinkTokens).find(
+        (entry) => entry && entry.imei && String(entry.imei).trim() === imei
+      );
+    }
+
+    if (!record || !record.token) {
+      return res.json({ valid: true, reason: 'unregistered' });
+    }
+
+    if (token && token === record.token) {
+      return res.json({ valid: true, reason: 'ok' });
+    }
+
+    return res.json({ valid: false, reason: 'revoked' });
   });
 
   // API endpoint to download standalone SPA zip

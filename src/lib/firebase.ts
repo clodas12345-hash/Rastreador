@@ -5,7 +5,7 @@ import { Capacitor } from "@capacitor/core";
 import { setQuotaExceeded } from "../utils/firestoreQuota";
 import firebaseAppletConfig from "../../firebase-applet-config.json";
 
-export const isFirestoreEnabled = true;
+export const isFirestoreEnabled = false;
 
 let app: FirebaseApp | null = null;
 
