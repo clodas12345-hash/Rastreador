@@ -1697,6 +1697,15 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     const phoneVal = vehicle.phoneNumber || vehicle.trackerNumber || '';
 
     if (actionId === 'block_now') {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+      try {
+        const alertMap = JSON.parse(localStorage.getItem('gkd_blocked_start_alerts_v1') || '{}');
+        alertMap[vehicle.id] = { eventTs: Math.floor(Date.now() / 1000), wallMs: Date.now() };
+        localStorage.setItem('gkd_blocked_start_alerts_v1', JSON.stringify(alertMap));
+        lastBlockedAlertRef.current[vehicle.id] = alertMap[vehicle.id];
+      } catch {}
       const updated = {
         ...vehicle,
         status: 'Stopped' as const,
@@ -1769,6 +1778,12 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         });
         showToast(`🛡️ Bloqueio Seguro agendado para (${identifier})!`);
       } else {
+        try {
+          const alertMap = JSON.parse(localStorage.getItem('gkd_blocked_start_alerts_v1') || '{}');
+          alertMap[vehicle.id] = { eventTs: Math.floor(Date.now() / 1000), wallMs: Date.now() };
+          localStorage.setItem('gkd_blocked_start_alerts_v1', JSON.stringify(alertMap));
+          lastBlockedAlertRef.current[vehicle.id] = alertMap[vehicle.id];
+        } catch {}
         const updated = {
           ...vehicle,
           status: 'Stopped' as const,
@@ -2664,16 +2679,62 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     });
   }, [vehicles, geofences]);
 
+  const prevRawIgnitionRef = useRef<Record<string, boolean>>({});
+  const lastBlockedAlertRef = useRef<Record<string, { eventTs: number; wallMs: number }>>((() => {
+    try {
+      const raw = localStorage.getItem('gkd_blocked_start_alerts_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return {};
+  })());
+  const lastBlockedMsgScanWallMsRef = useRef<number>(0);
+
   // Real-time Flespi telemetry polling (runs every 3 seconds when link access is allowed)
   useEffect(() => {
     if (isPublicView && linkAccessState !== 'allowed') {
       return;
     }
 
+    const triggerBlockedStartNotification = (
+      v: Vehicle,
+      lat: number,
+      lng: number,
+      eventTsSec: number
+    ) => {
+      if (isPublicView) return;
+      const nowMs = Date.now();
+      const prev = lastBlockedAlertRef.current[v.id] || { eventTs: 0, wallMs: 0 };
+      if (eventTsSec > 0 && eventTsSec <= prev.eventTs) return;
+      if (nowMs - prev.wallMs < 5000) return;
+
+      const updatedEntry = {
+        eventTs: Math.max(prev.eventTs, eventTsSec || Math.floor(nowMs / 1000)),
+        wallMs: nowMs
+      };
+      lastBlockedAlertRef.current[v.id] = updatedEntry;
+      try {
+        localStorage.setItem('gkd_blocked_start_alerts_v1', JSON.stringify(lastBlockedAlertRef.current));
+      } catch {}
+
+      addNotification({
+        title: '🚨 TENTATIVA DE PARTIDA COM CARRO BLOQUEADO!',
+        message: `ALERTA DE SEGURANÇA: O motorista tentou dar partida / ligar a ignição de ${v.name}, mas o veículo encontra-se BLOQUEADO!`,
+        type: 'system',
+        severity: 'critical',
+        vehicleId: v.id,
+        vehicleName: v.name,
+        lat: lat || v.lat,
+        lng: lng || v.lng
+      });
+    };
+
     const fetchRealTimeFlespi = async () => {
       if (isPublicView && linkAccessRef.current !== 'allowed') return;
       try {
-        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ignition.status,io.ignition,din.1,acc,input.1,input.2,io.1,io.2,ignition,engine.status,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code`, {
+        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ignition.status,vehicle.ignition.status,can.engine.ignition.status,engine.ignition.on,io.ignition,input.ignition,io.acc,acc.status,din.1,din.2,acc,input.1,input.2,io.1,io.2,ignition,engine.status,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code,alarm.acc.status,alarm.type`, {
           headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
         });
         const data = await response.json();
@@ -2710,7 +2771,27 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             const nowSec = Date.now() / 1000;
             const isStaleSpeed = speedTs > 0 && (nowSec - speedTs > 180);
 
-            const explicitIgnition = t['engine.ignition.status']?.value ?? t['ignition.status']?.value ?? t['io.ignition']?.value ?? t['din.1']?.value ?? t['acc']?.value ?? t['input.1']?.value ?? t['input.2']?.value ?? t['io.1']?.value ?? t['io.2']?.value ?? t['ignition']?.value ?? t['engine.status']?.value;
+            const ignitionParam =
+              t['engine.ignition.status'] ??
+              t['ignition.status'] ??
+              t['vehicle.ignition.status'] ??
+              t['can.engine.ignition.status'] ??
+              t['engine.ignition.on'] ??
+              t['io.ignition'] ??
+              t['input.ignition'] ??
+              t['io.acc'] ??
+              t['acc.status'] ??
+              t['acc'] ??
+              t['din.1'] ??
+              t['din.2'] ??
+              t['input.1'] ??
+              t['input.2'] ??
+              t['io.1'] ??
+              t['io.2'] ??
+              t['ignition'] ??
+              t['engine.status'];
+            const explicitIgnition = ignitionParam?.value;
+            const ignitionTs = Number(ignitionParam?.ts || 0);
 
             // Precision & Anti-Drift:
             // 1. If ignition is explicitly false (motor desligado), speed is strictly 0.
@@ -2721,12 +2802,18 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               realSpeed = 0;
             }
 
-            const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (realSpeed >= 4 || v.status === 'IgnitionOn' || v.status === 'Moving');
+            const ignition = explicitIgnition !== undefined ? Boolean(explicitIgnition) : (realSpeed >= 4 || (!v.settings?.isBlocked && (v.status === 'IgnitionOn' || v.status === 'Moving')));
             
             // --- BLOQUEIO SEGURO (SAFE BLOCK) LOGIC ---
             // Se houver um bloqueio pendente e a ignição acabou de ser desligada
             if (v.settings?.pendingBlock && !ignition) {
               console.log(`[Safe Block] Ignition turned OFF for ${v.name}. Executing pending block command...`);
+              try {
+                const baseline = { eventTs: Math.floor(Date.now() / 1000), wallMs: Date.now() };
+                lastBlockedAlertRef.current[v.id] = baseline;
+                localStorage.setItem('gkd_blocked_start_alerts_v1', JSON.stringify(lastBlockedAlertRef.current));
+              } catch {}
+              prevRawIgnitionRef.current[v.id] = false;
               
               // Atualiza localmente e sincroniza com Firestore imediatamente antes de enviar
               const updatedSettings = {
@@ -2908,34 +2995,55 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               }
             }
 
-            // Alertas em tempo real de Ignição
-            if (v.status && v.status !== newStatus) {
+            // --- ALERTA CRÍTICO: TENTATIVA DE PARTIDA COM CARRO BLOQUEADO ---
+            // Independente de status visual ('Stopped') e independente de filtro accNotify
+            const isBlocked = Boolean(v.settings?.isBlocked);
+            const hadPrevRawIgnition = Object.prototype.hasOwnProperty.call(prevRawIgnitionRef.current, v.id);
+            const prevRawIgnition = prevRawIgnitionRef.current[v.id];
+            prevRawIgnitionRef.current[v.id] = ignition;
+
+            if (isBlocked && !isPublicView) {
+              const lastAlertInfo = lastBlockedAlertRef.current[v.id] || { eventTs: 0, wallMs: 0 };
+              const accAlarmVal = Boolean(t['alarm.acc.status']?.value);
+              const accAlarmTs = Number(t['alarm.acc.status']?.ts || 0);
+              const alarmTypeStr = String(t['alarm.type']?.value || '').toLowerCase();
+              const combinedAlarmStr = `${alarmStr} ${alarmTypeStr}`;
+
+              const hasAccOrStartAlarm =
+                (accAlarmVal && accAlarmTs > 0 && (nowSec - accAlarmTs) < 180 && accAlarmTs > lastAlertInfo.eventTs) ||
+                (alarmTs > 0 && (nowSec - alarmTs) < 180 && alarmTs > lastAlertInfo.eventTs && /acc|ignition|illegal|start|engine/.test(combinedAlarmStr));
+
+              const turnedKeyOn = hadPrevRawIgnition
+                ? (!prevRawIgnition && ignition)
+                : (ignition && ignitionTs > 0 && (nowSec - ignitionTs) < 180 && ignitionTs > lastAlertInfo.eventTs);
+
+              const freshIgnitionEvent =
+                ignition &&
+                ignitionTs > 0 &&
+                (nowSec - ignitionTs) < 120 &&
+                ignitionTs > lastAlertInfo.eventTs &&
+                !prevRawIgnition;
+
+              if (turnedKeyOn || freshIgnitionEvent || hasAccOrStartAlarm) {
+                const eventTs = Math.max(ignitionTs || 0, accAlarmTs || 0, alarmTs || 0, Math.floor(nowSec));
+                triggerBlockedStartNotification(v, realLat, realLng, eventTs);
+              }
+            }
+
+            // Alertas em tempo real de Ignição (veículos não bloqueados)
+            if (!isBlocked && v.status && v.status !== newStatus) {
               if ((v.status === 'IgnitionOff' || v.status === 'Offline') && (newStatus === 'IgnitionOn' || newStatus === 'Moving')) {
                 if (isAlarmAllowed(v, 'acc', v.settings?.accNotify !== false)) {
-                  const isBlocked = Boolean(v.settings?.isBlocked);
-                  if (isBlocked) {
-                    addNotification({
-                      title: '🚨 TENTATIVA DE PARTIDA COM CARRO BLOQUEADO!',
-                      message: `ALERTA DE SEGURANÇA: O veículo ${v.name} tentou dar partida / ligar a ignição, mas o motor encontra-se BLOQUEADO por segurança!`,
-                      type: 'system',
-                      severity: 'critical',
-                      vehicleId: v.id,
-                      vehicleName: v.name,
-                      lat: realLat,
-                      lng: realLng
-                    });
-                  } else {
-                    addNotification({
-                      title: '🔑 Ignição Ligada',
-                      message: `O veículo ${v.name} deu partida / ligou a ignição.`,
-                      type: 'command',
-                      severity: 'info',
-                      vehicleId: v.id,
-                      vehicleName: v.name,
-                      lat: realLat,
-                      lng: realLng
-                    });
-                  }
+                  addNotification({
+                    title: '🔑 Ignição Ligada',
+                    message: `O veículo ${v.name} deu partida / ligou a ignição.`,
+                    type: 'command',
+                    severity: 'info',
+                    vehicleId: v.id,
+                    vehicleName: v.name,
+                    lat: realLat,
+                    lng: realLng
+                  });
                 }
               } else if ((v.status === 'IgnitionOn' || v.status === 'Moving') && newStatus === 'IgnitionOff') {
                 if (isAlarmAllowed(v, 'acc', v.settings?.accNotify !== false)) {
@@ -3093,6 +3201,62 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               } catch (e) {}
               return merged;
             });
+          }
+
+          // Extra safety scan for blocked cars: inspect recent Flespi messages so even a brief 1-second crank between polls triggers notification
+          const blockedList = currentVehicles.filter(v => Boolean(v.settings?.isBlocked) && Boolean(v.trackerNumber));
+          if (!isPublicView && blockedList.length > 0 && (Date.now() - lastBlockedMsgScanWallMsRef.current >= 4500)) {
+            lastBlockedMsgScanWallMsRef.current = Date.now();
+            try {
+              const msgRes = await fetch(`https://flespi.io/gw/devices/all/messages?limit=25&reverse=true`, {
+                headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+              });
+              const msgData = await msgRes.json();
+              if (msgData && Array.isArray(msgData.result)) {
+                const nowSecMsg = Date.now() / 1000;
+                blockedList.forEach(bv => {
+                  const trackerClean = String(bv.trackerNumber || '').trim();
+                  const lastInfo = lastBlockedAlertRef.current[bv.id] || { eventTs: 0, wallMs: 0 };
+                  const matchingAttempt = msgData.result.find((m: any) => {
+                    const mIdent = String(m.ident || '').trim();
+                    const mDevId = String(m['device.id'] || '').trim();
+                    if (mIdent !== trackerClean && mDevId !== trackerClean) return false;
+                    const mTs = Number(m.timestamp || m['server.timestamp'] || 0);
+                    if (!mTs || (nowSecMsg - mTs) > 120 || mTs <= lastInfo.eventTs) return false;
+                    const msgIgn = Boolean(
+                      m['engine.ignition.status'] ||
+                      m['ignition.status'] ||
+                      m['vehicle.ignition.status'] ||
+                      m['can.engine.ignition.status'] ||
+                      m['engine.ignition.on'] ||
+                      m['io.ignition'] ||
+                      m['input.ignition'] ||
+                      m['io.acc'] ||
+                      m['acc.status'] ||
+                      m['acc'] ||
+                      m['din.1'] ||
+                      m['din.2'] ||
+                      m['input.1'] ||
+                      m['input.2'] ||
+                      m['io.1'] ||
+                      m['io.2'] ||
+                      m['ignition'] ||
+                      m['alarm.acc.status']
+                    );
+                    const mAlarm = String(m['alarm.code'] || m['event.code'] || m['alarm.type'] || '').toLowerCase();
+                    const hasAlarmAttempt = /acc|ignition|illegal|start|engine/.test(mAlarm);
+                    return msgIgn || hasAlarmAttempt || Number(m['position.speed'] || 0) >= 4;
+                  });
+
+                  if (matchingAttempt) {
+                    const mTs = Number(matchingAttempt.timestamp || matchingAttempt['server.timestamp'] || Math.floor(nowSecMsg));
+                    const mLat = Number(matchingAttempt['position.latitude']) || bv.lat;
+                    const mLng = Number(matchingAttempt['position.longitude']) || bv.lng;
+                    triggerBlockedStartNotification(bv, mLat, mLng, mTs);
+                  }
+                });
+              }
+            } catch {}
           }
         }
       } catch (err) {
