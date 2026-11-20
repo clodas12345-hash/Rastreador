@@ -5,9 +5,7 @@ import {
   Plus, Trash2, Edit3, ArrowLeft, Star, Zap, Gauge, Search,
   CheckCircle2, Car, Sparkles, Sliders, BatteryCharging, X
 } from 'lucide-react';
-import { doc, collection } from 'firebase/firestore';
-import { safeSetDoc, safeDeleteDoc, safeOnSnapshot } from '../utils/firestoreWrapper';
-import { db, cleanFirestoreData, googleProvider, signInWithPopup, auth } from '../lib/firebase';
+import { googleProvider, signInWithPopup, auth } from '../lib/firebase';
 import { fetchGoogleContacts, GoogleContact } from '../utils/googleContacts';
 
 interface MotoristasModuleProps {
@@ -17,13 +15,36 @@ interface MotoristasModuleProps {
   showToast?: (msg: string) => void;
 }
 
+const DRIVERS_STORAGE_KEY = 'gkd_drivers_cache_v1';
+
 export default function MotoristasModule({
   vehicles,
   onUpdateVehicle,
   onBackToMap,
   showToast
 }: MotoristasModuleProps) {
-  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>(() => {
+    try {
+      const raw = localStorage.getItem(DRIVERS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          // Filter out any mock/placeholder drivers
+          return parsed.filter((d: any) => {
+            const nameLower = (d.name || '').toLowerCase();
+            const isMock = d.id === 'driver-1' || 
+              d.id === 'driver-2' || 
+              nameLower.includes('carlos eduardo') || 
+              nameLower.includes('roberto alencar') ||
+              nameLower.includes('william');
+            return !isMock;
+          });
+        }
+      }
+    } catch {}
+    return [];
+  });
+
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
@@ -53,42 +74,11 @@ export default function MotoristasModule({
     photoUrl: ''
   });
 
-  // Carregar motoristas do Firestore e expurgar dados fictícios herdados
   useEffect(() => {
-    const unsubscribe = safeOnSnapshot(collection(db, 'drivers'), (snapshot) => {
-      const list: Driver[] = snapshot.docs.map((docSnap: any) => ({
-        id: docSnap.id,
-        ...docSnap.data()
-      } as Driver));
-
-      // Expurgar motoristas mock/fictícios ou incompletos ("William", "Carlos Eduardo", etc.)
-      const realList: Driver[] = [];
-      list.forEach(d => {
-        const nameLower = (d.name || '').toLowerCase();
-        const isMock = d.id === 'driver-1' || 
-          d.id === 'driver-2' || 
-          nameLower.includes('carlos eduardo') || 
-          nameLower.includes('roberto alencar') ||
-          nameLower.includes('william') ||
-          (nameLower === 'william' && (!d.cpf || d.cpf.includes('Não informado'))) ||
-          (!d.cpf && !d.cnhNumber && (!d.phoneNumber || d.phoneNumber.trim() === '+55 11' || d.phoneNumber.trim() === ''));
-
-        if (isMock) {
-          // Deletar permanentemente do Firestore para garantir dados 100% reais
-          safeDeleteDoc(doc(db, 'drivers', d.id)).catch(() => {});
-        } else {
-          realList.push(d);
-        }
-      });
-
-      setDrivers(realList);
-    }, (error) => {
-      console.warn('Drivers fetch error:', error);
-      setDrivers([]);
-    });
-
-    return () => unsubscribe();
-  }, []);
+    try {
+      localStorage.setItem(DRIVERS_STORAGE_KEY, JSON.stringify(drivers));
+    } catch {}
+  }, [drivers]);
 
   const handleOpenAddModal = (driverToEdit?: Driver) => {
     if (driverToEdit) {
@@ -119,7 +109,7 @@ export default function MotoristasModule({
     setShowAddModal(true);
   };
 
-  const handleSaveDriver = async () => {
+  const handleSaveDriver = () => {
     if (!formData.name.trim()) {
       if (showToast) showToast('⚠️ Digite o nome completo do motorista.');
       return;
@@ -153,14 +143,17 @@ export default function MotoristasModule({
       totalKmDriven: assignedVeh ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0) : 0
     };
 
-    try {
-      await safeSetDoc(doc(db, 'drivers', newDriver.id), cleanFirestoreData(newDriver));
-      if (showToast) showToast(`✅ Motorista "${newDriver.name}" salvo com sucesso!`);
-      setShowAddModal(false);
-    } catch (e) {
-      console.error('Error saving driver:', e);
-      if (showToast) showToast('❌ Erro ao salvar dados do motorista.');
-    }
+    setDrivers(prev => {
+      const exists = prev.some(d => d.id === driverId);
+      const next = exists ? prev.map(d => d.id === driverId ? newDriver : d) : [newDriver, ...prev];
+      try {
+        localStorage.setItem(DRIVERS_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    if (showToast) showToast(`✅ Motorista "${newDriver.name}" salvo com sucesso!`);
+    setShowAddModal(false);
   };
 
   const handleGoogleContactsImport = async () => {
@@ -201,14 +194,16 @@ export default function MotoristasModule({
     if (showToast) showToast(`✅ Dados de "${c.name}" importados!`);
   };
 
-  const handleDeleteDriver = async (driverId: string, name: string) => {
+  const handleDeleteDriver = (driverId: string, name: string) => {
     if (confirm(`Tem certeza que deseja excluir o cadastro do motorista ${name}?`)) {
-      try {
-        await safeDeleteDoc(doc(db, 'drivers', driverId));
-        if (showToast) showToast('🗑️ Cadastro do motorista removido.');
-      } catch (e) {
-        console.error('Error deleting driver:', e);
-      }
+      setDrivers(prev => {
+        const next = prev.filter(d => d.id !== driverId);
+        try {
+          localStorage.setItem(DRIVERS_STORAGE_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      if (showToast) showToast('🗑️ Cadastro do motorista removido.');
     }
   };
 
@@ -225,7 +220,6 @@ export default function MotoristasModule({
     return { label: '🔴 Atenção', color: 'bg-red-100 text-red-800 border-red-300' };
   };
 
-  // Média Eco-Driving estritamente baseada na telemetria real dos veículos vinculados aos motoristas cadastrados
   const averageScore = drivers.length > 0 
     ? Math.round(
         drivers.reduce((acc, d) => {
@@ -334,7 +328,6 @@ export default function MotoristasModule({
           {filteredDrivers.map(driver => {
             const assignedVeh = vehicles.find(v => v.id === driver.assignedVehicleId);
             
-            // Telemetria 100% real do veículo vinculado
             const harshBraking = assignedVeh?.harshBraking ?? 0;
             const sharpTurns = assignedVeh?.sharpTurns ?? 0;
             const isOverspeeding = (assignedVeh?.speed ?? 0) > (assignedVeh?.settings?.speedLimit ?? 60);
@@ -344,7 +337,6 @@ export default function MotoristasModule({
               ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0)
               : (driver.totalKmDriven || 0);
               
-            // Score calculado a partir das infrações reais de telemetria
             const infractionsPenalty = (harshBraking * 3) + (sharpTurns * 2) + (overspeed * 5);
             const computedScore = Math.max(0, Math.min(100, 100 - infractionsPenalty));
               
@@ -418,7 +410,6 @@ export default function MotoristasModule({
                       <span className="text-xs text-slate-300 font-bold">/ 100 pontos</span>
                     </div>
 
-                    {/* Barra de Score */}
                     <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
                       <div 
                         className={`h-full transition-all duration-500 ${
