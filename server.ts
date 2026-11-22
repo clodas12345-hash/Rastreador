@@ -131,6 +131,8 @@ async function startServer() {
         licensePlate: String(v.licensePlate || prev.licensePlate || ''),
         photoUrl: typeof v.photoUrl === 'string' && v.photoUrl.length > 0 ? v.photoUrl : (prev.photoUrl || ''),
         isBlocked: v.isBlocked !== undefined ? Boolean(v.isBlocked) : (prev.isBlocked || false),
+        totalMileage: typeof v.totalMileage === 'number' ? v.totalMileage : (prev.totalMileage ?? 0),
+        dailyMileage: typeof v.dailyMileage === 'number' ? v.dailyMileage : (prev.dailyMileage ?? 0),
         settings: v.settings || prev.settings || {},
         iconType: v.iconType || prev.iconType || 'car',
         color: v.color || prev.color || '#16a34a',

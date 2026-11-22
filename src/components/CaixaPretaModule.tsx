@@ -122,7 +122,7 @@ export default function CaixaPretaModule({
           )}
         </div>
 
-        {/* Estado 100% Real: Nenhum Sinistro Detectado */}
+        {/* Status do Sistema: Nenhum Sinistro Detectado */}
         {events.length === 0 ? (
           <div className="space-y-6">
             <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-emerald-800/40 relative overflow-hidden">

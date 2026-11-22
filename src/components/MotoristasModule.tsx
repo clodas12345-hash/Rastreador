@@ -63,6 +63,7 @@ export default function MotoristasModule({
     phoneNumber: string;
     assignedVehicleId: string;
     photoUrl: string;
+    startDate: string;
   }>({
     name: '',
     cpf: '',
@@ -71,7 +72,8 @@ export default function MotoristasModule({
     cnhDueDate: '',
     phoneNumber: '',
     assignedVehicleId: vehicles[0]?.id || '',
-    photoUrl: ''
+    photoUrl: '',
+    startDate: new Date().toISOString().split('T')[0]
   });
 
   useEffect(() => {
@@ -91,7 +93,8 @@ export default function MotoristasModule({
         cnhDueDate: driverToEdit.cnhDueDate,
         phoneNumber: driverToEdit.phoneNumber,
         assignedVehicleId: driverToEdit.assignedVehicleId || '',
-        photoUrl: driverToEdit.photoUrl || ''
+        photoUrl: driverToEdit.photoUrl || '',
+        startDate: driverToEdit.startDate || new Date().toISOString().split('T')[0]
       });
     } else {
       setEditingDriver(null);
@@ -101,9 +104,10 @@ export default function MotoristasModule({
         cnhNumber: '',
         cnhCategory: 'B',
         cnhDueDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-        phoneNumber: '+55 11 ',
+        phoneNumber: '',
         assignedVehicleId: vehicles[0]?.id || '',
-        photoUrl: ''
+        photoUrl: '',
+        startDate: new Date().toISOString().split('T')[0]
       });
     }
     setShowAddModal(true);
@@ -140,7 +144,8 @@ export default function MotoristasModule({
       overspeedCount: overspeed,
       idleTimeMinutes: editingDriver ? editingDriver.idleTimeMinutes : 0,
       totalTripsCount: editingDriver ? editingDriver.totalTripsCount : 0,
-      totalKmDriven: assignedVeh ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0) : 0
+      totalKmDriven: assignedVeh ? Math.round(assignedVeh.totalMileage || assignedVeh.dailyMileage || 0) : 0,
+      startDate: formData.startDate
     };
 
     setDrivers(prev => {
@@ -267,7 +272,7 @@ export default function MotoristasModule({
               className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all shadow-sm cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
-              Cadastrar Motorista Real
+              Cadastrar Motorista
             </button>
           </div>
         </div>
@@ -565,7 +570,7 @@ export default function MotoristasModule({
                     type="text"
                     value={formData.phoneNumber}
                     onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                    placeholder="Ex: +55 11 98765-4321"
+                    placeholder="Ex: (11) 98765-4321"
                     className="w-full bg-gray-50 border border-gray-200 font-mono text-xs rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -601,6 +606,16 @@ export default function MotoristasModule({
               </div>
 
               <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Data de Início:</label>
+                <input
+                  type="date"
+                  value={formData.startDate}
+                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 font-bold text-xs rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                />
+              </div>
+
+              <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">Veículo Vinculado:</label>
                 <select
                   value={formData.assignedVehicleId}
@@ -627,7 +642,7 @@ export default function MotoristasModule({
                           <Award className="w-4 h-4 text-emerald-600" /> Sensores do Veículo ({selectedVeh.name})
                         </span>
                         <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                          Telemetria 100% Real
+                          Telemetria Ativa
                         </span>
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-center text-xs">

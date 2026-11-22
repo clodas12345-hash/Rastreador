@@ -63,6 +63,74 @@ export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lo
   return R * c;
 }
 
+export function computeRealDistanceFromFlespiMessages(msgs: any[]): number {
+  if (!Array.isArray(msgs) || msgs.length < 2) return 0;
+  const valid = msgs
+    .filter(
+      (m) =>
+        typeof m?.['position.latitude'] === 'number' &&
+        typeof m?.['position.longitude'] === 'number' &&
+        m['position.latitude'] !== 0 &&
+        m['position.longitude'] !== 0 &&
+        m['position.valid'] !== false
+    )
+    .sort(
+      (a, b) =>
+        Number(a.timestamp || a['server.timestamp'] || 0) -
+        Number(b.timestamp || b['server.timestamp'] || 0)
+    );
+
+  let totalKm = 0;
+  for (let i = 1; i < valid.length; i++) {
+    const p = valid[i - 1];
+    const c = valid[i];
+    const d = calculateDistanceKm(
+      p['position.latitude'],
+      p['position.longitude'],
+      c['position.latitude'],
+      c['position.longitude']
+    );
+    const dt = Math.max(
+      1,
+      Number(c.timestamp || c['server.timestamp'] || 0) -
+        Number(p.timestamp || p['server.timestamp'] || 0)
+    );
+    const impliedSpeedKmh = (d / dt) * 3600;
+    if (d >= 0.008 && d <= 15 && impliedSpeedKmh <= 220) {
+      totalKm += d;
+    }
+  }
+  return Number(totalKm.toFixed(2));
+}
+
+function getLocalTodayKey(): string {
+  const nowD = new Date();
+  return `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
+}
+
+function sanitizeLegacyFakeMileage(list: Vehicle[]): Vehicle[] {
+  const todayKey = getLocalTodayKey();
+  return list.map((v) => {
+    if (!v || v.settings?.odometerCalibrated) return v;
+    const isOldOnixFake =
+      v.id === 'veh-onix-plus' &&
+      ((v.totalMileage >= 18450 && v.totalMileage < 19000) || v.dailyMileage === 43);
+    const isOldPeugeotFake =
+      v.id === 'veh-peugeot-208' &&
+      ((v.totalMileage >= 9320 && v.totalMileage < 9800) || v.dailyMileage === 14);
+    const isStaleDay = Boolean(v.settings?.lastMileageDate && v.settings.lastMileageDate !== todayKey);
+
+    if (isOldOnixFake || isOldPeugeotFake || isStaleDay) {
+      return {
+        ...v,
+        totalMileage: isOldOnixFake || isOldPeugeotFake ? 0 : (v.totalMileage || 0),
+        dailyMileage: isOldOnixFake || isOldPeugeotFake || isStaleDay ? 0 : (v.dailyMileage || 0)
+      };
+    }
+    return v;
+  });
+}
+
 export function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
   if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
   const y = Math.sin((lon2 - lon1) * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180);
@@ -245,6 +313,22 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
   let currentSharpTurns = previousVehicle?.sharpTurns || 0;
   const lastProcessedTs = previousVehicle?.lastTelemetryTime || 0;
 
+  const sensitivity = previousVehicle?.settings?.sensitivity || 'medium';
+  const configAngle = previousVehicle?.settings?.turningAngle ?? 45;
+
+  let brakeDropThreshold = 12; // medium
+  let turnAngleThreshold = configAngle; // medium
+  let minTurnSpeed = 20;
+  if (sensitivity === 'high') {
+    brakeDropThreshold = 8;
+    turnAngleThreshold = Math.max(20, configAngle - 15);
+    minTurnSpeed = 15;
+  } else if (sensitivity === 'low') {
+    brakeDropThreshold = 18;
+    turnAngleThreshold = configAngle + 15;
+    minTurnSpeed = 30;
+  }
+
   for (let i = 0; i < sorted.length - 1; i++) {
     const m1 = sorted[i];
     const m2 = sorted[i + 1];
@@ -268,8 +352,8 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
       let angleDiff = Math.abs(dir2 - dir1);
       if (angleDiff > 180) angleDiff = 360 - angleDiff;
 
-      const isGpsHarshBrake = (v1 - v2 >= 12) && (dt > 0 && dt <= 3);
-      const isGpsSharpTurn = (v2 >= 20) && (angleDiff >= 30) && (dt > 0 && dt <= 3);
+      const isGpsHarshBrake = (v1 - v2 >= brakeDropThreshold) && (dt > 0 && dt <= 3);
+      const isGpsSharpTurn = (v2 >= minTurnSpeed) && (angleDiff >= turnAngleThreshold) && (dt > 0 && dt <= 3);
 
       if (hwBraking || isGpsHarshBrake) {
         currentHarshBraking++;
@@ -301,7 +385,8 @@ export function parseFlespiDeviceData(devMessages: any[], previousVehicle?: Part
 
 const fetchFlespiLocation = async (imei: string, previousVehicle?: Partial<Vehicle>) => {
   try {
-    const response = await fetch(`https://flespi.io/gw/devices/all/messages?limit=100&reverse=true`, {
+    const recentQuery = encodeURIComponent(JSON.stringify({ count: 40, reverse: true }));
+    const response = await fetch(`https://flespi.io/gw/devices/all/messages?data=${recentQuery}`, {
       headers: {
         'Authorization': `FlespiToken ${FLESPI_TOKEN}`
       }
@@ -555,8 +640,8 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     fuel: 85,
     sharpTurns: 0,
     harshBraking: 0,
-    totalMileage: 18450,
-    dailyMileage: 43,
+    totalMileage: 0,
+    dailyMileage: 0,
     commandQueue: [],
     settings: {
       ...DEFAULT_VEHICLE_SETTINGS,
@@ -579,8 +664,8 @@ const DEFAULT_INITIAL_VEHICLES: Vehicle[] = [
     fuel: 90,
     sharpTurns: 0,
     harshBraking: 0,
-    totalMileage: 9320,
-    dailyMileage: 14,
+    totalMileage: 0,
+    dailyMileage: 0,
     commandQueue: [],
     settings: {
       ...DEFAULT_VEHICLE_SETTINGS,
@@ -896,7 +981,9 @@ export default function App() {
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned = parsed.filter((v: any) => v.type !== 'pessoa' && !deletedIds.has(v.id));
+          const cleaned = sanitizeLegacyFakeMileage(
+            parsed.filter((v: any) => v.type !== 'pessoa' && !deletedIds.has(v.id))
+          );
           if (cleaned.length > 0) return cleaned;
         }
       }
@@ -957,7 +1044,9 @@ export default function App() {
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter((v: any) => v.type !== 'pessoa' && !deletedIds.has(v.id));
+          const cleaned = sanitizeLegacyFakeMileage(
+            parsed.filter((v: any) => v.type !== 'pessoa' && !deletedIds.has(v.id))
+          );
           setVehicles(cleaned);
         } else {
           setVehicles(DEFAULT_INITIAL_VEHICLES.filter(v => !deletedIds.has(v.id)));
@@ -1063,7 +1152,7 @@ export default function App() {
   const pushFleetProfilesToServer = async (list: Vehicle[]) => {
     try {
       const payload = list
-        .filter((v) => v && (v.photoUrl || v.licensePlate || v.name || v.settings?.isBlocked))
+        .filter((v) => v && (v.photoUrl || v.licensePlate || v.name || v.settings?.isBlocked || v.settings?.odometerCalibrated || (v.totalMileage ?? 0) > 0))
         .map((v) => ({
           id: v.id,
           trackerNumber: v.trackerNumber || '',
@@ -1071,6 +1160,8 @@ export default function App() {
           licensePlate: v.licensePlate || '',
           photoUrl: v.photoUrl || '',
           isBlocked: Boolean(v.settings?.isBlocked),
+          totalMileage: typeof v.totalMileage === 'number' ? v.totalMileage : 0,
+          dailyMileage: typeof v.dailyMileage === 'number' ? v.dailyMileage : 0,
           settings: v.settings || {},
           iconType: v.iconType || 'car',
           color: v.color || '#16a34a'
@@ -1100,7 +1191,7 @@ export default function App() {
     let active = true;
     const syncOnBoot = async () => {
       try {
-        const hasLocalMedia = vehicles.some((v) => Boolean(v.photoUrl) || Boolean(v.settings?.isBlocked));
+        const hasLocalMedia = vehicles.some((v) => Boolean(v.photoUrl) || Boolean(v.settings?.isBlocked) || Boolean(v.settings?.odometerCalibrated));
         if (hasLocalMedia) {
           await pushFleetProfilesToServer(vehicles);
         }
@@ -1138,21 +1229,39 @@ export default function App() {
             const localBlocked = Boolean(localV.settings?.isBlocked);
             const nextBlocked = remoteBlocked || localBlocked;
 
+            const remoteCalibrated = Boolean(match.settings?.odometerCalibrated);
+            const localCalibrated = Boolean(localV.settings?.odometerCalibrated);
+            const remoteBaseTs = Number(match.settings?.odometerBaseTs || 0);
+            const localBaseTs = Number(localV.settings?.odometerBaseTs || 0);
+            const useRemoteOdometer = remoteCalibrated && (!localCalibrated || remoteBaseTs > localBaseTs);
+
             const nextSettings = {
               ...(localV.settings || {}),
-              isBlocked: nextBlocked
+              isBlocked: nextBlocked,
+              ...(useRemoteOdometer ? {
+                odometerCalibrated: true,
+                odometerBaseKm: match.settings?.odometerBaseKm,
+                odometerBaseTs: match.settings?.odometerBaseTs,
+                initialMileageMeters: match.settings?.initialMileageMeters
+              } : {})
             };
+
+            const nextTotalMileage = useRemoteOdometer && typeof match.totalMileage === 'number'
+              ? match.totalMileage
+              : localV.totalMileage;
 
             if (
               nextPhoto !== (localV.photoUrl || '') ||
               nextPlate !== localV.licensePlate ||
-              nextBlocked !== localBlocked
+              nextBlocked !== localBlocked ||
+              useRemoteOdometer
             ) {
               changed = true;
               return {
                 ...localV,
                 photoUrl: nextPhoto || undefined,
                 licensePlate: nextPlate,
+                totalMileage: nextTotalMileage,
                 settings: nextSettings
               };
             }
@@ -2624,6 +2733,10 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
         live.lng !== editingVehicle.lng || 
         live.status !== editingVehicle.status || 
         live.speed !== editingVehicle.speed ||
+        (modalMode !== 'details' && (
+          live.totalMileage !== editingVehicle.totalMileage ||
+          live.dailyMileage !== editingVehicle.dailyMileage
+        )) ||
         Boolean(live.settings?.isBlocked) !== Boolean(editingVehicle.settings?.isBlocked) ||
         Boolean(live.settings?.pendingBlock) !== Boolean(editingVehicle.settings?.pendingBlock)
       )) {
@@ -2633,16 +2746,20 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           lng: live.lng,
           speed: live.speed,
           status: live.status,
+          ...(modalMode !== 'details' ? {
+            totalMileage: live.totalMileage,
+            dailyMileage: live.dailyMileage
+          } : {}),
           settings: {
-            ...prev.settings,
             ...live.settings,
+            ...prev.settings,
             isBlocked: Boolean(live.settings?.isBlocked),
             pendingBlock: Boolean(live.settings?.pendingBlock)
           }
         } : null);
       }
     }
-  }, [vehicles]);
+  }, [vehicles, modalMode]);
 
   // Motor de Alertas de Cerca Virtual
   useEffect(() => {
@@ -2734,7 +2851,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     const fetchRealTimeFlespi = async () => {
       if (isPublicView && linkAccessRef.current !== 'allowed') return;
       try {
-        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,engine.ignition.status,ignition.status,vehicle.ignition.status,can.engine.ignition.status,engine.ignition.on,io.ignition,input.ignition,io.acc,acc.status,din.1,din.2,acc,input.1,input.2,io.1,io.2,ignition,engine.status,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code,alarm.acc.status,alarm.type`, {
+        const response = await fetch(`https://flespi.io/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,position.satellites,position.hdop,vehicle.mileage,can.vehicle.mileage,can.odometer,position.mileage,total.mileage,engine.ignition.status,ignition.status,vehicle.ignition.status,can.engine.ignition.status,engine.ignition.on,io.ignition,input.ignition,io.acc,acc.status,din.1,din.2,acc,input.1,input.2,io.1,io.2,ignition,engine.status,ident,timestamp,server.timestamp,battery.level,battery.voltage,external.powersource.voltage,power.voltage,external.powersource.status,alarm.code,event.code,alarm.acc.status,alarm.type`, {
           headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
         });
         const data = await response.json();
@@ -2904,8 +3021,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             }
 
             // Check day change to reset dailyMileage automatically
-            const nowD = new Date();
-            const todayDateStr = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
+            const todayDateStr = getLocalTodayKey();
             let currentDailyMileage = typeof v.dailyMileage === 'number' ? v.dailyMileage : (Number(v.dailyMileage) || 0);
             const newSettings = v.settings ? { ...v.settings } : {} as any;
             if (newSettings.lastMileageDate && newSettings.lastMileageDate !== todayDateStr) {
@@ -2913,8 +3029,13 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
             }
             newSettings.lastMileageDate = todayDateStr;
 
-            // Check Flespi direct mileage if available
-            const flespiMileageRaw = t['vehicle.mileage']?.value ?? t['can.vehicle.mileage']?.value ?? t['can.odometer']?.value ?? t['position.mileage']?.value;
+            // Check Flespi direct CAN/tracker mileage if hardware sends it
+            const flespiMileageRaw =
+              t['vehicle.mileage']?.value ??
+              t['can.vehicle.mileage']?.value ??
+              t['can.odometer']?.value ??
+              t['position.mileage']?.value ??
+              t['total.mileage']?.value;
             let flespiMileageKm: number | null = null;
             if (typeof flespiMileageRaw === 'number' && flespiMileageRaw > 0) {
               flespiMileageKm = flespiMileageRaw > 500000 ? flespiMileageRaw / 1000 : flespiMileageRaw;
@@ -2926,26 +3047,33 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
               ? calculateDistanceKm(v.lat, v.lng, realLat, realLng)
               : 0;
 
-            // Compute real distance increment for odometer only during real movement
+            // Compute real distance increment from GPS coordinates (filters parked drift < 8m & impossible jumps)
             let deltaKm = 0;
-            if (hasValidRealCoords && v.lat && v.lng && (v.lat !== realLat || v.lng !== realLng)) {
-              if (rawPositionDeltaKm >= 0.003 && rawPositionDeltaKm <= 15 && (realSpeed >= 1 || newStatus === 'Moving' || newStatus === 'IgnitionOn' || ignition)) {
+            if (hasValidRealCoords && v.lat && v.lng && v.lastTelemetryTime && (v.lat !== realLat || v.lng !== realLng)) {
+              const dtSec = Math.max(1, latestTs - (v.lastTelemetryTime || latestTs));
+              const impliedSpeedKmh = (rawPositionDeltaKm / dtSec) * 3600;
+              if (
+                rawPositionDeltaKm >= 0.008 &&
+                rawPositionDeltaKm <= 15 &&
+                impliedSpeedKmh <= 220 &&
+                (realSpeed >= 1 || newStatus === 'Moving' || newStatus === 'IgnitionOn' || ignition || impliedSpeedKmh >= 6)
+              ) {
                 deltaKm = rawPositionDeltaKm;
               }
             }
 
             const currentTotalMileage = typeof v.totalMileage === 'number' ? v.totalMileage : (Number(v.totalMileage) || 0);
-            
-            // If Flespi sends genuine CAN total mileage (larger than 1000km and >= current), we can use it, otherwise accumulate deltaKm
-            const newTotalMileage = (flespiMileageKm !== null && flespiMileageKm >= 1000 && flespiMileageKm >= currentTotalMileage)
-              ? flespiMileageKm
+
+            // Use hardware CAN/tracker mileage when reported (unless user manually calibrated a dashboard cluster offset)
+            const newTotalMileage = (flespiMileageKm !== null && !newSettings.odometerCalibrated)
+              ? Number(flespiMileageKm.toFixed(1))
               : Number((currentTotalMileage + deltaKm).toFixed(2));
-              
+
             const newDailyMileage = Number((currentDailyMileage + deltaKm).toFixed(2));
 
-            // Update the settings odometer too if we track it there
+            // Keep initialMileageMeters aligned when moving
             if (deltaKm > 0 && typeof newSettings.initialMileageMeters === 'number') {
-              newSettings.initialMileageMeters += (deltaKm * 1000); // km to meters
+              newSettings.initialMileageMeters += (deltaKm * 1000);
             }
 
             const realSatellites = t['position.satellites']?.value ?? (v.satellites || 12);
@@ -3208,7 +3336,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           if (!isPublicView && blockedList.length > 0 && (Date.now() - lastBlockedMsgScanWallMsRef.current >= 4500)) {
             lastBlockedMsgScanWallMsRef.current = Date.now();
             try {
-              const msgRes = await fetch(`https://flespi.io/gw/devices/all/messages?limit=25&reverse=true`, {
+              const msgQuery = encodeURIComponent(JSON.stringify({ count: 25, reverse: true }));
+              const msgRes = await fetch(`https://flespi.io/gw/devices/all/messages?data=${msgQuery}`, {
                 headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
               });
               const msgData = await msgRes.json();
@@ -3264,34 +3393,130 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
       }
     };
 
-    // Sincroniza os nomes e identificadores reais configurados no Flespi / Payview
-    const syncFlespiDeviceNames = async () => {
+    // Cache histórico pré-meia-noite por veículo para não repetir download em cada ciclo
+    const odometerPriorKmCache = new Map<string, number>();
+
+    // Sincroniza nome real e calcula KM diário e Hodômetro real diretamente das mensagens GPS do Flespi
+    const syncFlespiDevicesAndOdometer = async () => {
       try {
         const res = await fetch(`https://flespi.io/gw/devices/all`, {
           headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
         });
         const dData = await res.json();
-        if (dData?.result && Array.isArray(dData.result)) {
+        if (!dData?.result || !Array.isArray(dData.result)) return;
+
+        const nowD = new Date();
+        const todayStartTs = Math.floor(new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate(), 0, 0, 0).getTime() / 1000);
+        const nowSec = Math.floor(Date.now() / 1000);
+        const todayKey = getLocalTodayKey();
+        const minFields = 'timestamp,position.latitude,position.longitude,position.valid';
+
+        const currentList = vehiclesRef.current;
+        const computedByVehicleId = new Map<string, { dailyMileage?: number; totalMileage?: number; matchedName?: string }>();
+
+        for (const v of currentList) {
+          const trackerClean = String(v.trackerNumber || '').trim();
+          const matched = dData.result.find((d: any) =>
+            (d.configuration?.ident && String(d.configuration.ident).trim() === trackerClean) ||
+            (d.id && String(d.id).trim() === trackerClean)
+          );
+          if (!matched) continue;
+
+          const updateEntry: { dailyMileage?: number; totalMileage?: number; matchedName?: string } = {};
+          if (matched.name && typeof matched.name === 'string' && matched.name.trim() !== '' && matched.name.trim() !== v.name) {
+            updateEntry.matchedName = matched.name.trim();
+          }
+
+          // 1. Buscar mensagens GPS de hoje (desde 00:00 local) para KM Diário real
+          try {
+            const todayQuery = encodeURIComponent(JSON.stringify({ from: todayStartTs, to: nowSec, fields: minFields }));
+            const todayRes = await fetch(`https://flespi.io/gw/devices/${matched.id}/messages?data=${todayQuery}`, {
+              headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+            });
+            const todayJson = await todayRes.json();
+            const todayMsgs = Array.isArray(todayJson?.result) ? todayJson.result : [];
+            const todayKm = computeRealDistanceFromFlespiMessages(todayMsgs);
+            updateEntry.dailyMileage = todayKm;
+
+            // 2. Calcular Odômetro Total real
+            const isCalibrated = Boolean(v.settings?.odometerCalibrated);
+            const baseKm = Number(v.settings?.odometerBaseKm ?? v.totalMileage ?? 0);
+            const baseTs = Number(v.settings?.odometerBaseTs || 0);
+
+            if (isCalibrated && baseTs > 0) {
+              if (baseTs >= todayStartTs) {
+                const postBaseMsgs = todayMsgs.filter((m: any) => Number(m.timestamp || m['server.timestamp'] || 0) >= baseTs);
+                const postBaseKm = computeRealDistanceFromFlespiMessages(postBaseMsgs);
+                updateEntry.totalMileage = Number((baseKm + postBaseKm).toFixed(1));
+              } else {
+                const cacheKey = `${v.id}:${baseTs}:${todayStartTs}`;
+                let priorKm = odometerPriorKmCache.get(cacheKey);
+                if (priorKm === undefined) {
+                  const priorFrom = Math.max(baseTs, todayStartTs - 30 * 86400);
+                  const priorQuery = encodeURIComponent(JSON.stringify({ from: priorFrom, to: todayStartTs, fields: minFields }));
+                  const priorRes = await fetch(`https://flespi.io/gw/devices/${matched.id}/messages?data=${priorQuery}`, {
+                    headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+                  });
+                  const priorJson = await priorRes.json();
+                  priorKm = computeRealDistanceFromFlespiMessages(Array.isArray(priorJson?.result) ? priorJson.result : []);
+                  odometerPriorKmCache.set(cacheKey, priorKm);
+                }
+                updateEntry.totalMileage = Number((baseKm + priorKm + todayKm).toFixed(1));
+              }
+            } else {
+              // Sem calibração manual do painel: usa soma real do histórico GPS (últimos 30 dias até hoje) + hoje
+              const cacheKey = `${v.id}:uncal:${todayStartTs}`;
+              let historyBeforeTodayKm = odometerPriorKmCache.get(cacheKey);
+              if (historyBeforeTodayKm === undefined) {
+                const histFrom = todayStartTs - 30 * 86400;
+                const histQuery = encodeURIComponent(JSON.stringify({ from: histFrom, to: todayStartTs, fields: minFields }));
+                const histRes = await fetch(`https://flespi.io/gw/devices/${matched.id}/messages?data=${histQuery}`, {
+                  headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
+                });
+                const histJson = await histRes.json();
+                historyBeforeTodayKm = computeRealDistanceFromFlespiMessages(Array.isArray(histJson?.result) ? histJson.result : []);
+                odometerPriorKmCache.set(cacheKey, historyBeforeTodayKm);
+              }
+              updateEntry.totalMileage = Number((historyBeforeTodayKm + todayKm).toFixed(1));
+            }
+          } catch {}
+
+          if (updateEntry.matchedName || updateEntry.dailyMileage !== undefined || updateEntry.totalMileage !== undefined) {
+            computedByVehicleId.set(v.id, updateEntry);
+          }
+        }
+
+        if (computedByVehicleId.size > 0) {
           setVehicles(prev => {
             let changed = false;
             const updated = prev.map(v => {
-              const matched = dData.result.find((d: any) => 
-                (d.configuration?.ident && String(d.configuration.ident).trim() === String(v.trackerNumber || '').trim()) ||
-                (d.id && String(d.id).trim() === String(v.trackerNumber || '').trim())
-              );
-              if (matched && matched.name && typeof matched.name === 'string' && matched.name.trim() !== '' && matched.name.trim() !== v.name) {
-                console.log(`[Flespi Name Sync] Atualizando nome do carro de "${v.name}" para o nome real do Flespi/Payview "${matched.name.trim()}"`);
+              const info = computedByVehicleId.get(v.id);
+              if (!info) return v;
+              const nextName = info.matchedName || v.name;
+              const nextDaily = info.dailyMileage !== undefined ? info.dailyMileage : v.dailyMileage;
+              const nextTotal = info.totalMileage !== undefined ? info.totalMileage : v.totalMileage;
+              if (nextName !== v.name || nextDaily !== v.dailyMileage || nextTotal !== v.totalMileage) {
                 changed = true;
-                return { ...v, name: matched.name.trim() };
+                return {
+                  ...v,
+                  name: nextName,
+                  dailyMileage: nextDaily,
+                  totalMileage: nextTotal,
+                  settings: {
+                    ...(v.settings || DEFAULT_VEHICLE_SETTINGS),
+                    lastMileageDate: todayKey
+                  }
+                };
               }
               return v;
             });
             if (changed) {
               try {
                 localStorage.setItem('app_vehicles_cache', JSON.stringify(updated));
-              } catch (e) {}
+              } catch {}
+              return updated;
             }
-            return changed ? updated : prev;
+            return prev;
           });
         }
       } catch (e) {}
@@ -3299,16 +3524,17 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
     // Run initial sync immediately
     fetchRealTimeFlespi();
-    syncFlespiDeviceNames();
+    syncFlespiDevicesAndOdometer();
 
     // Poll every 3 seconds for real-time live telemetry
     const fastInterval = setInterval(() => {
       fetchRealTimeFlespi();
     }, 3000);
 
-    const namesInterval = setInterval(() => {
-      syncFlespiDeviceNames();
-    }, 30000);
+    // Reconcile Flespi device names & exact GPS odometer every 60 seconds
+    const odometerInterval = setInterval(() => {
+      syncFlespiDevicesAndOdometer();
+    }, 60000);
 
     // Instant refresh when user returns to or unlocks the app
     let appStateHandle: any = null;
@@ -3318,7 +3544,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
           if (isActive) {
             console.log('[App Resume] App brought to foreground, fetching fresh telemetry immediately');
             fetchRealTimeFlespi();
-            syncFlespiDeviceNames();
+            syncFlespiDevicesAndOdometer();
           }
         });
       } catch (e) {}
@@ -3326,7 +3552,7 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
 
     return () => {
       clearInterval(fastInterval);
-      clearInterval(namesInterval);
+      clearInterval(odometerInterval);
       if (appStateHandle && typeof appStateHandle.then === 'function') {
         appStateHandle.then((h: any) => h.remove?.()).catch(() => {});
       }
@@ -3437,7 +3663,8 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
     setCommunicationSuccess(false);
 
     try {
-      const response = await fetch(`https://flespi.io/gw/devices/all/messages?limit=100&reverse=true`, {
+      const forceQuery = encodeURIComponent(JSON.stringify({ count: 40, reverse: true }));
+      const response = await fetch(`https://flespi.io/gw/devices/all/messages?data=${forceQuery}`, {
         headers: { 'Authorization': `FlespiToken ${FLESPI_TOKEN}` }
       });
       const data = await response.json();
@@ -4505,7 +4732,25 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                           </div>
                         )}
 
-                        <div className={`bg-gray-50 p-2.5 rounded-lg border border-gray-100 ${editingVehicle.type === 'pessoa' ? 'col-span-2' : ''}`}>
+                        <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                          <span className="text-[10px] text-gray-500 font-medium block">Odômetro Total</span>
+                          <span className="font-mono font-bold text-gray-800 text-xs">
+                            {Number(editingVehicle.totalMileage || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km
+                          </span>
+                          <span className="block text-[9px] text-gray-400">
+                            {editingVehicle.settings?.odometerCalibrated ? 'Painel calibrado + GPS' : 'Acumulado GPS (30d)'}
+                          </span>
+                        </div>
+
+                        <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                          <span className="text-[10px] text-gray-500 font-medium block">KM Rodado Hoje</span>
+                          <span className="font-mono font-bold text-blue-700 text-xs">
+                            {Number(editingVehicle.dailyMileage || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km
+                          </span>
+                          <span className="block text-[9px] text-gray-400">Calculado via GPS hoje</span>
+                        </div>
+
+                        <div className={`bg-gray-50 p-2.5 rounded-lg border border-gray-100 ${editingVehicle.type === 'pessoa' ? 'col-span-2' : 'col-span-2'}`}>
                           <span className="text-[10px] text-gray-500 font-medium block">{editingVehicle.type === 'pessoa' ? 'Dispositivo / Smartphone' : 'Dispositivo / Rastreador'}</span>
                           <span className="font-mono font-bold text-gray-700 text-xs">
                             {editingVehicle.trackerNumber || (editingVehicle.type === 'pessoa' ? 'GPS do Smartphone' : 'GPS Integrado')}
@@ -4638,6 +4883,59 @@ function AppContent({showToast, sidebarOpen, setSidebarOpen, activeModule, setAc
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Número do Telefone</label>
                         <input type="text" placeholder="(11) 99999-9999" value={editingVehicle.phoneNumber} onChange={e => setEditingVehicle({...editingVehicle, phoneNumber: e.target.value})} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-sm" />
                       </div>
+                    </div>
+
+                    <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-semibold text-gray-800">Hodômetro Real do Painel (km)</label>
+                        {editingVehicle.settings?.odometerCalibrated && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingVehicle({
+                                ...editingVehicle,
+                                totalMileage: 0,
+                                settings: {
+                                  ...(editingVehicle.settings || DEFAULT_VEHICLE_SETTINGS),
+                                  odometerCalibrated: false,
+                                  odometerBaseKm: 0,
+                                  odometerBaseTs: 0,
+                                  initialMileageMeters: 0
+                                }
+                              });
+                            }}
+                            className="text-[11px] font-bold text-blue-700 hover:underline cursor-pointer"
+                          >
+                            Usar só GPS
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        placeholder="Ex: 45210"
+                        value={editingVehicle.totalMileage ?? 0}
+                        onChange={e => {
+                          const raw = e.target.value;
+                          const val = raw === '' ? 0 : Math.max(0, Number(raw) || 0);
+                          setEditingVehicle({
+                            ...editingVehicle,
+                            totalMileage: val,
+                            settings: {
+                              ...(editingVehicle.settings || DEFAULT_VEHICLE_SETTINGS),
+                              odometerCalibrated: val > 0,
+                              odometerBaseKm: val,
+                              odometerBaseTs: val > 0 ? Math.floor(Date.now() / 1000) : 0,
+                              initialMileageMeters: Math.round(val * 1000)
+                            }
+                          });
+                        }}
+                        className="w-full border border-blue-300 bg-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none font-mono font-bold text-sm text-gray-900"
+                      />
+                      <p className="text-[11px] text-gray-600 leading-snug">
+                        Digite a quilometragem exata do painel do carro para calibrar o hodômetro. A partir daí, os quilômetros rodados via GPS são somados automaticamente.
+                      </p>
                     </div>
 
                     {editingVehicle.id !== 'new' && (

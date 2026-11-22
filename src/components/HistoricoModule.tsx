@@ -352,6 +352,26 @@ export default function HistoricoModule({
       showToast('❌ O veículo selecionado não possui IMEI cadastrado.');
       return;
     }
+
+    const sensitivity = vehicle.settings?.sensitivity || 'medium';
+    const configAngle = vehicle.settings?.turningAngle ?? 45;
+
+    let baseMinTurnAngle = configAngle;
+    let baseMinTurnSpeed = 32;
+    let baseMinDrop = 18;
+    let baseMinAccelGain = 16;
+
+    if (sensitivity === 'high') {
+      baseMinTurnAngle = Math.max(20, configAngle - 15);
+      baseMinTurnSpeed = 24;
+      baseMinDrop = 10;
+      baseMinAccelGain = 10;
+    } else if (sensitivity === 'low') {
+      baseMinTurnAngle = configAngle + 15;
+      baseMinTurnSpeed = 40;
+      baseMinDrop = 24;
+      baseMinAccelGain = 22;
+    }
     
     if (!startDate || !endDate) {
       showToast('❌ Por favor, selecione o período completo.');
@@ -515,15 +535,15 @@ export default function HistoricoModule({
           // Padrão de telemetria automotiva: curva brusca exige velocidade considerável (>= 36 km/h)
           // com variação angular rápida (>= 50 graus em até 2.5s) e taxa angular acentuada (>= 20°/s)
           // Isso evita marcar curvas e esquinas urbanas normais a 20 km/h como infração
-          const minTurnAngle = deepScanMode ? 45 : 55;
-          const minTurnSpeed = deepScanMode ? 32 : 36;
+          const minTurnAngle = deepScanMode ? Math.max(15, baseMinTurnAngle - 10) : baseMinTurnAngle;
+          const minTurnSpeed = deepScanMode ? Math.max(15, baseMinTurnSpeed - 8) : baseMinTurnSpeed;
           const turnRate = diffSec > 0 ? headingDiff / diffSec : 0;
           const isSharpTurnDetected = p2.harshCornering || (
             currentSpeed >= minTurnSpeed && 
             headingDiff >= minTurnAngle && 
-            turnRate >= 20 && 
+            turnRate >= 15 && 
             diffSec >= 0.5 && 
-            diffSec <= 3.0
+            diffSec <= 3.5
           );
           if (isSharpTurnDetected && (t2 - lastSharpTurnTs > 12000)) {
             sharpTurnsCount++;
@@ -533,8 +553,8 @@ export default function HistoricoModule({
           // 2. Acelerações Bruscas (Hardware Tracker ou Aumento Súbito de Velocidade)
           const speedGain = currentSpeed - prevSpeed;
           const accelRate = diffSec >= 0.5 ? speedGain / diffSec : 0;
-          const minAccelGain = deepScanMode ? 14 : 18;
-          const minAccelRate = deepScanMode ? 5 : 6.5;
+          const minAccelGain = deepScanMode ? Math.max(8, baseMinAccelGain - 6) : baseMinAccelGain;
+          const minAccelRate = deepScanMode ? 4 : 5.5;
           const isHarshAccelDetected = p2.harshAcceleration || (speedGain >= minAccelGain && (accelRate >= minAccelRate || (diffSec <= 3.5 && diffSec >= 0.5)) && prevSpeed >= 4);
           if (isHarshAccelDetected && (t2 - lastHarshAccelTs > 10000)) {
             harshAccelCount++;
@@ -544,9 +564,9 @@ export default function HistoricoModule({
           // 3. Frenagem Brusca (Hardware Tracker ou Queda Súbita)
           const speedDrop = prevSpeed - currentSpeed;
           const decelRate = diffSec >= 0.5 ? speedDrop / diffSec : 0;
-          const minDrop = deepScanMode ? 15 : 20;
-          const minDecelRate = deepScanMode ? 7.5 : 9;
-          const isHarshBrakeDetected = p2.harshBraking || (prevSpeed >= 25 && speedDrop >= minDrop && (decelRate >= minDecelRate || (speedDrop >= 18 && diffSec <= 3.5 && diffSec >= 0.5)));
+          const minDrop = deepScanMode ? Math.max(8, baseMinDrop - 6) : baseMinDrop;
+          const minDecelRate = deepScanMode ? 6 : 7.5;
+          const isHarshBrakeDetected = p2.harshBraking || (prevSpeed >= 20 && speedDrop >= minDrop && (decelRate >= minDecelRate || (speedDrop >= (minDrop - 2) && diffSec <= 3.5 && diffSec >= 0.5)));
           if (isHarshBrakeDetected && (t2 - lastHarshBrakeTs > 10000)) {
             harshBrakingCount++;
             lastHarshBrakeTs = t2;

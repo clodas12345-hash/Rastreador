@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Vehicle, SavedRoute, Driver } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Vehicle, SavedRoute, Driver, FineRecord } from '../types';
 import { 
   Calculator, FileText, Download, Fuel, DollarSign, Calendar, 
   Printer, Share2, CheckCircle2, AlertTriangle, ShieldAlert, 
   BatteryCharging, Power, PhoneCall, RefreshCw, Layers, ArrowRight,
-  TrendingDown, TrendingUp, Clock, Gauge, MapPin, Zap
+  TrendingDown, TrendingUp, Clock, Gauge, MapPin, Zap, Plus, Trash2
 } from 'lucide-react';
 
 interface RelatoriosConsumoProps {
@@ -12,15 +12,19 @@ interface RelatoriosConsumoProps {
   savedRoutes?: SavedRoute[];
   drivers?: Driver[];
   onOpenSOSModal?: (vehicle: Vehicle) => void;
+  showToast?: (msg: string) => void;
 }
+
+const FINES_STORAGE_KEY = 'gkd_fleet_fines_v1';
 
 export default function RelatoriosConsumoModule({
   vehicles,
   savedRoutes = [],
   drivers = [],
-  onOpenSOSModal
+  onOpenSOSModal,
+  showToast
 }: RelatoriosConsumoProps) {
-  const [activeTab, setActiveTab] = useState<'consumo' | 'relatorios' | 'sleep_sos'>('consumo');
+  const [activeTab, setActiveTab] = useState<'consumo' | 'relatorios' | 'multas' | 'sleep_sos'>('consumo');
 
   // State for Consumo Calculator (Option 1)
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(vehicles[0]?.id || '');
@@ -37,6 +41,32 @@ export default function RelatoriosConsumoModule({
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccessMsg, setExportSuccessMsg] = useState<string>('');
 
+  // State for Multas no Período (Option 3)
+  const [fines, setFines] = useState<FineRecord[]>(() => {
+    try {
+      const raw = localStorage.getItem(FINES_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const [fineVehicleId, setFineVehicleId] = useState<string>(vehicles[0]?.id || '');
+  const [fineDriverName, setFineDriverName] = useState<string>('');
+  const [fineDate, setFineDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [fineAmount, setFineAmount] = useState<number>(195.23);
+  const [fineDescription, setFineDescription] = useState<string>('Excesso de velocidade até 20% acima do limite');
+  const [fineFilterVehicle, setFineFilterVehicle] = useState<string>('todos');
+  const [fineFilterPeriod, setFineFilterPeriod] = useState<'todos' | '7dias' | '30dias' | '90dias'>('30dias');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FINES_STORAGE_KEY, JSON.stringify(fines));
+    } catch {}
+  }, [fines]);
+
   // State for Sleep & SOS (Option 5)
   const [sosPhoneNumber, setSosPhoneNumber] = useState<string>('(11) 99876-5432');
   const [sosContactName, setSosContactName] = useState<string>('Central de Segurança GKD');
@@ -50,6 +80,50 @@ export default function RelatoriosConsumoModule({
 
   const monthlyLiters = monthlyEstimatedKm / (autonomyKmL || 1);
   const monthlyCostR$ = monthlyLiters * fuelPrice;
+
+  // Handle Save Fine
+  const handleSaveFine = () => {
+    if (!fineDescription.trim() || isNaN(fineAmount) || fineAmount <= 0) {
+      if (showToast) showToast('⚠️ Preencha a descrição da multa e o valor em R$.');
+      return;
+    }
+
+    const newFine: FineRecord = {
+      id: `fine-${Date.now()}`,
+      vehicleId: fineVehicleId || vehicles[0]?.id || 'v1',
+      driverName: fineDriverName.trim() || 'Motorista Não Atribuído',
+      date: fineDate || new Date().toISOString().split('T')[0],
+      amount: Number(fineAmount),
+      description: fineDescription.trim()
+    };
+
+    setFines(prev => [newFine, ...prev]);
+    if (showToast) showToast(`🚨 Multa de R$ ${newFine.amount.toFixed(2)} cadastrada com sucesso!`);
+    setFineDescription('');
+  };
+
+  const handleDeleteFine = (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este registro de multa?')) {
+      setFines(prev => prev.filter(f => f.id !== id));
+      if (showToast) showToast('🗑️ Registro de multa removido.');
+    }
+  };
+
+  // Filtered fines
+  const filteredFines = fines.filter(f => {
+    if (fineFilterVehicle !== 'todos' && f.vehicleId !== fineFilterVehicle) return false;
+    if (fineFilterPeriod !== 'todos') {
+      const fineMs = new Date(f.date).getTime();
+      const nowMs = Date.now();
+      const diffDays = (nowMs - fineMs) / (1000 * 60 * 60 * 24);
+      if (fineFilterPeriod === '7dias' && diffDays > 7) return false;
+      if (fineFilterPeriod === '30dias' && diffDays > 30) return false;
+      if (fineFilterPeriod === '90dias' && diffDays > 90) return false;
+    }
+    return true;
+  });
+
+  const totalFinesAmount = filteredFines.reduce((acc, f) => acc + (f.amount || 0), 0);
 
   // Handle Export CSV
   const handleExportCSV = () => {
@@ -78,12 +152,10 @@ export default function RelatoriosConsumoModule({
     }, 600);
   };
 
-  // Handle Print / PDF
   const handlePrintPDF = () => {
     window.print();
   };
 
-  // Handle Send SOS
   const handleTriggerSOS = (vehicle: Vehicle) => {
     const text = encodeURIComponent(
       `🚨 *ALERTA DE PÂNICO / S.O.S* 🚨\nVeículo: ${vehicle.name} (${vehicle.licensePlate})\nLocalização Atual: https://maps.google.com/?q=${vehicle.lat},${vehicle.lng}\nVelocidade: ${vehicle.speed} km/h\nData/Hora: ${new Date().toLocaleString('pt-BR')}`
@@ -102,53 +174,64 @@ export default function RelatoriosConsumoModule({
             <span>Gestão Avançada de Frota</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Consumo, Relatórios & SOS Emergência
+            Consumo, Relatórios & Multas
           </h1>
           <p className="text-gray-300 text-sm mt-1 max-w-2xl">
-            Cálculo financeiro em R$, exportação de relatórios profissionais e recursos de proteção SOS e hibernação de bateria.
+            Cálculo financeiro em R$, controle retroativo de multas no período, exportação de relatórios e recursos SOS.
           </p>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center bg-white/10 p-1.5 rounded-xl border border-white/20 self-start md:self-auto">
+        <div className="flex items-center bg-white/10 p-1.5 rounded-xl border border-white/20 self-start md:self-auto flex-wrap gap-1">
           <button
             onClick={() => setActiveTab('consumo')}
-            className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center space-x-2 transition-all ${
+            className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
               activeTab === 'consumo'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'text-gray-300 hover:text-white hover:bg-white/5'
             }`}
           >
             <Calculator className="w-4 h-4" />
-            <span>1. Consumo & Custo</span>
+            <span>1. Consumo</span>
           </button>
           <button
             onClick={() => setActiveTab('relatorios')}
-            className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center space-x-2 transition-all ${
+            className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
               activeTab === 'relatorios'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'text-gray-300 hover:text-white hover:bg-white/5'
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>2. Relatórios PDF/Excel</span>
+            <span>2. Relatórios</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('multas')}
+            className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
+              activeTab === 'multas'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-gray-300 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <span>3. Multas no Período</span>
           </button>
           <button
             onClick={() => setActiveTab('sleep_sos')}
-            className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center space-x-2 transition-all ${
+            className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
               activeTab === 'sleep_sos'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'text-gray-300 hover:text-white hover:bg-white/5'
             }`}
           >
             <ShieldAlert className="w-4 h-4" />
-            <span>5. Sleep & SOS Pânico</span>
+            <span>5. Sleep & SOS</span>
           </button>
         </div>
       </div>
 
       {exportSuccessMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl flex items-center space-x-3 shadow-sm animate-fade-in">
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl flex items-center space-x-3 shadow-sm animate-fadeIn">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span className="text-sm font-medium">{exportSuccessMsg}</span>
         </div>
@@ -158,7 +241,6 @@ export default function RelatoriosConsumoModule({
       {activeTab === 'consumo' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Input Form Column */}
             <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-5">
               <div className="flex items-center space-x-3 border-b border-gray-100 pb-3">
                 <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
@@ -170,7 +252,6 @@ export default function RelatoriosConsumoModule({
                 </div>
               </div>
 
-              {/* Vehicle Select */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
                   Selecione o Veículo
@@ -178,7 +259,7 @@ export default function RelatoriosConsumoModule({
                 <select
                   value={selectedVehicleId}
                   onChange={(e) => setSelectedVehicleId(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50 font-medium"
+                  className="w-full p-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50 font-medium cursor-pointer"
                 >
                   {vehicles.map((v) => (
                     <option key={v.id} value={v.id}>
@@ -188,7 +269,6 @@ export default function RelatoriosConsumoModule({
                 </select>
               </div>
 
-              {/* Fuel Type */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
                   Tipo de Combustível
@@ -207,7 +287,7 @@ export default function RelatoriosConsumoModule({
                         setFuelType(f.id as any);
                         setFuelPrice(f.defaultPrice);
                       }}
-                      className={`p-2.5 rounded-xl text-xs font-semibold border text-center transition-all ${
+                      className={`p-2.5 rounded-xl text-xs font-semibold border text-center transition-all cursor-pointer ${
                         fuelType === f.id
                           ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-sm'
                           : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -219,7 +299,6 @@ export default function RelatoriosConsumoModule({
                 </div>
               </div>
 
-              {/* Price per Liter */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
                   Preço por Litro / m³ (R$)
@@ -236,7 +315,6 @@ export default function RelatoriosConsumoModule({
                 </div>
               </div>
 
-              {/* Autonomy Km/L */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
                   Autonomia do Veículo (Km/L)
@@ -253,7 +331,6 @@ export default function RelatoriosConsumoModule({
                 </div>
               </div>
 
-              {/* Distance Slider */}
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="text-xs font-semibold text-gray-700 uppercase">
@@ -270,11 +347,10 @@ export default function RelatoriosConsumoModule({
                   step="5"
                   value={customDistanceKm}
                   onChange={(e) => setCustomDistanceKm(parseInt(e.target.value))}
-                  className="w-full accent-blue-600"
+                  className="w-full accent-blue-600 cursor-pointer"
                 />
               </div>
 
-              {/* Estimated Monthly Km */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
                   Projeção Mensal de Rodagem (Km)
@@ -289,9 +365,7 @@ export default function RelatoriosConsumoModule({
               </div>
             </div>
 
-            {/* Results Display Area */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Top Result Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 p-5 rounded-2xl shadow-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -339,7 +413,6 @@ export default function RelatoriosConsumoModule({
                 </div>
               </div>
 
-              {/* Monthly Projections Card */}
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                   <h3 className="font-bold text-gray-900 text-base flex items-center space-x-2">
@@ -369,14 +442,13 @@ export default function RelatoriosConsumoModule({
                   </div>
                 </div>
 
-                {/* Fleet Overview Comparison */}
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <h4 className="text-xs font-bold text-gray-700 uppercase mb-3">
                     Comparativo Rápido com Todos os Veículos Cadastrados
                   </h4>
                   <div className="space-y-2">
                     {vehicles.map((v) => {
-                      const vDailyKm = v.dailyMileage || 120;
+                      const vDailyKm = Number((v.dailyMileage || 0).toFixed(1));
                       const vEstLiters = vDailyKm / (autonomyKmL || 1);
                       const vEstCost = vEstLiters * fuelPrice;
 
@@ -393,7 +465,7 @@ export default function RelatoriosConsumoModule({
                               R$ {vEstCost.toFixed(2)} / dia
                             </span>
                             <span className="text-xs text-gray-500 block">
-                              ~{vDailyKm} km rodados hoje
+                              {vDailyKm.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km rodados hoje
                             </span>
                           </div>
                         </div>
@@ -422,19 +494,18 @@ export default function RelatoriosConsumoModule({
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex items-center space-x-2">
                 <button
                   onClick={handleExportCSV}
                   disabled={isExporting}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition-all"
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition-all cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   <span>{isExporting ? 'Exportando...' : 'Exportar Excel / CSV'}</span>
                 </button>
                 <button
                   onClick={handlePrintPDF}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition-all"
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition-all cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Imprimir / Salvar PDF</span>
@@ -442,7 +513,6 @@ export default function RelatoriosConsumoModule({
               </div>
             </div>
 
-            {/* Filter Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
@@ -451,7 +521,7 @@ export default function RelatoriosConsumoModule({
                 <select
                   value={reportVehicleId}
                   onChange={(e) => setReportVehicleId(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white"
+                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white cursor-pointer"
                 >
                   <option value="todos">Todos os Veículos da Frota</option>
                   {vehicles.map((v) => (
@@ -469,7 +539,7 @@ export default function RelatoriosConsumoModule({
                 <select
                   value={dateRange}
                   onChange={(e) => setDateRange(e.target.value as any)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white"
+                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white cursor-pointer"
                 >
                   <option value="hoje">Hoje</option>
                   <option value="ontem">Ontem</option>
@@ -485,7 +555,7 @@ export default function RelatoriosConsumoModule({
                 <select
                   value={reportType}
                   onChange={(e) => setReportType(e.target.value as any)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white"
+                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white cursor-pointer"
                 >
                   <option value="completo">Completo (Resumo + Paradas + Alertas)</option>
                   <option value="sintetico">Sintético (Apenas Totais de KM)</option>
@@ -495,9 +565,7 @@ export default function RelatoriosConsumoModule({
               </div>
             </div>
 
-            {/* Printable Area / Report Preview */}
             <div className="border border-gray-200 rounded-xl p-6 bg-white space-y-6 print:border-none print:p-0">
-              {/* Report Header */}
               <div className="flex justify-between items-start border-b border-gray-200 pb-4">
                 <div>
                   <h3 className="text-xl font-extrabold text-blue-900">GKD RASTREADOR GPS</h3>
@@ -509,7 +577,6 @@ export default function RelatoriosConsumoModule({
                 </div>
               </div>
 
-              {/* Table Data */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
@@ -527,9 +594,9 @@ export default function RelatoriosConsumoModule({
                       <tr key={v.id} className="hover:bg-gray-50">
                         <td className="p-2.5 font-bold text-gray-900">{v.name}</td>
                         <td className="p-2.5 text-gray-600 font-mono">{v.licensePlate}</td>
-                        <td className="p-2.5 text-right font-bold text-gray-800">{v.dailyMileage || 0} km</td>
+                        <td className="p-2.5 text-right font-bold text-gray-800">{Number(v.dailyMileage || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km</td>
                         <td className="p-2.5 text-right font-semibold text-gray-700">{v.speed || 0} km/h</td>
-                        <td className="p-2.5 text-right font-semibold text-gray-700">{v.externalVoltage ? `${v.externalVoltage.toFixed(1)}V` : '13.8V'}</td>
+                        <td className="p-2.5 text-right font-semibold text-gray-700">{v.externalVoltage ? `${v.externalVoltage.toFixed(1)}V` : '—'}</td>
                         <td className="p-2.5">
                           {(() => {
                             const isOff = v.status === 'Offline' || v.status === 'NoBattery';
@@ -555,10 +622,191 @@ export default function RelatoriosConsumoModule({
         </div>
       )}
 
-      {/* TAB 3: MODOS SLEEP E BOTÃO DE PÂNICO / SOS */}
+      {/* TAB 3: MULTAS NO PERÍODO */}
+      {activeTab === 'multas' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-amber-100 text-amber-800 rounded-xl">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900 text-lg">Controle de Multas & Infrações no Período</h2>
+                  <p className="text-xs text-gray-500">Registre e consulte multas por período, veículo ou motorista com data personalizada</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl">
+                <span className="text-xs font-bold text-amber-900 uppercase">Total de Multas no Período:</span>
+                <span className="text-lg font-black text-red-600 font-mono">
+                  R$ {totalFinesAmount.toFixed(2)} ({filteredFines.length})
+                </span>
+              </div>
+            </div>
+
+            {/* Cadastrar Nova Multa Form */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+              <h3 className="font-extrabold text-gray-900 text-sm flex items-center gap-2">
+                <Plus className="w-4 h-4 text-blue-600" /> Registrar Nova Multa
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Veículo:</label>
+                  <select
+                    value={fineVehicleId}
+                    onChange={(e) => setFineVehicleId(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.name} ({v.licensePlate})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Motorista Infrator:</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Carlos Silva"
+                    value={fineDriverName}
+                    onChange={(e) => setFineDriverName(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Data da Infração (Calendário):</label>
+                  <input
+                    type="date"
+                    value={fineDate}
+                    onChange={(e) => setFineDate(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Valor da Multa (R$):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={fineAmount}
+                    onChange={(e) => setFineAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold font-mono text-red-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Descrição / Infração:</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ex: Excesso de velocidade acima de 20%, Avanço de semáforo..."
+                    value={fineDescription}
+                    onChange={(e) => setFineDescription(e.target.value)}
+                    className="flex-1 p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveFine}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    Salvar Multa
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Bar for Fines */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                  Filtrar por Veículo
+                </label>
+                <select
+                  value={fineFilterVehicle}
+                  onChange={(e) => setFineFilterVehicle(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white cursor-pointer"
+                >
+                  <option value="todos">Todos os Veículos</option>
+                  {vehicles.map(v => (
+                    <option key={v.id} value={v.id}>{v.name} ({v.licensePlate})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                  Filtrar Período de Apuração
+                </label>
+                <select
+                  value={fineFilterPeriod}
+                  onChange={(e) => setFineFilterPeriod(e.target.value as any)}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium bg-white cursor-pointer"
+                >
+                  <option value="todos">Todo o Histórico</option>
+                  <option value="7dias">Últimos 7 Dias</option>
+                  <option value="30dias">Últimos 30 Dias</option>
+                  <option value="90dias">Últimos 90 Dias</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Fines Table */}
+            <div className="overflow-x-auto border border-gray-200 rounded-xl">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-bold uppercase">
+                    <th className="p-3">Data</th>
+                    <th className="p-3">Veículo</th>
+                    <th className="p-3">Motorista</th>
+                    <th className="p-3">Descrição da Infração</th>
+                    <th className="p-3 text-right">Valor</th>
+                    <th className="p-3 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredFines.map(f => {
+                    const veh = vehicles.find(v => v.id === f.vehicleId);
+                    return (
+                      <tr key={f.id} className="hover:bg-gray-50">
+                        <td className="p-3 font-mono font-bold text-gray-700">{new Date(f.date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                        <td className="p-3 font-bold text-gray-900">{veh ? veh.name : 'Veículo'} ({veh?.licensePlate || ''})</td>
+                        <td className="p-3 font-semibold text-gray-800">{f.driverName}</td>
+                        <td className="p-3 text-gray-600">{f.description}</td>
+                        <td className="p-3 text-right font-black text-red-600 font-mono text-sm">R$ {f.amount.toFixed(2)}</td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFine(f.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Excluir multa"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredFines.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-gray-400">
+                        Nenhum registro de multa encontrado para este período ou veículo.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: MODOS SLEEP E BOTÃO DE PÂNICO / SOS */}
       {activeTab === 'sleep_sos' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Card: SOS / Botão de Pânico */}
           <div className="bg-white p-6 rounded-2xl border border-red-200 shadow-sm space-y-5">
             <div className="flex items-center space-x-3 border-b border-red-100 pb-3">
               <div className="p-2.5 bg-red-100 text-red-600 rounded-xl">
@@ -609,7 +857,7 @@ export default function RelatoriosConsumoModule({
                     <button
                       type="button"
                       onClick={() => handleTriggerSOS(v)}
-                      className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-extrabold flex items-center space-x-1.5 shadow-md active:scale-95 transition-all"
+                      className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-extrabold flex items-center space-x-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
                     >
                       <PhoneCall className="w-4 h-4" />
                       <span>DISPARAR S.O.S</span>
@@ -620,7 +868,6 @@ export default function RelatoriosConsumoModule({
             </div>
           </div>
 
-          {/* Card: Sleep Mode / Preservação da Bateria */}
           <div className="bg-white p-6 rounded-2xl border border-blue-200 shadow-sm space-y-5">
             <div className="flex items-center space-x-3 border-b border-blue-100 pb-3">
               <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">

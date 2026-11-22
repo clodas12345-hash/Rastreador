@@ -81,6 +81,10 @@ export interface VehicleSettings {
   gprsWatchdogEnabled?: boolean;
   gprsWatchdogTimeoutMinutes?: number;
   lastWatchdogRebootTimestamp?: number;
+  lastMileageDate?: string;
+  odometerCalibrated?: boolean;
+  odometerBaseKm?: number;
+  odometerBaseTs?: number;
 }
 
 export interface Geofence {
@@ -174,4 +178,14 @@ export interface Driver {
   idleTimeMinutes: number;
   totalTripsCount: number;
   totalKmDriven: number;
+  startDate?: string;
+}
+
+export interface FineRecord {
+  id: string;
+  vehicleId: string;
+  driverName: string;
+  date: string; // YYYY-MM-DD
+  amount: number; // R$
+  description: string;
 }
